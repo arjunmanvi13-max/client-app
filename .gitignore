@@ -28,3 +28,8 @@ web-build/
 
 # Archives
 *.zip
+
+# Local database exports
+database-backup/
+*.bson
+*.metadata.json
