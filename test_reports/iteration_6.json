@@ -1,0 +1,25 @@
+{
+  "summary": "Bug verification PASSED: Duplicate sidebar on /reports (desktop web) is FIXED. Logged in as Super Admin 1 (mobile 9631252241, OTP 123456) and navigated to /reports at 1920x800. Counted UI elements that would appear once per sidebar: desktop-sidebar=1, sidebar-logout=1, sidebar-toggle=1, 'PWS & ALPHA' brand text=1 — all exactly 1 (expected). Screenshot confirms single left sidebar rendered by root _layout.tsx only. Regression checks pass: (a) Reports tabs (Revenue Summary → Defaulters & Aging → Payment Modes) switch correctly and refetch data via /api/reports/financial/{summary,defaulters,payment-modes}; (b) Export Excel button (testID reports-export) now triggers GET /api/reports/financial/export?kind=summary&institution=BOTH&date_from=...&date_to=... returning 200 (regression from iteration_5 export bug also fixed); (c) other desktop screens have exactly one sidebar each — Dashboard=1, /fees/collection=1, /manage/player=1. No zero-sidebar or two-sidebar screens found. Note: expo service was temporarily down with ENOSPC (inotify watchers exhausted); cleared /app/frontend/.expo/web/cache and restarted supervisor expo to bring it back — sysctl fs.inotify.max_user_watches could not be increased due to non-root permissions in this container.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_6.json"],
+  "action_items": [
+    "Monitor expo ENOSPC (inotify) issue: expo crashed once during testing due to 'System limit for number of file watchers reached'. Cache under /app/frontend/.expo/web/cache was cleared as a workaround. If this recurs, consider having the platform raise fs.inotify.max_user_watches (currently not sysctl-writable from user context)."
+  ],
+  "critical_code_review_comments": [
+    "Fix in /app/frontend/app/reports.tsx is minimal and correct — screen now returns just `<SafeAreaView>{body}</SafeAreaView>`; sidebar ownership is centralized in app/_layout.tsx via ShellOrStack, matching the pattern used by all other authenticated screens. No duplication risk remains.",
+    "The pathname/isDesktop gate in _layout.tsx correctly hides the sidebar on /login, /, and /parent/* routes — verified indirectly (dashboard, fees, players, reports all show 1 sidebar; login page rendered without sidebar during OTP flow)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% — 1/1 bug fix verified, 3/3 regression checks pass"},
+  "seed_data_creation": "None. Used existing seeded Super Admin 1 (mobile 9631252241, mock OTP 123456).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The duplicate sidebar bug on /reports has been fully verified fixed at 1920x800 desktop viewport. Assertion strategy that worked: count elements that appear once per sidebar instance (desktop-sidebar, sidebar-logout, sidebar-toggle, 'PWS & ALPHA' brand text). Login flow: goto /login → click [data-testid=quick-super-admin-1] (auto-fills 9631252241) → btn-send-super-otp → fill otp-input with 123456 → btn-verify-otp → lands on /dashboard. Regression seeds working: Export Excel now succeeds (was broken in iteration_5). expo may need cache clear + restart if ENOSPC recurs: rm -rf /app/frontend/.expo/web/cache && sudo supervisorctl restart expo.",
+  "rca_of_issue": "Original bug: app/reports.tsx rendered its own <Sidebar /> component in the isDesktop branch while app/_layout.tsx's ShellOrStack also wraps every non-hidden route with a <Sidebar /> for desktop viewports. Result was two Sidebars stacked side-by-side on /reports only. Fix applied by main agent: reports.tsx now returns `<SafeAreaView>{body}</SafeAreaView>` regardless of viewport, delegating sidebar responsibility to the root layout. Verified via UI element counts and screenshot: single sidebar visible with correct content offset."
+}

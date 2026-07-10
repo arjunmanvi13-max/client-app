@@ -1,0 +1,125 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 6 (Vibrant Play) combined with Archetype 4 (Swiss & High-Contrast)",
+  "rationale": "For an internal school/academy app used by teachers, coaches, and wardens, the interface needs the structure and authority of a Swiss grid for rapid tasks like attendance, but also requires the approachability, energy, and distinct color-coding of Vibrant Play to keep motivation high across diverse roles.",
+  "typography": {
+    "heading_font": "Clash Display",
+    "body_font": "Figtree",
+    "hierarchy": {
+      "h1": "text-3xl font-semibold tracking-tight leading-snug",
+      "h2": "text-2xl font-medium tracking-tight leading-snug",
+      "h3": "text-xl font-medium tracking-tight",
+      "h4": "text-lg font-medium tracking-tight",
+      "body": "text-base font-normal leading-relaxed",
+      "small": "text-sm font-normal leading-normal text-slate-500",
+      "overline": "text-xs font-bold uppercase tracking-[0.15em] text-slate-400"
+    },
+    "guidelines": "Never center body text. Left-align lists, labels, and forms. Use overlines heavily for task statuses (e.g., 'IN PROGRESS') and roles."
+  },
+  "colors": {
+    "backgrounds": {
+      "app": "#F4F5F7",
+      "card": "#FFFFFF",
+      "glass": "bg-white/80 backdrop-blur-xl",
+      "dark_accent": "#0F172A"
+    },
+    "brand": {
+      "primary": "#3B28CC",
+      "primary_hover": "#2B1D99",
+      "primary_light": "#EBE9FE"
+    },
+    "roles_and_status": {
+      "admin": "#0F172A",
+      "teacher": "#3B28CC",
+      "coach": "#EA580C",
+      "warden": "#7C3AED",
+      "student": "#2563EB",
+      "present": "#10B981",
+      "absent": "#EF4444",
+      "pending_leave": "#F59E0B"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "tertiary": "#94A3B8",
+      "inverse": "#FFFFFF"
+    },
+    "borders": {
+      "default": "#E2E8F0",
+      "focus": "#3B28CC"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Mobile-First 'Tactile Bento'. The screen is broken down into chunky, tap-friendly zones. High density for lists, high breathing room for dashboards.",
+    "spacing_scale": "p-4, p-6, gap-4, gap-6",
+    "dashboard_grid": "flex flex-col gap-4 (stacked blocks) with horizontal scroll lists (flex-row gap-4 overflow-x-auto) for quick stats",
+    "safe_areas": "Always apply padding-bottom to account for the bottom tab bar and iOS home indicator."
+  },
+  "surfaces_and_components": {
+    "cards": {
+      "style": "bg-white rounded-2xl border border-slate-200 shadow-sm",
+      "interaction": "active:scale-[0.98] transition-transform",
+      "padding": "p-5"
+    },
+    "buttons": {
+      "primary": "bg-[#3B28CC] text-white rounded-xl py-4 px-6 font-semibold active:opacity-80 active:scale-[0.98] flex items-center justify-center",
+      "secondary": "bg-[#EBE9FE] text-[#3B28CC] rounded-xl py-4 px-6 font-semibold active:opacity-80 flex items-center justify-center",
+      "ghost": "text-slate-500 active:bg-slate-100 rounded-xl py-4 px-6 font-medium"
+    },
+    "inputs": {
+      "style": "bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-base text-slate-900 focus-within:border-[#3B28CC] focus-within:ring-2 focus-within:ring-[#3B28CC]/20 transition-all",
+      "label": "text-sm font-medium text-slate-700 mb-2"
+    },
+    "pills_and_tags": {
+      "style": "px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide",
+      "status_present": "bg-emerald-100 text-emerald-700",
+      "status_absent": "bg-red-100 text-red-700",
+      "status_pending": "bg-amber-100 text-amber-700"
+    },
+    "bottom_tab_bar": {
+      "style": "absolute bottom-0 w-full bg-white/90 backdrop-blur-lg border-t border-slate-200 pt-3 pb-safe-6 px-6 flex justify-between items-center z-50 shadow-[0_-8px_30px_rgba(0,0,0,0.04)]"
+    }
+  },
+  "icons_and_assets": {
+    "library": "lucide-react-native or @expo/vector-icons (Feather/Phosphor style)",
+    "stroke_width": "2",
+    "size": "24px for navigation, 20px for inline, 16px for metadata"
+  },
+  "motion_and_interactions": {
+    "philosophy": "Snappy, spring-based interactions to make rapid tasks (like marking 30 students present) feel satisfying, not tedious.",
+    "transitions": "Use React Native LayoutAnimation or Reanimated for list shuffling and expanding cards.",
+    "micro_interactions": "Haptic feedback (Vibration) on task completion, attendance marking, and gate pass approvals."
+  },
+  "accessibility": {
+    "contrast": "Ensure text contrast on status pills exceeds 4.5:1. (e.g. use deep text on light backgrounds)",
+    "touch_targets": "Minimum 48x48 logical pixels for all tap targets.",
+    "test_ids": "Mandatory 'testID' (React Native equivalent of data-testid) on all buttons, tabs, and list items (e.g. testID='mark-present-btn')."
+  },
+  "media_and_images": {
+    "strategy": "Minimal photography. Rely on avatars and clean geometric icons. Use photography only for user profiles and login background.",
+    "image_urls": [
+      {
+        "category": "Login Background (School/Academics Context)",
+        "url": "https://images.unsplash.com/photo-1752920299180-e8fd9276c202?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwyfHxzdHVkZW50JTIwc3R1ZHlpbmclMjBsaWJyYXJ5fGVufDB8fHx8MTc3NzM1MTU3MXww&ixlib=rb-4.1.0&q=85",
+        "description": "Library study scene for the login view, wrap with a heavy gradient overlay (black/40) to make the login form pop."
+      },
+      {
+        "category": "Login Background (Sports/Academy Context)",
+        "url": "https://images.pexels.com/photos/12585946/pexels-photo-12585946.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Athlete running track, alternate login background for coaches/sports staff."
+      },
+      {
+        "category": "User Profile / Avatar",
+        "url": "https://images.unsplash.com/photo-1762522921456-cdfe882d36c3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzOTB8MHwxfHNlYXJjaHwyfHx5b3VuZyUyMHByb2Zlc3Npb25hbCUyMHBvcnRyYWl0JTIwc21pbGluZ3xlbnwwfHx8fDE3NzczNTE1NzV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Example portrait for the current user's profile avatar."
+      }
+    ]
+  },
+  "instructions_to_main_agent": {
+    "1": "This is a mobile app. Translate standard web Tailwind classes (like 'hover:', 'backdrop-blur') to their React Native/Expo equivalents (e.g. active opacity, absolute overlays, or NativeWind equivalents).",
+    "2": "Never use HTML components (div, span). Use standard React Native components: View, Text, TouchableOpacity, ScrollView, TextInput.",
+    "3": "For attendance marking, avoid multiple screens. Use a long ScrollView with large tap targets (List Items) where the teacher can toggle Present/Absent directly on the row.",
+    "4": "The Warden dashboard should prioritize high-contrast alerts (Pending Gate Passes) at the very top.",
+    "5": "Apply 'testID' instead of 'data-testid' for all interactable elements since this is React Native."
+  }
+}

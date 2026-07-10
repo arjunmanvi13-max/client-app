@@ -1,0 +1,45 @@
+{
+  "summary": "Comprehensive backend + frontend testing of the June 2026 auth redesign (email+password only, @prarambhika.com domain-restricted). Backend: 23/23 pytest cases pass (login validation, removed OTP endpoints return 404, user creation with permissions map, forced password-change lifecycle, super-admin reset flow, PATCH email/password rules, deactivated login blocked, all demo accounts login). Frontend: login page renders correctly with testIDs (login-email/password/btn-login + quick chips), client-side domain error appears without network call, Super Admin login → /dashboard, force-change flow works end-to-end on a throwaway teacher and re-login lands directly on dashboard, /manage/coach/new shows field-name/field-email/field-password + perm-customize-switch, /manage/teacher/{id} shows reset-pwd-input + btn-reset-password. ONE BUG FOUND: Profile 'Change password' row is HIDDEN for super_admin (regression not fixed) — see rca_of_issue.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/(tabs)/profile.tsx",
+        "issue": "Profile 'Change password' menu row is explicitly hidden for super_admin (line 62: `{user.role !== \"super_admin\" && (<Row ... testID=\"menu-change-pwd\" />)}`). Review request requires: 'Profile change-password works for Super Admin too — previously blocked for super admin.' The gate must be removed. Backend endpoint POST /api/auth/password/change works fine for super_admin (verified via tests) — this is purely a UI gate that was NOT removed as part of the redesign.",
+        "testID": "menu-change-pwd",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "Multiple screens", "issue": "Console warnings: 'shadow*' style props are deprecated (use 'boxShadow'); 'props.pointerEvents' is deprecated (use style.pointerEvents). Non-blocking; carried over from iteration 7. Reference: /var/log/supervisor/expo.err.log"}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_redesign.py",
+    "/app/test_reports/pytest/auth_redesign.xml"
+  ],
+  "action_items": [
+    "Fix Profile change-password gate: in /app/frontend/app/(tabs)/profile.tsx line 62, remove the `user.role !== 'super_admin'` condition so the 'Change password' Row is always rendered for authenticated users.",
+    "(Optional/low-priority) Migrate deprecated RN Web style props (shadow* → boxShadow, props.pointerEvents → style.pointerEvents)."
+  ],
+  "critical_code_review_comments": [
+    "Backend auth.py, users.py, core.py look clean: domain validation centralized in validate_domain_email; must_change_password lifecycle correctly toggled on admin-assigned password + admin PATCH + reset-password; RBAC intact.",
+    "core.py still exports MobileLoginIn / OtpSendIn / OtpVerifyIn / SetPasswordIn / create_temp_token / decode_temp_token / MOCK_OTP_CODE / SUPER_ADMIN_ALLOWED_MOBILES / OTP_* constants even though OTP routes are removed — dead code, safe to prune.",
+    "seed.py migrates legacy @pws-alpha.com → @prarambhika.com and re-applies demo passwords on restart (idempotent).",
+    "Frontend uses EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL) — this matches frontend/.env; ensure future testing agents use the correct var name."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_redesign.py (new — 23 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "~90% (1 blocker: SA profile change-password hidden)"},
+  "seed_data_creation": "Tests create throwaway teachers with random-suffixed emails (testteacher_*@prarambhika.com, uitest_teacher_*@prarambhika.com, deact_*@prarambhika.com) and clean them up via DELETE /api/users/{id} in fixture teardown / after Playwright run. No leftover pollution expected.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend auth-redesign fully verified. Only outstanding issue is UI: Profile 'Change password' hidden for super_admin (single-line fix in profile.tsx). Env: use EXPO_PUBLIC_BACKEND_URL (not EXPO_BACKEND_URL). Reset password box on teacher edit uses testIDs reset-pwd-input + btn-reset-password. Force-change screen testIDs force-new-pwd, force-new-pwd2, btn-force-change. Login testIDs login-email, login-password, btn-login. Quick chip testID pattern: quick-<role-lower-hyphenated>. Remember: Metro file-watching disabled (CI=true) — restart expo after frontend edits.",
+  "rca_of_issue": "BUG: Super Admin cannot access Profile → Change password modal. ROOT CAUSE: /app/frontend/app/(tabs)/profile.tsx line 62 wraps the Change-password Row in `{user.role !== 'super_admin' && (…)}`, a leftover from the previous flow where Super Admin's password lived under OTP. Reproduction: (1) login as superadmin@prarambhika.com/Super@123, (2) navigate to Profile — the menu shows only Manage users & rosters, Notifications, Directory, About PWS & ALPHA; the 'Change password' Row is missing. Mitigation: delete the role guard so every authenticated user (including super_admin) can open the change-password modal. Backend /api/auth/password/change already accepts the request from super_admin (verified). Verified via UI screenshot at /tmp/profile.png."
+}

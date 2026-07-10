@@ -1,0 +1,45 @@
+{
+  "summary": "Verified ADVANCE FEE PAYMENT feature end-to-end. Backend: 16/16 pytest cases in new /app/backend/tests/test_advance_fees.py pass. GET /api/fees/player-dues/{karan_id} correctly returns financial_year_end='2027-03', current_month='2026-07', and an `advance` list containing 8 Monthly entries for 2026-08..2027-03 (₹12,000 each — Karan is Hostel Only/Cricket, monthly=12000; the problem statement's '9000' appears to reflect a Daily/Cricket assumption but the actual seeded player is Hostel Only per iteration_10 and the amount matches the rate card + is confirmed uniform). No Transport rows returned (Karan has no transport configured). POST /api/fees/collect-multi with fee_ids=[Monthly 2026-01] + advance=[2026-08, 2026-09] + player_id, Cash → 200 single batch; receipt.fees has 3 rows sorted by period_month; the two new advance docs have advance_payment=true; total_amount = sum(amount_due). Receipt PDF endpoint returns 200 application/pdf. Advance-only (fee_ids=[], advance=[2026-10], player_id) → 200; subsequent player-dues correctly excludes 2026-08/09/10 from advance list AND from unpaid; summary.previous_pending_due drops only by the ONE real due (₹12,000) that was collected, not by the advance amounts. Validations verified: current month 2026-07 → 400, next FY 2027-04 → 400, duplicate selection → 400, already-paid 2026-08 → 400, Transport for Karan (no transport) → 400, empty payload → 400, advance-only without player_id → 400. Dashboard aggregation: after all three collections, Balua.collected_today ≥ before + (batch1+batch2); due_current_month unchanged; due_past decreased by exactly ₹12,000 (the one real past-due, advance rows are future). Existing regression suite test_multi_month_fees.py still fully green (12/12). Frontend (mobile web, 390x844): login superadmin → /fees/collection → search 'Karan' → tap Karan Raj → dues panel loads → teal 'Pay in advance · up to Mar 2027' collapsible header (testID toggle-advance) visible below the outstanding groups → tap to expand → all 8 future-month rows visible with correct testIDs (adv-monthly-2026-08 .. adv-monthly-2027-03). Tick adv-monthly-2026-11 + tick outstanding Monthly Jan 2026 → SELECTED TOTAL updates to ₹24,000 (12000 + 12000), '2 fee(s)' badge. Cash + submit → receipt modal 'Payment Successful · Receipt · Batch 6dbde733' lists both fees (Monthly · Jan 2026 ₹12,000 and Monthly · Nov 2026 ₹12,000), Total paid ₹24,000, Payment mode Cash, Transaction date 2026-07-08, Collected by Super Admin 1, Download PDF/Share Link/Done buttons. Done closes modal, and re-expanding the advance list shows adv-monthly-2026-11 is gone (consumed). CLEANUP DONE: all advance_payment=true rows deleted, all real dues paid during tests reverted to status='due' with payment fields cleared. Final Karan state: 9 due / 0 paid / 0 advance rows. Mohit Raj not touched. Deprecated packages detected: none new (only pre-existing RN-web 'shadow*' and 'pointerEvents' style-prop deprecation warnings from prior iterations — cosmetic, no functional impact).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web deprecation (pre-existing)", "issue": "Console warnings 'shadow*' style props deprecated (use boxShadow) and props.pointerEvents deprecated (use style.pointerEvents). Cosmetic, no functional impact. Same as flagged in iteration_10."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_advance_fees.py",
+    "/app/test_reports/pytest/advance_fees.xml",
+    "/app/test_reports/pytest/multi_month_fees.xml"
+  ],
+  "action_items": [
+    "None blocking. OPTIONAL: The review request text specifies Karan as 'Daily/Cricket 9000' but the actual seeded player is Hostel Only/Cricket with monthly=12000 (confirmed via API and iteration_10 report). Amounts and behaviour are correct; only the human description had drift.",
+    "OPTIONAL (carried over from iteration_10): Clean up RN-web shadow*/pointerEvents deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "routers/fees.py _fy_end (L82-85) correctly maps YYYY-MM to '<Y>-03' with FY = Apr–Mar; verified for 2026-07 → 2027-03.",
+    "routers/fees.py get_player_dues (L378-427) builds the advance list only for months (_next_month(current)..fy_end) that do not already have a fee row of the same (fee_type, period_month); Transport is included only when player.transport_fee_monthly > 0 — verified Karan (no transport) returns 0 Transport advance rows.",
+    "routers/fees.py collect_multi (L445-545) validation ordering is sound: 400 on empty payload, 400 on Online-without-ref, 404 on missing fee ids, 400 on multi-player (or missing player_id when only advance selected), 400 on already-paid, then per-advance validation: format, <= current_month → 400, > fy_end → 400, duplicate → 400, existing row → 400, no-fee-configured → 400. Advance docs materialized with advance_payment=true, then all_ids (existing + new) share one batch_id/paid_at via update_many. Correct.",
+    "routers/fees.py L525: fees_after re-fetched and sorted by period_month ascending — matches spec 'sorted by period'. Verified in UI receipt (Jan 2026 then Nov 2026).",
+    "frontend collection.tsx L138-158: advKey='<fee_type>|<period_month>', selectedAdvance Set toggling and totalSelected memo correctly sums due + advance selections. Verified live update to ₹24,000.",
+    "frontend collection.tsx L357-391: advance box renders only when dues.advance.length > 0; toggle-advance Pressable is a proper testID; per-row testID pattern adv-<feetype-lower>-<period_month> matches spec.",
+    "frontend collection.tsx L165-189: submit() passes {fee_ids, advance:[{period_month,fee_type}], player_id, payment_mode, reference_id, transaction_date, notes} — matches backend contract exactly. Alerts on 0 selection and missing reference for Online."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_advance_fees.py (new — 16 tests, all passing)"
+  ],
+  "success_rate": {
+    "backend": "100% (16/16 new advance suite + 12/12 pre-existing multi-month suite)",
+    "frontend": "100% spot-check (advance box render, expand, tick advance + due, SELECTED TOTAL, submit, receipt modal with both months, Done, advance row disappears)"
+  },
+  "seed_data_creation": "None persisted. All advance_payment=true rows deleted, all real dues paid during pytest and UI walkthrough reverted to status='due'. Karan final state verified: 9 due / 0 paid / 0 advance rows. Mohit Raj not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server date 2026-07-08. Karan Raj is Balua/Cricket/Hostel Only (monthly=12000, no transport) — the review problem statement's '9000' was inaccurate; the assertion should use the API-returned amount as the source of truth (see test_advance_fees.py which stores _state['monthly_amt']). New regression suite /app/backend/tests/test_advance_fees.py is idempotent (autouse module fixture deletes advance rows and reverts paid → due both before AND after). Existing /app/backend/tests/test_multi_month_fees.py still green. The 15-min bulk-ensure throttle resets on backend restart. Pre-existing state drift in /app/backend/tests/test_fees_bug_fix.py (Mohit's Registration paid) predates iteration_10 and is documented — do not 'fix' by touching Mohit.",
+  "rca_of_issue": "N/A — feature verification, all acceptance criteria met."
+}

@@ -1,0 +1,43 @@
+{
+  "summary": "Tested permission system + add/edit coaches feature. Backend: 35/35 pytest passed (17 existing + 18 new for /api/users CRUD with can_manage gating, /api/people CRUD with kind gating, /api/auth/me returning can_manage). Frontend: validated manage hub, list, and edit screens via Expo web preview. Found and fixed one critical bundler error blocking the entire /manage/[kind] route.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/users", "issue": "TaskUpdate / UserUpdate use Pydantic v1 .dict(); migrate to .model_dump(exclude_none=True) for v2 compatibility (warning-level)"},
+      {"endpoint": "GET /api/users", "issue": "Returns full user list to any authenticated caller (incl. student/player). Consider restricting list to roles that have non-empty can_manage or to admins/super_admin."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "app/manage/[kind]/index.tsx", "issue": "Wrong relative import path '../../src/auth'; file is 3 levels deep so it must be '../../../src/auth'. Caused Metro bundling failure -> red 'Server Error: Unable to resolve module' screen for all users opening /manage/<kind>. FIXED by testing agent."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_backend_api.py",
+    "/app/backend/tests/test_manage_permissions.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Verify the bundler-import fix in /app/frontend/app/manage/[kind]/index.tsx (testing agent already changed '../../src/auth' to '../../../src/auth').",
+    "Optional: pre-fill a `mountedKey` or call `load()` again after save() returns from the edit screen so newly-created records appear in the list without manual back/forward (UI list showed stale content immediately after save in our run, although backend confirmed 200).",
+    "Optional: tighten /api/users listing — currently any authenticated user can read all users."
+  ],
+  "critical_code_review_comments": [
+    "Import-path mismatch between hub (../../src/auth) and nested screens (../../../src/auth) is fragile; consider using TS path aliases (tsconfig 'paths') to avoid future breakage.",
+    "server.py is now ~780 lines combining all routers/models/seed; nearing the 700-line guideline. Splitting into routers/users.py, routers/people.py, routers/tasks.py would help maintainability.",
+    "PATCH /api/users silently drops role/can_manage for non-admins — good security pattern, but the API does not signal this in the response. Acceptable for MVP."
+  ],
+  "updated_files": [
+    "/app/frontend/app/manage/[kind]/index.tsx (fixed import path '../../src/auth' -> '../../../src/auth')",
+    "/app/backend/tests/test_manage_permissions.py (new pytest file with 18 cases covering can_manage seeding, /api/users + /api/people CRUD permission gating)"
+  ],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "100% on admin flow; coach/teacher/student variations validated via backend pytest"},
+  "seed_data_creation": "Pytest creates TEST_-prefixed users and people, deletes them in teardown_class. UI test created one TEST UI Coach and one TEST UI Player (visible via backend POST 200 OK in logs); these remain in DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend at https://unified-track.preview.emergentagent.com/api. Run: pytest /app/backend/tests/ -v. Default can_manage seeding: super_admin & admin -> all 4; coach -> ['player']; teacher -> ['student']; warden/staff/student/player -> []. New testIDs verified: menu-manage, manage-{kind}, add-{kind}, row-{id}, field-name/email/password/department/group/sport, perm-{kind}, save-btn, delete-btn. UI Playwright caveat: when already logged in, navigating to '/' shows the home tab (no login form); to switch user, click Profile -> logout-btn first, then login.",
+  "rca_of_issue": "Red screen 'Unable to resolve module ../../src/auth' was thrown by Metro because /app/frontend/app/manage/[kind]/index.tsx is at depth 3 inside app/, so the correct relative path to /app/frontend/src/auth is '../../../src/auth'. The sibling file [id].tsx already used the correct path; only index.tsx had this typo. Fixed by editing the import line and restarting Expo to flush the bundler cache."
+}

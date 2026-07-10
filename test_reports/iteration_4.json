@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 4 - Layered Visibility (Layer 1 Command Centre + Layer 2 Department drill-downs). Backend: 37/37 new pytest cases in test_command_center.py PASSED (Layer 1 GET /api/command-center shape + role gating; Layer 2 GET /api/departments/{school,sports,hostel,canteen} shape + 403 gating for coach/teacher/warden/staff/student/player). Full regression run: 85/86 (one transient network ConnectTimeout — same test passed on isolated run). Frontend (mobile viewport 390x844): admin login -> /dashboard correctly renders CommandCenter (KPI strip 33% attendance / 8% tasks, live alerts, entity rows with P/A counts, task tracker, 4 dept cards). Tapping each dept card navigates correctly: dept-school -> /department/school (Class 9-A row, Priya Kumari teacher); dept-sports -> /department/sports (7 players, 2 coaches, by_sport Cricket/Football/Athletics, by_slot Morning, coach list incl. Vikram Singh); dept-canteen -> /department/canteen (1 staff Reena Devi, Canteen hygiene audit task); dept-hostel -> /(tabs)/hostel (existing Warden console). Role branching verified: coach -> CoachHome (qa-attendance/addplayer/roster), teacher/warden/staff -> GenericDashboard, no regression. No bugs found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/departments/sports", "issue": "by_slot keys come from raw stored 'slot' values which may include both 'Morning' (used by /api/coach/attendance) and any session= legacy values. Currently fine but consider documenting the slot vocabulary."},
+      {"endpoint": "GET /api/departments/canteen", "issue": "Filter uses {department: 'Canteen'} OR title regex 'canteen'. The OR-regex fallback can match unrelated tasks if 'canteen' appears in title text — acceptable for MVP."},
+      {"endpoint": "GET /api/command-center", "issue": "_alerts() builds 'overdue' using deadline < now_utc().isoformat() string compare; works because deadlines are stored as ISO strings, but a typed Date comparison would be safer."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "CommandCenter", "issues": ["Section header 'Live alerts' has marginTop 28 in s.sectionHead overriding s.section's marginTop 28 — no actual issue, just two style rules overlap."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_command_center.py",
+    "/app/test_reports/pytest/command_center.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: replace ISO-string deadline comparison in command.py _alerts() with datetime objects.",
+    "Optional: add testIDs to GenericDashboard top-level container so role-branch can be asserted positively (currently we assert by absence of CC markers)."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routers/command.py is 220 lines, well-structured; helpers are pure async functions. Good DRY (alerts/kpis/snapshots split).",
+    "Department endpoints correctly project away _id and password_hash via {_id:0, password_hash:0} in find()/aggregate() projections.",
+    "All four dept endpoints share an identical _require_admin(user) gate — could be refactored as a FastAPI dependency Depends(require_admin) for DRY but current form is acceptable.",
+    "Frontend CommandCenter.tsx (~225 lines) cleanly separates KpiCard/EntityRow/Mini/TaskBlock/DeptCard sub-components. testIDs cover all interactive cards. ScrollView + RefreshControl + useFocusEffect give correct re-fetch behavior."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_command_center.py (NEW - 37 pytest cases for Layer 1 + Layer 2 endpoints incl. shape, role gating for coach/teacher/warden/staff/student/player, _id/password_hash exclusion)"
+  ],
+  "success_rate": {"backend": "100% (37/37 new + 85/86 full suite, 1 flake transient timeout)", "frontend": "100% on tested flows: admin->CC->all 4 dept drill-downs, coach->CoachHome, teacher/warden/staff->GenericDashboard"},
+  "seed_data_creation": "No new seed data created. Reused existing seeded users (admin, coach, teacher, warden, staff, super_admin, student, player) and seeded people (10 students, 7 players, 2 coaches, 1 teacher, 1 staff, 1 canteen task).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Layer 1 testIDs: kpi-att, kpi-tasks, alert-{type} (e.g. alert-unmarked_player_attendance, alert-late_hostel_entries, alert-overdue_tasks, alert-pending_gate_passes), dept-school, dept-sports, dept-hostel, dept-canteen, cc-notif. Layer 2 backend endpoints all admin-gated via _require_admin (uses is_admin from core). All Layer 2 endpoints exclude _id and password_hash. Layer 1 returns top-level keys: date, roster_counts {teachers,coaches,staff,students,players}, attendance_by_kind (per kind: present/absent/late/leave), tasks {total, by_status, by_department, completion_pct}, alerts (list of {type,severity,message,count}), kpis {attendance_pct_today, task_completion_pct}, departments {school, sports, hostel{residents,morning_present,morning_absent,night_present,night_absent,out_on_pass,pending_pass}, canteen}. dashboard.tsx routes super_admin/admin->CommandCenter, coach->CoachHome, others->GenericDashboard. Test seed: today's date when tested was 2026-04-29; admin's command center shows 33% attendance, 8% task completion, alerts: '6 player(s) attendance not marked today' + '1 resident(s) past expected return'.",
+  "rca_of_issue": "No bugs encountered."
+}

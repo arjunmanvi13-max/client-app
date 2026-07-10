@@ -1,0 +1,58 @@
+{
+  "summary": "Frontend-only testing of Reports Module Phase 1 on Expo Web preview (desktop 1440x900). Login flows verified for Super Admin (OTP 123456), Teacher (password), Sports Admin (password). Reports page renders correctly for Super Admin & Sports Admin — all 3 tabs (Revenue Summary, Defaulters & Aging, Payment Modes) load with proper API calls to /api/reports/financial/{summary,defaulters,payment-modes}. Global filters (date range chips, institution, centre, sport, payment status) correctly refetch data with expected query params (institution=..., date_from=..., date_to=..., centre=..., etc.). Role gating works: Teacher has NO nav-reports item and /reports shows 'You do not have access'. Sports Admin correctly sees only inst-ALPHA chip (BOTH/PWS hidden) and initial fetch is auto-coerced to institution=ALPHA. Sample data: TOTAL COLLECTED ₹0, CURRENT MONTH ₹5,500, OUTSTANDING ₹1,41,750, Defaulters bucket 0-7 days=20 with 20 overdue invoice rows visible; empty states rendered gracefully for no-data sections. **CRITICAL BUG FOUND**: Export Excel button (testID reports-export) is completely broken — clicking it triggers ZERO network requests and no download. Three concurrent defects in /app/frontend/app/reports.tsx doExport(): (1) wrong env var name (EXPO_BACKEND_URL vs EXPO_PUBLIC_BACKEND_URL — Expo only exposes EXPO_PUBLIC_*), (2) wrong token storage key ('token' vs actual 'pws_alpha_token' from auth.tsx TOKEN_KEY), (3) dynamic import of expo-secure-store on web likely throws before fetch. Error is swallowed by Alert.alert which does not render on RN-Web, so user sees no feedback whatsoever.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Reports Export button",
+        "issue": "Clicking Export Excel does nothing — no network request, no download, no error visible to user. Root causes in /app/frontend/app/reports.tsx doExport() (lines 95-116): (a) line 98 uses process.env.EXPO_BACKEND_URL which is undefined on client (Expo only injects EXPO_PUBLIC_* vars; rest of codebase correctly uses EXPO_PUBLIC_BACKEND_URL — see src/auth.tsx:6, admin/bulk-upload.tsx:62); (b) lines 99 & 102 read token from key 'token', but auth.tsx stores it under TOKEN_KEY='pws_alpha_token' — so even when a fetch happens the request goes without Authorization and would get 401; (c) `(await import('expo-secure-store')).getItemAsync('token')` on web likely rejects with UnavailabilityError, throwing before the fetch call runs; (d) catch handler uses Alert.alert which is a no-op on React Native Web, so failures are silent. Verified by page.evaluate: process.env.EXPO_BACKEND_URL === undefined; localStorage.getItem('token') === null; direct relative fetch returns 401 due to missing token.",
+        "testID": "reports-export",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Reports Excel Export",
+        "issue": "Frontend cannot download .xlsx despite backend GET /api/reports/financial/export being available. See ui_bugs entry above.",
+        "affected_testIDs": ["reports-export"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Reports",
+        "issues": [
+          "Access-denied screen (canAccess=false) renders WITHOUT the Sidebar wrapper (reports.tsx lines 118-127) — inconsistent with all other screens that keep the sidebar visible. Teacher hitting /reports directly sees a bare SafeAreaView with just 'You do not have access to Reports.' — no nav to escape back to dashboard. Suggest wrapping in Sidebar+content layout like the main body."
+        ]
+      }
+    ],
+    "react_native_issues": [
+      {
+        "component": "reports.tsx doExport()",
+        "issue": "Uses Alert.alert('Export failed', ...) for error handling. Alert.alert with buttons is a no-op on React Native Web (documented limitation). Consider window.confirm/alert or in-page toast. Reference: /app/frontend/app/reports.tsx:111,114."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [
+    "FIX (HIGH): /app/frontend/app/reports.tsx doExport() — replace process.env.EXPO_BACKEND_URL with process.env.EXPO_PUBLIC_BACKEND_URL on line 98.",
+    "FIX (HIGH): /app/frontend/app/reports.tsx doExport() — read token using the same key/storage helper as auth.tsx (import the `storage` helper or copy TOKEN_KEY='pws_alpha_token'). Better: reuse src/auth.tsx's `api.defaults.baseURL` + Authorization header logic, e.g. call `api.get('/reports/financial/export', {params, responseType: 'blob'})` and download the resulting blob. This eliminates all three defects at once.",
+    "FIX (MED): Replace Alert.alert error path with window.alert/toast so users see failures on Web.",
+    "FIX (LOW): When canAccess=false, keep the Sidebar layout so denied users can navigate away.",
+    "Optional: Add an explicit page-level access-denied message with role-aware CTA (e.g., 'Contact your Super Admin')."
+  ],
+  "critical_code_review_comments": [
+    "reports.tsx duplicates env-var handling that already lives in src/auth.tsx — reuse `api` axios client for the export call to inherit baseURL + auth interceptor + timeout.",
+    "reports.tsx is 478 lines and self-contained; acceptable but could split SummaryView/DefaultersView/PaymentModesView into ./reports/*.tsx if it grows.",
+    "Filter state changes trigger a refetch via useEffect with a large dep array (line 70). Works, but rapid chip clicks cause a burst of requests — consider debouncing 300ms or a manual 'Apply filters' button for slower networks.",
+    "Sidebar.tsx correctly gates 'reports' item by roles: ['super_admin','admin'] — verified in UI (Teacher has no link, Sports Admin has it)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "6/7 flows pass — only Export Excel is broken"},
+  "seed_data_creation": "None. Used existing seeded users (Super Admin 1 mobile 9631252241 OTP, Teacher Priya Kumari 9000000004, Sports Admin Rohan Sharma 9000000001).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reports screen testIDs: reports-screen, reports-export, tab-{summary|defaulters|payment-modes}, kpi-{collected|current|prev|outstanding}, bucket-{07|815|1630|gt30}, mode-{Cash|Online|Card|UPI|...}, date-{today|yesterday|this_week|this_month|last_month|custom}, inst-{BOTH|ALPHA|PWS}, centre-{All|Balua|Harding Park}, sport-{All|Cricket|Football}, ps-{all|paid|pending|overdue}, date-from, date-to. Login testIDs: quick-super-admin-1, btn-send-super-otp, otp-input, btn-verify-otp, login-mobile, login-password, btn-switch-mode, btn-mobile-pwd, sidebar-logout, nav-reports, group-management. Sports Admin's institution chip row only renders inst-ALPHA (BOTH/PWS suppressed by isSportsAdmin flag). To fix export, easiest patch: use existing axios `api` client: `const r = await api.get('/reports/financial/export', { params: buildParams(), responseType: 'blob' }); const a = document.createElement('a'); a.href = URL.createObjectURL(r.data); a.download = ...; a.click();` — this bypasses both the env-var and token-key bugs.",
+  "rca_of_issue": "Export Excel silent failure RCA: (1) In Expo/Metro web builds, env vars are inlined into the client bundle only if prefixed EXPO_PUBLIC_ (documented Expo behavior). `process.env.EXPO_BACKEND_URL` therefore evaluates to `undefined` at runtime; template literal falls back to empty string via `|| ''`, so URL becomes relative '/api/reports/financial/export?...' (still routes correctly through ingress). (2) Token retrieval: `(await import('expo-secure-store')).getItemAsync` is called with key 'token' — but the app's canonical storage key is 'pws_alpha_token' defined in src/auth.tsx. Additionally expo-secure-store's getItemAsync is not implemented on web and typically throws UnavailabilityError. The unhandled rejection short-circuits the async doExport before reaching fetch(), so no network request is emitted (confirmed empirically: page.on('request') captured zero '/reports/financial/export' calls after clicking the button). (3) The catch block calls Alert.alert which on React Native Web quietly no-ops for multi-button alerts, so the user perceives the button as dead. Fix: reuse the shared `api` axios client (which reads baseURL from EXPO_PUBLIC_BACKEND_URL and injects Authorization via interceptor) with { responseType: 'blob' }; then perform the download from the blob."
+}

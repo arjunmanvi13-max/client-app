@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 3 - Coach workflow refactor (player-centric dashboard, attendance, granular coach permissions, extended player schema). Backend: 49/49 pytest passed (35 carry-over + 14 new in test_coach_workflow.py covering /api/coach/{dashboard,players,attendance}, extended player fields, coach_permissions gating, idempotent attendance). Frontend: verified Coach login -> CoachHome (player-centric tiles, slot/skill counts, quick actions), CoachAttendance (slot toggle, default-Present banner, save-attendance), Add player form (full extended fields with required skill/slot), Admin -> Manage -> Coaches -> edit coach (3 cperm-* checkboxes + assigned sport input). Found and fixed TWO Metro/JS errors that would have broken the new flows: (1) wrong relative import in CoachHome.tsx, (2) missing useFocusEffect import in app/manage/[kind]/index.tsx (regression introduced this iteration).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "core.py", "issue": "public_user() is defined twice in core.py (lines 59 and 133); the second overrides the first. Works but is a code smell — keep only the extended version."},
+      {"endpoint": "PATCH /api/users/{coachId} (self)", "issue": "Coach updating their own user record is fully blocked (403) because coaches don't have 'coach' in can_manage. Acceptable from a security standpoint but means coaches cannot edit their own name/phone via this endpoint. Consider an explicit /api/auth/profile self-update endpoint."},
+      {"endpoint": "PersonUpdate / UserUpdate", "issue": "Pydantic v1-style .dict() still used in routers/people.py and routers/users.py; should migrate to model_dump(exclude_none=True) for v2."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "src/CoachHome.tsx", "issue": "Import path was '../../src/auth' which resolves to /app/src/auth (does not exist). Correct path from /app/frontend/src/CoachHome.tsx is './auth'. FIXED by testing agent."},
+      {"component": "app/manage/[kind]/index.tsx", "issue": "Used useFocusEffect without importing it from 'expo-router' -> red screen 'ReferenceError: useFocusEffect is not defined' on /manage/<kind> route, breaking the entire manage list and therefore admin's coach-edit flow. FIXED by testing agent (added import)."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_coach_workflow.py",
+    "/app/backend/tests/test_manage_permissions.py",
+    "/app/backend/tests/test_backend_api.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/coach_workflow.xml"
+  ],
+  "action_items": [
+    "E1 to verify the two import fixes (CoachHome.tsx './auth' and manage/[kind]/index.tsx useFocusEffect import) — both already applied by testing agent; supervisor restarted expo to flush bundler cache.",
+    "Optional: dedupe public_user() in /app/backend/core.py (drop the older shorter version at lines 59-70 to avoid future drift).",
+    "Optional: add a self-service profile-update endpoint so coaches can edit their own name/phone without admin intervention."
+  ],
+  "critical_code_review_comments": [
+    "Two `public_user` function definitions in core.py — second silently shadows first. Keep one authoritative version.",
+    "Relative-import drift between sibling files (CoachHome.tsx './auth' vs CoachAttendance.tsx '../src/auth') is fragile; both files live in /app/frontend/src so canonical import is './auth'. Recommend tsconfig path alias '@/auth'.",
+    "manage/[kind]/index.tsx forgot to import useFocusEffect — happens because original list used useEffect. After every refactor adding focus reload, both files in app/manage need the import. Linter would have caught this.",
+    "Coach attendance endpoint stores 'session': payload.slot AND 'slot': payload.slot — duplicate field; 'session' is just for legacy summary. Pick one and migrate."
+  ],
+  "updated_files": [
+    "/app/frontend/src/CoachHome.tsx (import path '../../src/auth' -> './auth')",
+    "/app/frontend/app/manage/[kind]/index.tsx (added useFocusEffect to expo-router import)",
+    "/app/backend/tests/test_coach_workflow.py (NEW - 14 pytest cases for coach dashboard/players/attendance + extended player schema + coach permission gating)"
+  ],
+  "success_rate": {"backend": "100% (49/49)", "frontend": "100% on tested flows: coach login, CoachHome tiles, CoachAttendance banner+slot toggle, Add player form fields/chips, Admin coach edit (cperm + assigned_sport)"},
+  "seed_data_creation": "Pytest creates TEST_-prefixed players (TEST_Coach_Player_1, TEST_PermCheck_Player, TEST_ATT_PRESENT, TEST_ATT_ABSENT) and deletes them in teardown_class. UI test left attendance records on date 2030-01-15 for Morning slot under coach@pws-alpha.com (harmless future date).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend at https://unified-track.preview.emergentagent.com/api. Run: EXPO_PUBLIC_BACKEND_URL=https://unified-track.preview.emergentagent.com pytest /app/backend/tests/ -v. New testIDs verified working: coach-profile, qa-attendance, qa-addplayer, qa-roster, slot-Morning, slot-Evening, save-attendance, player-{id}, skill-Beginner/Intermediate/Advanced, cperm-view_players/add_players/edit_players, field-father/age/mobile/locality/city/sport-coach/resident, coach-{id}, save-btn, delete-btn, edit-back, menu-manage, manage-coach/teacher/player/student. Coach default seeded with coach_permissions=['view_players','add_players','edit_players'] and assigned_sport='Cricket'. /api/coach/attendance is upsert by (date, kind:player, slot, person_id) so it's idempotent. To switch user in Playwright, navigate to /profile and click [data-testid=logout-btn] before re-login.",
+  "rca_of_issue": "Two render-blocking JS errors discovered:\n1) /app/frontend/src/CoachHome.tsx imported '../../src/auth' which from src/ goes up 2 levels to /app/ then into a non-existent /app/src/auth. Sibling CoachAttendance.tsx used the working '../src/auth' (up 1 to /app/frontend then into src/auth). Canonical is './auth' since both files live in /app/frontend/src. Fixed.\n2) /app/frontend/app/manage/[kind]/index.tsx introduced useFocusEffect(useCallback(...)) but only imported useLocalSearchParams, useRouter from 'expo-router'. Caused 'ReferenceError: useFocusEffect is not defined' red screen on every visit to /manage/<kind>, blocking admin's coach-edit flow entirely. Fixed by adding useFocusEffect to the same import line. Restarted expo to flush Metro cache. Verified after restart: /manage/coach lists 2 coaches, tapping a row opens Edit Coach with cperm-view_players/add_players/edit_players checkboxes pre-selected and field-sport-coach (Assigned Sport) input populated with 'Cricket'."
+}

@@ -1,0 +1,42 @@
+{
+  "summary": "Verified multi-month fee collection & dashboard aggregation feature end-to-end. Backend: 12/12 pytest cases passed (new /app/backend/tests/test_multi_month_fees.py). Karan Raj (admitted 2025-12-29, Balua/Cricket/Hostel Only) correctly shows Monthly dues for 2025-12 through 2026-07 (8 periods) + Registration after GET /api/fees/dashboard triggers ensure_all_players_monthly_fees(); summary.previous_pending_due (81,000) > 0 and total_outstanding = current + previous. POST /api/fees/collect-multi with Monthly 2026-01 + 2026-02 fees returned one batch_id, total=24,000, both fee rows share same batch_id/paid_at. Receipt PDF endpoint returns 200 application/pdf. Validation errors verified: mixed-player fee_ids → 400, already-paid id → 400, Online without reference_id → 400. Dashboard aggregation: after collection, Balua collected_today +24,000 and due_past -24,000. /api/reports/financial/summary returns 200. Frontend (mobile web, 390x844): login → /fees/collection → search 'Karan' → tap Karan Raj → dues panel renders 'PREVIOUS DUES · 8' (testID group-previous-dues) and 'CURRENT MONTH · 1' (testID group-current-month) headers, italic 'full amounts only' note, 9 fee rows with checkboxes. Selected 2 fees → SELECTED TOTAL ₹9,000 updates live → Cash → submit-collection → receipt modal appears titled 'Payment Successful' with Batch id, fees listed (Registration Dec 2025 ₹3,000 + Monthly Dec 2025 ₹6,000), Total paid ₹9,000, Payment mode Cash, Transaction date 2026-07-08, Collected by Super Admin 1, and Download PDF / Share Link / Done buttons. Done closes modal and dues panel refreshes with Payment history section. CLEANUP DONE: all fees collected during this test (both pytest batch and UI batch) reverted to status='due' with payment fields cleared — Karan now shows due=9, paid=0. Mohit Raj was NOT touched by this iteration. Note: Mohit's Registration is currently 'paid' from a prior iteration's drift (predates iteration 10); his Monthly 2026-07 remains 'due' as intended.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web deprecation", "issue": "Console warns 'shadow*' style props are deprecated (use boxShadow) and props.pointerEvents is deprecated (use style.pointerEvents). Cosmetic only, does not break UI. Reference: repeated across multiple screens on load."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_multi_month_fees.py",
+    "/app/test_reports/pytest/multi_month_fees.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: The pre-existing /app/backend/tests/test_fees_bug_fix.py fails against the current DB (5/11) because Mohit's Registration is 'paid' from prior iteration drift — its module autouse fixture only resets Mohit's Monthly, not Registration. Consider extending that fixture to reset ALL of Mohit's fees to 'due' so the regression suite is self-healing. (Not caused by this iteration's changes.)",
+    "OPTIONAL: Clean up React Native Web deprecation warnings ('shadow*' style props, props.pointerEvents) in a follow-up pass — no functional impact."
+  ],
+  "critical_code_review_comments": [
+    "routers/fees.py L221-236: ensure_all_players_monthly_fees uses a module-level 15-min throttle via _bulk_ensure_state — correct per spec. Bulk call is wired into /api/fees/dashboard L278, alpha_dashboard L23-24, and reports.py L108-109. Verified all three trigger materialization on first call after backend restart.",
+    "routers/fees.py L167-176: _iter_months correctly walks 'YYYY-MM' inclusive across year boundaries (verified via Karan 2025-12→2026-07 = 8 periods).",
+    "routers/fees.py L390-463: collect-multi enforces same-player, all-unpaid, Online-requires-ref, and applies single batch_id + paid_at atomically via update_many — all validations verified.",
+    "frontend collection.tsx L306-311: Group headers correctly derived by comparing period_month vs dues.current_month; testIDs render as group-previous-dues / group-current-month; count reflected in label (e.g., 'PREVIOUS DUES · 8'). Correct.",
+    "frontend collection.tsx L297: 'full amounts only, partial payments are not allowed.' italic note renders when dues.unpaid.length > 0. Correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_multi_month_fees.py (new — 12 tests, all passing)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 new multi-month suite)",
+    "frontend": "100% spot-check (login → collection → group headers → multi-select → receipt modal → Done → history refresh)"
+  },
+  "seed_data_creation": "None persisted. All fees paid during pytest + UI walkthrough were reverted to status='due' with payment fields cleared. Karan Raj final state: 9 due, 0 paid. Mohit Raj not touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server date is 2026-07-08. New regression suite /app/backend/tests/test_multi_month_fees.py is fully idempotent (autouse module fixture resets Karan's paid fees to 'due' both before AND after the run) and safe to re-run. Bulk-ensure has a 15-min in-process throttle — a backend restart resets it. Karan is the 'sacrificial' test player (admitted 2025-12) with 8 monthly materialized periods. Mohit is user's real player, do not touch. Pre-existing /app/backend/tests/test_fees_bug_fix.py has state-drift issues on Mohit that predate this iteration (his Registration is currently paid); not caused by anything in iteration_10.",
+  "rca_of_issue": "N/A — feature verification, not bug fix. All acceptance criteria satisfied."
+}

@@ -1,0 +1,41 @@
+{
+  "summary": "Verified STAFF <-> Permissions (users) auto-sync end-to-end. Backend: new /app/backend/tests/test_staff_permissions_sync.py 12/12 pass. Regression: test_multi_month_fees.py + test_advance_fees.py 28/28 still green. Sonu Kumar staff-linked user (sonu.kumar@prarambhika.com, role=staff, org=ALPHA, person_id set, must_change_password=true) is present in GET /api/users; login with Staff@123 → 200 with must_change_password:true. Total staff-linked users in list = 7 (6 seeded staff + Sonu). Sync-on-create verified: POST /api/people {name:'Perm Sync Test', kind:'staff', org:'PWS', group:'Cleaner'} → 200 + user auto-created (email perm.sync.test@prarambhika.com, role=staff, department='Cleaner', org=PWS, person_id link). PATCH person name+group → linked user name & department updated. POST /api/people/{id}/deactivate → linked user status='deactivated' + login for that user returns 403. Re-activate → status active + login works again. Permission editor PATCH /api/users/{sonu_id}/permissions with valid key toggle → 200 and persists on subsequent GET /api/users (verified round-trip; reverted to original). Idempotency: `sudo supervisorctl restart backend` + 8s wait → GET /api/users still contains same staff accounts, no duplicates per person_id, none purged. Frontend (mobile web 390x844): login super admin → /admin/permissions loads → search bar (testID perm-search) visible at top with placeholder 'Search name, email, ID, designation, organization…' → typing 'sonu' filters to 1 user (perm-result-count='1 user'), row shows Sonu Kumar · sonu.kumar@prarambhika.com · staff · ALPHA; tapping row navigates to /admin/permissions/{id} edit page which loads (Quick templates + Data Access + Attendance + Management sections render, Save permissions button present). Clear button (perm-search-clear) resets input. Combined ALPHA org chip + 'sonu' search → still finds Sonu (count=1). Status chip Inactive → 0 users (expected, no deactivated users after cleanup). Role chip staff → 7 users incl. Sonu. Search 'prarambhika' fragment → 20 users. Result count updates live with every filter change. Deprecated packages detected: none new (pre-existing RN-web 'shadow*' and 'pointerEvents' style-prop deprecation warnings only, cosmetic). CLEANUP DONE: 'Perm Sync Test' person + its linked user deleted; Sonu's permission toggle reverted to original snapshot.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN Web deprecation (pre-existing)", "issue": "Console warnings: 'shadow*' style props deprecated (use boxShadow); props.pointerEvents deprecated (use style.pointerEvents). Carried over from iteration_10/11 — cosmetic, non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_staff_permissions_sync.py",
+    "/app/test_reports/pytest/staff_permissions_sync.xml",
+    "/app/test_reports/pytest/multi_month_fees.xml",
+    "/app/test_reports/pytest/advance_fees.xml"
+  ],
+  "action_items": [
+    "None blocking. All acceptance criteria for staff-permissions sync + new permissions page UX (search, org/status/role chips, result count, Inactive pill) are met."
+  ],
+  "critical_code_review_comments": [
+    "routers/people.py L56-106 ensure_staff_user_account: correctly links via person_id; idempotent update path syncs name/organization/department (from person.group)/status without regenerating password/email; new-user path generates unique email via numeric suffix loop; hashes Staff@123 with must_change_password=true; permissions=default_permissions('staff'); status derived from person.status.",
+    "routers/people.py hooks: create_person (L157-162), update_person (L199-204), activate_person (L216-217), deactivate_person (L229-230) all call ensure_staff_user_account — full lifecycle coverage.",
+    "seed.py L48-54 backfill runs on every startup (idempotent). L75 comment confirms 'staff users are no longer purged' and no purge code exists — verified by restart test.",
+    "core.py public_user (L288-314) exposes person_id + status + mobile — matches what frontend permissions/index.tsx expects for the Inactive pill and filters.",
+    "frontend permissions/index.tsx L76-91 filter+search predicate correctly combines org/role/status/text; L86 haystack includes name/email/id/department/role/org/mobile as spec'd; L157 perm-result-count reflects filtered.length.",
+    "frontend permissions/index.tsx L141-145 status chips (status-all/status-active/status-deactivated) and L148-155 role chips (role-all + role-{role}) rendered from dynamic `roles` memo; L176-178 Inactive pill only shown when (u.status || 'active') === 'deactivated'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_staff_permissions_sync.py (new — 12 tests, all passing)"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 new staff-permissions-sync suite + 28/28 pre-existing multi-month + advance fees regression)",
+    "frontend": "100% spot-check (search, clear, org/status/role chips, result count, Sonu row click → edit page loads, combined filters)"
+  },
+  "seed_data_creation": "None persisted. Throwaway 'Perm Sync Test' person + auto-created linked user (perm.sync.test@prarambhika.com) deleted at end of test. Sonu Kumar's permission toggle reverted to captured original snapshot. Final staff-linked user count in DB: 7 (Sonu Kumar + 6 seeded staff).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Server date 2026-07-08. Staff↔User sync is live: creating/updating/activating/deactivating a staff person will always mutate the linked user. Do NOT purge db.users role=staff in future changes to seed.py — backfill in seed.py L48-54 is the source of truth. Auto-email pattern: slug(name) + '@prarambhika.com', with numeric suffix on collision. Default password Staff@123 with must_change_password=true. Frontend permissions page testIDs: perm-search, perm-search-clear, perm-result-count, filter-{all|PWS|ALPHA|BOTH}, status-{all|active|deactivated}, role-{all|<role>}, perm-user-{id}. Existing regression suites test_multi_month_fees.py + test_advance_fees.py stay green.",
+  "rca_of_issue": "N/A — feature + bug-fix verification. Root cause of original bug (staff not appearing in Permissions) confirmed fixed at two layers: (a) ensure_staff_user_account created/synced from every staff person mutation in routers/people.py; (b) seed.py backfill + removal of any staff-user purge logic. Idempotency confirmed by explicit restart-and-recount test."
+}
