@@ -110,7 +110,7 @@ export function AlphaERPDashboard() {
         <View style={s.header}>
           <View>
             <Text style={s.brandLine}>ALPHA SPORTS ACADEMY</Text>
-            <Text style={s.h1}>Operations Dashboard</Text>
+            <Text style={s.h1}>OPERATIONS DASHBOARD</Text>
             <Text style={s.sub}>{user?.name} · {(user?.role || "").replace("_", " ")}</Text>
           </View>
           <View style={s.headerRight}>
