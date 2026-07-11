@@ -11,16 +11,6 @@ type Step = "login" | "force_change";
 
 const DOMAIN = "@prarambhika.com";
 
-const QUICK_ACCOUNTS: { role: string; email: string; pwd: string; color: string }[] = [
-  { role: "Super Admin", email: "superadmin@prarambhika.com", pwd: "Super@123", color: "#1E3A8A" },
-  { role: "Sports Admin", email: "admin@prarambhika.com", pwd: "Admin@123", color: "#1D4ED8" },
-  { role: "Principal", email: "principal@prarambhika.com", pwd: "Principal@123", color: "#2563EB" },
-  { role: "Teacher", email: "teacher@prarambhika.com", pwd: "Teacher@123", color: "#0EA5E9" },
-  { role: "Head Coach", email: "coach@prarambhika.com", pwd: "Coach@123", color: "#0284C7" },
-  { role: "Warden", email: "warden@prarambhika.com", pwd: "Warden@123", color: "#0891B2" },
-  { role: "Parent PWS", email: "parent_pws@prarambhika.com", pwd: "Parent@123", color: "#0E7490" },
-];
-
 export default function Login() {
   const { login, changePassword } = useAuth();
   const router = useRouter();
@@ -154,25 +144,6 @@ export default function Login() {
   const Form = (
     <View style={isWide ? s.cardWide : s.card}>
       {step === "login" ? renderLoginStep() : renderForceChangeStep()}
-
-      {step === "login" && (
-        <>
-          <Text style={s.overline}>Quick demo access</Text>
-          <View style={s.quickRow}>
-            {QUICK_ACCOUNTS.map((q) => (
-              <TouchableOpacity
-                key={q.role}
-                testID={`quick-${q.role.toLowerCase().replace(/\s+/g, "-")}`}
-                style={[s.chip, { borderColor: q.color }]}
-                onPress={() => { setEmail(q.email); setPassword(q.pwd); setErr(null); }}
-              >
-                <View style={[s.chipDot, { backgroundColor: q.color }]} />
-                <Text style={[s.chipText, { color: q.color }]}>{q.role}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      )}
     </View>
   );
   const Hero = (
@@ -278,16 +249,6 @@ const s = StyleSheet.create({
   legacyTxt: { fontSize: 12, color: colors.muted, fontWeight: "600" },
   backRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 12 },
   backTxt: { color: colors.muted, fontSize: 13, fontWeight: "600" },
-  demoBanner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, backgroundColor: "#FEF3C7", borderColor: "#FCD34D", borderWidth: 1, borderRadius: 10, marginBottom: 14 },
-  demoBannerTxt: { color: "#92400E", fontSize: 12, fontWeight: "700" },
-  demoCode: { fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace", fontSize: 14, color: "#7C2D12", letterSpacing: 2 },
   metaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8, alignItems: "center" },
   metaTxt: { color: colors.muted, fontSize: 12 },
-  overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5, color: colors.hint, marginTop: 28, marginBottom: 12, textTransform: "uppercase" },
-  quickGroup: { marginTop: 12 },
-  quickGroupLabel: { fontSize: 11, fontWeight: "800", color: colors.hint, letterSpacing: 1.4, marginBottom: 8 },
-  quickRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  chipDot: { width: 8, height: 8, borderRadius: 4 },
-  chipText: { fontSize: 13, fontWeight: "700" },
 });
