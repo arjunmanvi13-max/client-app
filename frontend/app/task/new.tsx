@@ -4,17 +4,22 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, PRIORITY_COLORS } from "../../src/auth";
+import { FormLabel, InlineFieldError, getApiError } from "../../src/ScreenStates";
 
 const PRIORITIES = ["low", "medium", "high"] as const;
+const ENTITIES = ["pws", "alpha", "both"] as const;
 
 export default function NewTask() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high">("medium");
+  const [entityId, setEntityId] = useState<"pws" | "alpha" | "both">("pws");
   const [users, setUsers] = useState<any[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [titleErr, setTitleErr] = useState("");
+  const [formErr, setFormErr] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -24,14 +29,23 @@ export default function NewTask() {
   }, []);
 
   const submit = async () => {
-    if (!title.trim()) { Alert.alert("Title required"); return; }
+    setFormErr("");
+    if (!title.trim()) {
+      setTitleErr("Title is required.");
+      return;
+    }
+    setTitleErr("");
     setSaving(true);
     try {
       const deadline = new Date(); deadline.setDate(deadline.getDate() + 3);
-      await api.post("/tasks", { title, description, priority, assignee_ids: selected, deadline: deadline.toISOString() });
+      await api.post("/tasks", {
+        title, description, priority, entity_id: entityId,
+        assignee_ids: selected, assignee_id: selected[0] || undefined,
+        due_date: deadline.toISOString(),
+      });
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "Failed");
+      setFormErr(getApiError(e, "Failed to create task."));
     } finally { setSaving(false); }
   };
 
@@ -46,11 +60,28 @@ export default function NewTask() {
         <Text style={s.headerTitle}>New task</Text>
       </View>
       <ScrollView contentContainerStyle={s.scroll}>
-        <Text style={s.label}>Title</Text>
-        <TextInput testID="task-title" value={title} onChangeText={setTitle} placeholder="e.g. Submit weekly report" placeholderTextColor="#94A3B8" style={s.input} />
+        <FormLabel required>Title</FormLabel>
+        <TextInput
+          testID="task-title"
+          value={title}
+          onChangeText={(t) => { setTitle(t); if (titleErr) setTitleErr(""); }}
+          placeholder="e.g. Submit weekly report"
+          placeholderTextColor="#94A3B8"
+          style={[s.input, titleErr && s.inputErr]}
+        />
+        <InlineFieldError message={titleErr} />
 
-        <Text style={s.label}>Description</Text>
+        <FormLabel>Description</FormLabel>
         <TextInput testID="task-desc" value={description} onChangeText={setDescription} placeholder="Details, context, links…" placeholderTextColor="#94A3B8" multiline numberOfLines={4} style={[s.input, { height: 100, textAlignVertical: "top" }]} />
+
+        <Text style={s.label}>Entity</Text>
+        <View style={s.priRow}>
+          {ENTITIES.map((e) => (
+            <TouchableOpacity key={e} testID={`entity-${e}`} style={[s.priChip, entityId === e && { backgroundColor: "#0F172A", borderColor: "#0F172A" }]} onPress={() => setEntityId(e)}>
+              <Text style={[s.priChipText, entityId === e && { color: "#fff" }]}>{e.toUpperCase()}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <Text style={s.label}>Priority</Text>
         <View style={s.priRow}>
@@ -76,6 +107,7 @@ export default function NewTask() {
       </ScrollView>
 
       <View style={s.bottomBar}>
+        {formErr ? <Text style={s.formErr}>{formErr}</Text> : null}
         <TouchableOpacity testID="submit-task" onPress={submit} disabled={saving} style={[s.saveBtn, saving && { opacity: 0.6 }]}>
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>Create task</Text>}
         </TouchableOpacity>
@@ -92,6 +124,8 @@ const s = StyleSheet.create({
   scroll: { padding: 20, paddingBottom: 120 },
   label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 8, marginTop: 16 },
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#0F172A" },
+  inputErr: { borderColor: "#EF4444", backgroundColor: "#FEF2F2" },
+  formErr: { fontSize: 13, color: "#B91C1C", fontWeight: "600", marginBottom: 8, textAlign: "center" },
   priRow: { flexDirection: "row", gap: 8 },
   priChip: { flex: 1, paddingVertical: 12, alignItems: "center", borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#fff" },
   priChipText: { fontWeight: "800", fontSize: 12, color: "#475569" },

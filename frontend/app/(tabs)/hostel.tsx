@@ -1,26 +1,37 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { api, useAuth } from "../../src/auth";
+import { LoadingState, EmptyState, ErrorState, FormLabel, InlineFieldError, getApiError, confirmAction } from "../../src/ScreenStates";
+import { useBreakpoint } from "../../src/useBreakpoint";
 
 export default function Hostel() {
   const { user } = useAuth();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [tab, setTab] = useState<"overview" | "passes" | "rollcall">("overview");
   const [stats, setStats] = useState<any>(null);
   const [passes, setPasses] = useState<any[]>([]);
   const [residents, setResidents] = useState<any[]>([]);
   const [rollMarks, setRollMarks] = useState<Record<string, boolean>>({});
-  const [session, setSession] = useState<"morning" | "night">("morning");
-  const [loading, setLoading] = useState(false);
+  const [session, setSession] = useState<"morning" | "evening">("morning");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [rollErr, setRollErr] = useState("");
+  const [passErr, setPassErr] = useState("");
+  const [passFieldErr, setPassFieldErr] = useState<{ resident?: string; reason?: string }>({});
+  const [rollSaved, setRollSaved] = useState("");
 
   const [modal, setModal] = useState(false);
   const [reason, setReason] = useState("");
   const [destination, setDestination] = useState("");
   const [residentId, setResidentId] = useState<string | null>(null);
 
+  const scrollPad = { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" as const : undefined, width: contentMaxWidth ? "100%" as const : undefined };
+
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const [s, p, r] = await Promise.all([
         api.get("/hostel/dashboard"),
@@ -30,37 +41,53 @@ export default function Hostel() {
       setStats(s.data);
       setPasses(p.data);
       setResidents(r.data);
+    } catch (e: any) {
+      setError(getApiError(e, "Could not load hostel data."));
     } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const decide = async (id: string, decision: "approved" | "rejected") => {
-    try {
-      await api.post(`/hostel/gate-pass/${id}/decision`, { decision });
-      await load();
-    } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
+  const decide = (id: string, decision: "approved" | "rejected") => {
+    const label = decision === "approved" ? "Approve" : "Reject";
+    confirmAction(
+      `${label} gate pass?`,
+      `This will ${decision === "approved" ? "approve" : "reject"} the resident's gate pass request.`,
+      async () => {
+        try {
+          await api.post(`/hostel/gate-pass/${id}/decision`, { decision });
+          await load();
+        } catch (e: any) { Alert.alert("Error", getApiError(e, "Could not update gate pass.")); }
+      },
+      { confirmLabel: label, destructive: decision === "rejected" },
+    );
   };
 
   const submitRollCall = async () => {
     const entries = Object.entries(rollMarks).map(([resident_id, present]) => ({ resident_id, present }));
-    if (!entries.length) { Alert.alert("Mark at least one resident"); return; }
+    if (!entries.length) { setRollErr("Mark at least one resident as present or absent."); return; }
+    setRollErr("");
     try {
       const today = new Date().toISOString().slice(0, 10);
       await api.post("/hostel/roll-call", { date: today, session, entries });
-      Alert.alert("Saved", `Roll call saved (${entries.length})`);
+      setRollSaved(`Roll call saved for ${entries.length} resident(s).`);
       setRollMarks({});
-    } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
+    } catch (e: any) { setRollErr(getApiError(e, "Could not save roll call.")); }
   };
 
   const createPass = async () => {
-    if (!residentId || !reason) { Alert.alert("Fill resident and reason"); return; }
+    const errs: { resident?: string; reason?: string } = {};
+    if (!residentId) errs.resident = "Select a resident.";
+    if (!reason.trim()) errs.reason = "Enter a reason for the gate pass.";
+    setPassFieldErr(errs);
+    if (Object.keys(errs).length) return;
+    setPassErr("");
     try {
       const out = new Date();
       const ret = new Date(out.getTime() + 4 * 60 * 60 * 1000);
-      await api.post("/hostel/gate-pass", { resident_id: residentId, reason, out_time: out.toISOString(), expected_return: ret.toISOString(), destination });
-      setModal(false); setReason(""); setDestination(""); setResidentId(null);
+      await api.post("/hostel/gate-pass", { resident_id: residentId, reason: reason.trim(), out_time: out.toISOString(), expected_return: ret.toISOString(), destination: destination.trim() || undefined });
+      setModal(false); setReason(""); setDestination(""); setResidentId(null); setPassFieldErr({});
       await load();
-    } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
+    } catch (e: any) { setPassErr(getApiError(e, "Could not create gate pass.")); }
   };
 
   return (
@@ -78,51 +105,51 @@ export default function Hostel() {
         ))}
       </View>
 
-      {loading && <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} />}
-
-      {!loading && tab === "overview" && stats && (
-        <ScrollView contentContainerStyle={s.scroll}>
+      {loading ? (
+        <LoadingState message="Loading hostel…" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : tab === "overview" && stats ? (
+        <ScrollView contentContainerStyle={[s.scroll, scrollPad]}>
           <View style={s.statsRow}>
             <Stat label="Residents" value={stats.residents_count} icon="users" tint="#1E40AF" />
             <Stat label="Pending" value={stats.pending_passes} icon="clock" tint="#F59E0B" />
           </View>
           <View style={s.statsRow}>
             <Stat label="Morning P" value={stats.morning_present} icon="sun" tint="#10B981" />
-            <Stat label="Night P" value={stats.night_present} icon="moon" tint="#7C3AED" />
+            <Stat label="Evening P" value={stats.night_present} icon="moon" tint="#7C3AED" />
           </View>
 
           <Text style={s.section}>Pending gate passes</Text>
           {passes.filter((p) => p.status === "pending").length === 0 ? (
-            <Text style={s.empty}>No pending requests.</Text>
+            <EmptyState icon="check-circle" title="No pending requests" message="All gate pass requests are processed." />
           ) : passes.filter((p) => p.status === "pending").map((p) => (
             <PassCard key={p.id} p={p} onDecide={decide} residents={residents} />
           ))}
         </ScrollView>
-      )}
-
-      {!loading && tab === "passes" && (
-        <ScrollView contentContainerStyle={s.scroll}>
+      ) : tab === "passes" ? (
+        <ScrollView contentContainerStyle={[s.scroll, scrollPad]}>
           <TouchableOpacity testID="new-pass" style={s.newPass} onPress={() => setModal(true)}>
             <Feather name="plus-circle" size={18} color="#fff" />
             <Text style={s.newPassText}>New gate pass request</Text>
           </TouchableOpacity>
-          {passes.length === 0 && <Text style={s.empty}>No gate passes yet.</Text>}
+          {passes.length === 0 && <EmptyState icon="log-out" title="No gate passes yet" message="Create a new gate pass request for a resident." />}
           {passes.map((p) => <PassCard key={p.id} p={p} onDecide={decide} residents={residents} />)}
         </ScrollView>
-      )}
-
-      {!loading && tab === "rollcall" && (
+      ) : tab === "rollcall" ? (
         <View style={{ flex: 1 }}>
           <View style={s.sessionRow}>
-            {(["morning", "night"] as const).map((sx) => (
+            {(["morning", "evening"] as const).map((sx) => (
               <TouchableOpacity key={sx} testID={`session-${sx}`} style={[s.sessChip, session === sx && s.sessActive]} onPress={() => setSession(sx)}>
                 <Feather name={sx === "morning" ? "sun" : "moon"} size={14} color={session === sx ? "#fff" : "#475569"} />
-                <Text style={[s.sessText, session === sx && { color: "#fff" }]}>{sx === "morning" ? "Morning" : "Night"}</Text>
+                <Text style={[s.sessText, session === sx && { color: "#fff" }]}>{sx === "morning" ? "Morning" : "Evening roll call"}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          <ScrollView contentContainerStyle={s.scroll}>
-            {residents.map((r) => (
+          <ScrollView contentContainerStyle={[s.scroll, scrollPad]}>
+            {residents.length === 0 ? (
+              <EmptyState icon="users" title="No residents" message="Residents will appear here once added to the hostel." />
+            ) : residents.map((r) => (
               <View key={r.id} style={s.rcRow}>
                 <Text style={s.rcName}>{r.name}</Text>
                 <Text style={s.rcMeta}>{r.group}</Text>
@@ -138,28 +165,33 @@ export default function Hostel() {
             ))}
             <View style={{ height: 80 }} />
           </ScrollView>
-          <View style={s.bottomBar}>
+          <View style={[s.bottomBar, { paddingHorizontal: horizontalPadding }]}>
+            {rollSaved ? <Text style={s.successMsg}>{rollSaved}</Text> : null}
+            {rollErr ? <Text style={s.formErr}>{rollErr}</Text> : null}
             <TouchableOpacity testID="save-rollcall" style={s.saveBtn} onPress={submitRollCall}>
               <Text style={s.saveTxt}>Save roll call ({Object.keys(rollMarks).length})</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      ) : null}
 
       <Modal transparent visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
         <View style={s.modalBg}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>New gate pass</Text>
-            <Text style={s.label}>Resident</Text>
+            {passErr ? <Text style={s.formErr}>{passErr}</Text> : null}
+            <FormLabel required>Resident</FormLabel>
             <ScrollView style={{ maxHeight: 140 }}>
               {residents.map((r) => (
-                <TouchableOpacity key={r.id} testID={`res-${r.id}`} style={[s.resOpt, residentId === r.id && { backgroundColor: "#DBEAFE", borderColor: "#1E40AF" }]} onPress={() => setResidentId(r.id)}>
+                <TouchableOpacity key={r.id} testID={`res-${r.id}`} style={[s.resOpt, residentId === r.id && { backgroundColor: "#DBEAFE", borderColor: "#1E40AF" }, passFieldErr.resident && !residentId && s.inputErr]} onPress={() => { setResidentId(r.id); setPassFieldErr((p) => ({ ...p, resident: undefined })); }}>
                   <Text style={[s.resText, residentId === r.id && { color: "#1E40AF", fontWeight: "700" }]}>{r.name} · {r.group}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <Text style={s.label}>Reason</Text>
-            <TextInput testID="pass-reason" value={reason} onChangeText={setReason} placeholder="Doctor visit" placeholderTextColor="#94A3B8" style={s.input} />
+            <InlineFieldError message={passFieldErr.resident} />
+            <FormLabel required>Reason</FormLabel>
+            <TextInput testID="pass-reason" value={reason} onChangeText={(t) => { setReason(t); setPassFieldErr((p) => ({ ...p, reason: undefined })); }} placeholder="Doctor visit" placeholderTextColor="#94A3B8" style={[s.input, passFieldErr.reason && s.inputErr]} />
+            <InlineFieldError message={passFieldErr.reason} />
             <Text style={s.label}>Destination</Text>
             <TextInput testID="pass-dest" value={destination} onChangeText={setDestination} placeholder="City hospital" placeholderTextColor="#94A3B8" style={s.input} />
             <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
@@ -236,6 +268,9 @@ const s = StyleSheet.create({
   statLabel: { fontSize: 11, color: "#64748B", marginTop: 2 },
   section: { fontSize: 15, fontWeight: "700", color: "#0F172A", marginTop: 24, marginBottom: 12 },
   empty: { color: "#64748B", textAlign: "center", padding: 16 },
+  formErr: { fontSize: 13, color: "#B91C1C", fontWeight: "600", marginBottom: 8, textAlign: "center" },
+  successMsg: { fontSize: 13, color: "#15803D", fontWeight: "600", marginBottom: 8, textAlign: "center" },
+  inputErr: { borderColor: "#EF4444", backgroundColor: "#FEF2F2" },
   passCard: { backgroundColor: "#fff", padding: 14, borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 10 },
   passName: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
   passReason: { fontSize: 13, color: "#475569", marginTop: 2 },

@@ -1,9 +1,11 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Image } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
+import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
+import { useBreakpoint } from "./useBreakpoint";
 
 const SEVERITY: Record<string, { tint: string; bg: string; icon: any }> = {
   high: { tint: "#EF4444", bg: "#FEE2E2", icon: "alert-triangle" },
@@ -14,29 +16,40 @@ const SEVERITY: Record<string, { tint: string; bg: string; icon: any }> = {
 export default function CommandCenter() {
   const { user } = useAuth();
   const router = useRouter();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    setError("");
     try {
       const { data } = await api.get("/command-center");
       setData(data);
-    } catch {} finally { setLoading(false); }
+    } catch (e: any) {
+      setError(getApiError(e, "Could not load command center."));
+      setData(null);
+    } finally { setLoading(false); setRefreshing(false); }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = () => { setRefreshing(true); load(); };
 
   if (!user) return null;
 
-  if (loading || !data) {
-    return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
-  }
-
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}>
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}
+      >
+        {loading && !refreshing ? (
+          <LoadingState message="Loading command center…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : data ? (
+        <>
         {/* Header */}
         <View style={s.header}>
           <Image source={require("../assets/alpha-sports-logo.png")} style={s.headerLogo} resizeMode="contain" />
@@ -132,7 +145,7 @@ export default function CommandCenter() {
           <DeptCard testID="dept-bulk" icon="upload-cloud" tint="#2563EB" title="Bulk Upload" subtitle="CSV / XLSX players + auto-fees" onPress={() => router.push("/admin/bulk-upload")} />
         )}
         {(user.permissions?.approve_deactivation || user.role === "super_admin" || user.role === "admin") && (
-          <DeptCard testID="dept-approvals" icon="check-circle" tint="#D97706" title="Deactivation Approvals" subtitle="Pending player deactivation requests" onPress={() => router.push("/admin/approvals")} />
+          <DeptCard testID="dept-approvals" icon="check-circle" tint="#D97706" title="Approval Workflow" subtitle="Deactivation, concessions, refunds" onPress={() => router.push("/admin/approvals")} />
         )}
         {user.role === "super_admin" && (
           <DeptCard testID="dept-permissions" icon="shield" tint="#0F766E" title="Permissions & Access Control" subtitle="Super Admin · manage user permissions" onPress={() => router.push("/admin/permissions")} />
@@ -156,6 +169,8 @@ export default function CommandCenter() {
             </View>
           </>
         )}
+        </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

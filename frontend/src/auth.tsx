@@ -143,9 +143,12 @@ export const PRIORITY_COLORS: Record<string, string> = {
 };
 
 export const STATUS_COLORS: Record<string, string> = {
+  open: "#64748B",
   assigned: "#64748B",
   in_progress: "#1E40AF",
+  blocked: "#EF4444",
   completed: "#10B981",
+  cancelled: "#94A3B8",
   delayed: "#EF4444",
   reviewed: "#7C3AED",
 };

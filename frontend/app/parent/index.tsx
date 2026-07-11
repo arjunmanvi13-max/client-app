@@ -1,9 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../../src/auth";
+import { entityLabelsFor, ENTITY_COLORS } from "../../src/parentPortal";
+import { LoadingState, ErrorState, EmptyState, getApiError, confirmAction } from "../../src/ScreenStates";
+import { useBreakpoint } from "../../src/useBreakpoint";
+import { fetchDashboardMvp } from "../../src/dashboardApi";
 
 type Ward = {
   id: string;
@@ -13,11 +17,18 @@ type Ward = {
   sport?: string;
   centre?: string;
   organization: string;
+  entities?: string[];
+  entity_labels?: { code: string; name: string; short?: string }[];
+  is_dual_participation?: boolean;
   today_status?: string | null;
   attendance_30d?: { total: number; present: number; absent: number; pct: number | null };
+  recent_attendance?: { date: string; status: string; kind?: string }[];
+  outstanding_invoices_total?: number;
+  outstanding_invoices_count?: number;
+  recent_report_cards?: { id: string; exam_term_name?: string; published_at?: string; section_label?: string }[];
 };
 
-type Alert = {
+type ParentAlert = {
   id: string;
   type: string;
   severity: "high" | "medium" | "low";
@@ -45,31 +56,36 @@ const STATUS_TINT: Record<string, string> = {
 export default function ParentHome() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [wards, setWards] = useState<Ward[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alerts, setAlerts] = useState<ParentAlert[]>([]);
   const [stored, setStored] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    setLoading(true);
+    setError("");
     try {
-      const [w, a] = await Promise.all([
-        api.get("/parent/wards"),
+      const [mvp, a] = await Promise.all([
+        fetchDashboardMvp(),
         api.get("/parent/alerts"),
       ]);
-      setWards(w.data);
+      const children = mvp?.children || [];
+      setWards(children);
       setAlerts(a.data.computed || []);
       setStored(a.data.stored || []);
     } catch (e: any) {
-      console.log("parent home load err", e?.response?.data);
+      setError(getApiError(e, "Could not load parent dashboard."));
+      setWards([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = () => { setRefreshing(true); load(); };
 
   if (!user) return null;
 
@@ -77,32 +93,37 @@ export default function ParentHome() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         <View style={s.header}>
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>PARENT PORTAL</Text>
             <Text style={s.h1}>Hi, {user.name.split(" ")[0]}</Text>
-            <Text style={s.sub}>Track your ward's attendance, fees and alerts</Text>
+            <Text style={s.sub}>Attendance, marks, fees, invoices and alerts for your children</Text>
           </View>
-          <TouchableOpacity testID="parent-logout" style={s.iconBtn} onPress={() => Alert.alert("Sign out?", "", [{text:"Cancel",style:"cancel"},{text:"Sign out",style:"destructive",onPress:async()=>{await logout();router.replace("/login");}}])}>
+          <TouchableOpacity testID="parent-notifications" style={s.iconBtn} onPress={() => router.push("/parent/notifications" as any)}>
+            <Feather name="bell" size={18} color="#64748B" />
+            {unreadCount > 0 && <View style={s.bellDot} />}
+          </TouchableOpacity>
+          <TouchableOpacity testID="parent-logout" style={s.iconBtn} onPress={() => confirmAction("Sign out?", "You will need to sign in again to access the parent portal.", async () => { await logout(); router.replace("/login"); }, { confirmLabel: "Sign out", destructive: true })}>
             <Feather name="log-out" size={18} color="#64748B" />
           </TouchableOpacity>
         </View>
 
-        {loading ? (
-          <ActivityIndicator color="#0891B2" style={{ marginTop: 60 }} />
+        {loading && !refreshing ? (
+          <LoadingState message="Loading wards…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
         ) : wards.length === 0 ? (
-          <View style={s.empty}>
-            <Feather name="users" size={40} color="#94A3B8" />
-            <Text style={s.emptyTxt}>No ward linked yet.</Text>
-            <Text style={s.emptySub}>Ask your admin to link your account to your child's record.</Text>
-          </View>
+          <EmptyState icon="users" title="No ward linked yet" message="Ask your admin to link your account to your child's record." />
         ) : (
           <>
             <Text style={s.section}>My Wards</Text>
             {wards.map((w) => {
-              const pct = w.attendance_30d?.pct;
               const todaySt = w.today_status;
+              const labels = entityLabelsFor(w);
               return (
                 <TouchableOpacity
                   key={w.id}
@@ -111,16 +132,29 @@ export default function ParentHome() {
                   onPress={() => router.push({ pathname: "/parent/ward/[id]" as any, params: { id: w.id } })}
                 >
                   <View style={s.wardRow}>
-                    <View style={[s.wardAvatar, { backgroundColor: w.organization === "ALPHA" ? "#FED7AA" : "#DBEAFE" }]}>
-                      <Text style={[s.wardAvatarTxt, { color: w.organization === "ALPHA" ? "#EA580C" : "#2563EB" }]}>
+                    <View style={[s.wardAvatar, { backgroundColor: w.is_dual_participation ? "#E0E7FF" : w.organization === "ALPHA" ? "#FED7AA" : "#DBEAFE" }]}>
+                      <Text style={[s.wardAvatarTxt, { color: w.is_dual_participation ? "#4338CA" : w.organization === "ALPHA" ? "#EA580C" : "#2563EB" }]}>
                         {w.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}
                       </Text>
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.wardName}>{w.name}</Text>
                       <Text style={s.wardMeta}>
-                        {w.kind === "player" ? `${w.sport || ""} · ${w.centre || ""}` : `${w.group || ""}`} · {w.organization}
+                        {w.kind === "player" ? `${w.sport || ""} · ${w.centre || ""}` : `${w.group || ""}`}
                       </Text>
+                      <View style={s.entityRow}>
+                        {labels.map((lb) => {
+                          const c = ENTITY_COLORS[lb.code] || { bg: "#F1F5F9", fg: "#475569" };
+                          return (
+                            <View key={lb.code} style={[s.entityPill, { backgroundColor: c.bg }]}>
+                              <Text style={[s.entityPillTxt, { color: c.fg }]}>{lb.short || lb.code}</Text>
+                            </View>
+                          );
+                        })}
+                        {w.is_dual_participation ? (
+                          <Text style={s.dualHint}>School + Sports</Text>
+                        ) : null}
+                      </View>
                     </View>
                     <Feather name="chevron-right" size={20} color="#94A3B8" />
                   </View>
@@ -133,19 +167,31 @@ export default function ParentHome() {
                     </View>
                     <View style={s.statDivider} />
                     <View style={s.statBlock}>
-                      <Text style={[s.statValue, { color: pct !== null && pct !== undefined ? (pct >= 80 ? "#10B981" : pct >= 60 ? "#F59E0B" : "#EF4444") : "#94A3B8" }]}>
-                        {pct !== null && pct !== undefined ? `${pct}%` : "—"}
+                      <Text style={[s.statValue, { color: (w.outstanding_invoices_total || 0) > 0 ? "#EF4444" : "#10B981" }]}>
+                        {(w.outstanding_invoices_total || 0) > 0 ? `₹${(w.outstanding_invoices_total || 0).toLocaleString("en-IN")}` : "Clear"}
                       </Text>
-                      <Text style={s.statLabel}>30-day</Text>
+                      <Text style={s.statLabel}>Invoices</Text>
                     </View>
                     <View style={s.statDivider} />
                     <View style={s.statBlock}>
-                      <Text style={[s.statValue, { color: (w.attendance_30d?.absent || 0) > 0 ? "#EF4444" : "#10B981" }]}>
-                        {w.attendance_30d?.absent ?? 0}
+                      <Text style={[s.statValue, { color: (w.recent_report_cards?.length || 0) > 0 ? "#1E40AF" : "#94A3B8" }]}>
+                        {w.recent_report_cards?.length ?? 0}
                       </Text>
-                      <Text style={s.statLabel}>Absences</Text>
+                      <Text style={s.statLabel}>Report cards</Text>
                     </View>
                   </View>
+                  {(w.recent_attendance?.length || 0) > 0 && (
+                    <View style={s.recentAtt}>
+                      <Text style={s.recentAttTitle}>Recent attendance</Text>
+                      <View style={s.recentAttRow}>
+                        {w.recent_attendance!.slice(0, 5).map((r) => (
+                          <View key={r.date} style={[s.attDot, { backgroundColor: (STATUS_TINT[r.status] || "#94A3B8") + "22" }]}>
+                            <Text style={[s.attDotTxt, { color: STATUS_TINT[r.status] || "#64748B" }]}>{r.date.slice(5)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -199,7 +245,8 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4F5F7" },
   scroll: { padding: 20, paddingBottom: 80 },
   header: { flexDirection: "row", alignItems: "flex-start", marginBottom: 16 },
-  iconBtn: { padding: 10, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0" },
+  iconBtn: { padding: 10, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", position: "relative" },
+  bellDot: { position: "absolute", top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: "#EF4444" },
   overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5, color: "#94A3B8" },
   h1: { fontSize: 26, fontWeight: "700", color: "#0F172A", marginTop: 2, letterSpacing: -0.5 },
   sub: { fontSize: 13, color: "#64748B", marginTop: 4 },
@@ -213,11 +260,20 @@ const s = StyleSheet.create({
   wardAvatarTxt: { fontWeight: "800", fontSize: 15 },
   wardName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   wardMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  entityRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6, alignItems: "center" },
+  entityPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  entityPillTxt: { fontSize: 10, fontWeight: "800" },
+  dualHint: { fontSize: 10, color: "#64748B", fontWeight: "600" },
   statsRow: { flexDirection: "row", marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "#F1F5F9", alignItems: "center" },
   statBlock: { flex: 1, alignItems: "center" },
   statDivider: { width: 1, height: 26, backgroundColor: "#E2E8F0" },
   statValue: { fontSize: 18, fontWeight: "800" },
   statLabel: { fontSize: 11, color: "#64748B", marginTop: 2, fontWeight: "600" },
+  recentAtt: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
+  recentAttTitle: { fontSize: 10, fontWeight: "700", color: "#64748B", textTransform: "uppercase", marginBottom: 6 },
+  recentAttRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  attDot: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  attDotTxt: { fontSize: 10, fontWeight: "700" },
   alertsHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 16 },
   unreadDot: { backgroundColor: "#EF4444", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, minWidth: 22, alignItems: "center" },
   unreadTxt: { color: "#fff", fontWeight: "800", fontSize: 11 },

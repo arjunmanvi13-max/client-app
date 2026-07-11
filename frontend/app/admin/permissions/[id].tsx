@@ -18,6 +18,10 @@ const PERM_LABELS: Record<string, string> = {
   mark_student_attendance: "Mark Student Attendance",
   mark_player_attendance: "Mark Player Attendance",
   mark_staff_attendance: "Mark Staff Attendance",
+  mark_coach_attendance: "Mark Coach Attendance",
+  mark_hostel_attendance: "Mark Hostel Attendance",
+  view_attendance: "View Attendance Reports",
+  correct_attendance: "Correct Attendance (Audit)",
   add_players: "Add Players",
   edit_players: "Edit Players",
   toggle_player_status: "Activate / Deactivate Players",
@@ -28,6 +32,11 @@ const PERM_LABELS: Record<string, string> = {
   lifecycle_dashboard: "Lifecycle Dashboard",
   manage_users: "Manage Users",
   manage_academic_structure: "Manage Academic Structure",
+  enter_academic_marks: "Enter Academic Marks",
+  view_academic_marks: "View Academic Marks",
+  enter_coach_assessments: "Enter Coach Assessments",
+  manage_coach_assessments: "Manage Coach Assessment Definitions",
+  view_coach_assessments: "View Coach Assessments",
 };
 
 export default function PermissionsEdit() {

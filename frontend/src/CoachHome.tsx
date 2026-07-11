@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
+import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
+import { useBreakpoint } from "./useBreakpoint";
 
 const SLOT_TINT: Record<string, string> = { Morning: "#F59E0B", Evening: "#7C3AED", Unassigned: "#94A3B8" };
 const SKILL_TINT: Record<string, string> = { Beginner: "#10B981", Intermediate: "#0EA5E9", Advanced: "#EF4444", Unassigned: "#94A3B8" };
@@ -11,18 +13,31 @@ const SKILL_TINT: Record<string, string> = { Beginner: "#10B981", Intermediate: 
 export default function CoachHome() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [data, setData] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    setError("");
     try {
-      const { data } = await api.get("/coach/dashboard");
-      setData(data);
-    } catch {}
+      const [coachRes, mvpRes] = await Promise.all([
+        api.get("/coach/dashboard"),
+        api.get("/dashboard/mvp"),
+      ]);
+      setData({ ...coachRes.data, mvp: mvpRes.data });
+    } catch (e: any) {
+      setError(getApiError(e));
+      setData(null);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = () => { setRefreshing(true); load(); };
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -36,13 +51,24 @@ export default function CoachHome() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#EA580C" />}>
+      <ScrollView contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#EA580C" />}>
+        {loading && !refreshing ? (
+          <LoadingState message="Loading coach dashboard…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : (
+        <>
         <View style={s.header}>
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>{greeting.toUpperCase()}</Text>
             <Text style={s.h1}>Coach {user.name.split(" ")[0]}</Text>
             <View style={s.metaRow}>
-              <View style={s.sportPill}><Feather name="award" size={11} color="#EA580C" /><Text style={s.sportText}>{data?.assigned_sport || user.department || "ALPHA"}</Text></View>
+              {(data?.mvp?.assigned_centres || data?.assigned_centres || []).map((c: string) => (
+                <View key={c} style={s.sportPill}><Feather name="map-pin" size={11} color="#EA580C" /><Text style={s.sportText}>{c}</Text></View>
+              ))}
+              {(data?.mvp?.assigned_sports || data?.assigned_sports || [data?.assigned_sport]).filter(Boolean).map((sp: string) => (
+                <View key={sp} style={s.sportPill}><Feather name="award" size={11} color="#EA580C" /><Text style={s.sportText}>{sp}</Text></View>
+              ))}
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push("/profile")} style={s.avatarBtn} testID="coach-profile">
@@ -51,17 +77,24 @@ export default function CoachHome() {
         </View>
 
         <View style={s.heroCard}>
-          <Text style={s.heroLabel}>Total players assigned</Text>
-          <Text style={s.heroValue}>{data?.total_players ?? "—"}</Text>
+          <Text style={s.heroLabel}>Today's player attendance</Text>
+          <Text style={s.heroValue}>{data?.mvp?.attendance_today?.marked ?? data?.today?.marked ?? "—"}</Text>
+          <Text style={s.heroSub}>of {data?.total_players ?? "—"} players marked</Text>
           <View style={s.heroFooter}>
             <View style={s.heroChip}>
               <Feather name="check-circle" size={12} color="#10B981" />
-              <Text style={[s.heroChipText, { color: "#10B981" }]}>{data?.today.present ?? 0} present today</Text>
+              <Text style={[s.heroChipText, { color: "#10B981" }]}>{data?.mvp?.attendance_today?.present ?? data?.today?.present ?? 0} present</Text>
             </View>
             <View style={s.heroChip}>
               <Feather name="x-circle" size={12} color="#EF4444" />
-              <Text style={[s.heroChipText, { color: "#EF4444" }]}>{data?.today.absent ?? 0} absent</Text>
+              <Text style={[s.heroChipText, { color: "#EF4444" }]}>{data?.mvp?.attendance_today?.absent ?? data?.today?.absent ?? 0} absent</Text>
             </View>
+            {(data?.mvp?.pending_assessments ?? 0) > 0 && (
+              <View style={s.heroChip}>
+                <Feather name="clipboard" size={12} color="#F59E0B" />
+                <Text style={[s.heroChipText, { color: "#F59E0B" }]}>{data.mvp.pending_assessments} assessments pending</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -90,6 +123,7 @@ export default function CoachHome() {
         <Text style={s.section}>Quick actions</Text>
         <View style={s.actionsRow}>
           <Action icon="check-square" label="Mark attendance" tint="#1E40AF" onPress={() => router.push("/(tabs)/attendance")} testID="qa-attendance" />
+          <Action icon="clipboard" label="Assessments" tint="#EA580C" onPress={() => router.push("/coach/assessments")} testID="qa-assessments" />
           {(isAdmin || (user.coach_permissions || []).includes("add_players")) && (
             <Action icon="user-plus" label="Add player" tint="#16A34A" onPress={() => router.push("/manage/player/new")} testID="qa-addplayer" />
           )}
@@ -121,6 +155,8 @@ export default function CoachHome() {
             </View>
           </>
         )}
+        </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,6 +187,7 @@ const s = StyleSheet.create({
   heroCard: { backgroundColor: "#0F172A", borderRadius: 20, padding: 24, marginTop: 8 },
   heroLabel: { color: "#94A3B8", fontSize: 12, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase" },
   heroValue: { color: "#fff", fontSize: 56, fontWeight: "800", marginTop: 4, letterSpacing: -2 },
+  heroSub: { color: "#94A3B8", fontSize: 12, marginTop: 2 },
   heroFooter: { flexDirection: "row", gap: 8, marginTop: 12 },
   heroChip: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,0.08)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   heroChipText: { fontSize: 12, fontWeight: "700" },

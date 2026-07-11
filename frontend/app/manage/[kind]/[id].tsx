@@ -39,6 +39,8 @@ const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] 
     { key: "lifecycle_dashboard", label: "Lifecycle dashboard" },
     { key: "manage_users", label: "Manage users" },
     { key: "manage_academic_structure", label: "Manage academic structure" },
+    { key: "enter_academic_marks", label: "Enter academic marks" },
+    { key: "view_academic_marks", label: "View academic marks" },
   ]},
   { group: "Fees & Bulk", items: [
     { key: "view_fees", label: "View fees" },
@@ -66,6 +68,11 @@ const RATE_CARD: Record<PlayerType, Record<string, { registration: number; month
   "Hostel Only": { Cricket: { registration: 3000, monthly: 12000 }, Football: { registration: 3000, monthly: 15000 } },
   "Day Boarding": { Cricket: { registration: 3000, monthly: 7500 }, Football: { registration: 3000, monthly: 7500 } },
   "Boarding": { Cricket: { registration: 20000, monthly: 15000 }, Football: { registration: 20000, monthly: 15000 } },
+};
+// PWS school fee rate card (mirror of backend fees.py PWS_RATE_CARDS)
+const PWS_RATE_CARD: Record<"Day Scholar" | "Hostel", { registration: number; monthly: number; exam: number; hostel_monthly?: number }> = {
+  "Day Scholar": { registration: 5000, monthly: 8000, exam: 2500 },
+  "Hostel": { registration: 5000, monthly: 8000, hostel_monthly: 12000, exam: 2500 },
 };
 
 function calcAge(dob: string): number | null {
@@ -128,7 +135,27 @@ export default function ManageEdit() {
       }
     })();
   }, [kind]);
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal";
+  const isTeacher = user?.role === "teacher";
+  const perms = user?.permissions || {};
+  const canEdit = (() => {
+    if (isNew) {
+      if (isTeacher && isStudentKind) return false;
+      if (isAdmin) return true;
+      if (isStudentKind) return !!perms.add_students;
+      if (isPlayerKind) return !!perms.add_players;
+      if (isUserKind) return (user?.can_manage || []).includes(kind || "");
+      return (user?.can_manage || []).includes(kind || "");
+    }
+    if (isTeacher && isStudentKind) return false;
+    if (isAdmin) return true;
+    if (isStudentKind) return !!perms.edit_students;
+    if (isPlayerKind) return !!perms.edit_players || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
+    if (isUserKind) return isAdmin;
+    return (user?.can_manage || []).includes(kind || "");
+  })();
+  const canDelete = canEdit && !isNew && (isAdmin || isStudentKind || isPlayerKind || isStaffKind);
+  const readOnly = !isNew && !canEdit;
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -162,6 +189,16 @@ export default function ManageEdit() {
   const [isResident, setIsResident] = useState(false);
 
   // Player extras
+  const [admissionNumber, setAdmissionNumber] = useState("");
+  const [rollNumber, setRollNumber] = useState("");
+  const [playerId, setPlayerId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [gender, setGender] = useState<"Male" | "Female" | "Other" | "">("");
+  const [personEmail, setPersonEmail] = useState("");
+  const [address, setAddress] = useState("");
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianPhone, setGuardianPhone] = useState("");
+  const [staffDepartment, setStaffDepartment] = useState("");
   const [fatherName, setFatherName] = useState("");
   const [age, setAge] = useState("");
   const [skillLevel, setSkillLevel] = useState<"Beginner" | "Intermediate" | "Advanced" | "">("");
@@ -261,13 +298,22 @@ export default function ManageEdit() {
             setCoachType(u.coach_type === "assistant" ? "assistant" : "head");
           }
         } else {
-          const { data } = await api.get("/people", { params: { kind } });
-          const p = data.find((x: any) => x.id === id);
+          const { data: p } = await api.get(`/people/${id}`);
           if (p) {
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
             setSectionId(p.section_id || null);
-            setFatherName(p.father_name || "");
+            setAdmissionNumber(p.admission_number || "");
+            setRollNumber(p.roll_number || "");
+            setPlayerId(p.player_id || "");
+            setEmployeeId(p.employee_id || "");
+            setGender(p.gender || "");
+            setPersonEmail(p.email || "");
+            setAddress(p.address || "");
+            setGuardianName(p.guardian_name || p.father_name || "");
+            setGuardianPhone(p.guardian_phone || "");
+            setStaffDepartment(p.department || "");
+            setFatherName(p.father_name || p.guardian_name || "");
             setAge(p.age ? String(p.age) : "");
             setSkillLevel(p.skill_level || "");
             setMobile(p.mobile || "");
@@ -354,8 +400,11 @@ export default function ManageEdit() {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
         const body: any = {
           name, kind: "player", organization: "ALPHA",
+          player_id: playerId || null,
           sport: sport || null, group: group || null, is_resident: isHostelType,
-          father_name: fatherName || null,
+          guardian_name: guardianName || fatherName || null,
+          father_name: guardianName || fatherName || null,
+          guardian_phone: guardianPhone || null,
           age: dob ? calcAge(dob) : (age ? parseInt(age, 10) : null),
           dob: dob || null,
           skill_level: skillLevel || null,
@@ -396,9 +445,31 @@ export default function ManageEdit() {
         }
         else { delete body.kind; await api.patch(`/people/${id}`, body); }
       } else {
-        const body: any = { name, kind, organization, group: group || null, sport: sport || null, is_resident: isResident };
+        const body: any = {
+          name, kind, organization, group: group || null, sport: sport || null, is_resident: isResident,
+          gender: gender || null,
+          email: personEmail || null,
+          mobile: mobile || null,
+          address: address || null,
+          guardian_name: guardianName || null,
+          guardian_phone: guardianPhone || null,
+        };
+        if (isStudentKind) {
+          body.admission_number = admissionNumber || null;
+          body.roll_number = rollNumber || null;
+          body.dob = dob || null;
+        }
         if (isStudentKind && sectionId) body.section_id = sectionId;
+        if (isStudentKind) {
+          body.date_of_admission = dateOfAdmission || todayISO();
+          body.transport_fee_monthly = parseInt(transportFeeMonthly || "0", 10) || 0;
+          if (isSuper && registrationFeeOverride) body.registration_fee_override = parseInt(registrationFeeOverride, 10);
+          if (isSuper && monthlyFeeOverride) body.monthly_fee_override = parseInt(monthlyFeeOverride, 10);
+          if (isSuper && hostelFeeOverride && isResident) body.hostel_fee_override = parseInt(hostelFeeOverride, 10);
+        }
         if (isStaffKind) {
+          body.employee_id = employeeId || null;
+          body.department = staffDepartment || group || null;
           body.centre = organization === "ALPHA" ? (centre || null) : null;
           body.is_resident = false;
         }
@@ -431,8 +502,8 @@ export default function ManageEdit() {
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
             <Feather name="x" size={22} color="#0F172A" />
           </TouchableOpacity>
-          <Text style={s.h1}>{isNew ? `New ${isAdminKind ? "Sports Admin" : kind}` : `Edit ${isAdminKind ? "Sports Admin" : kind}`}</Text>
-          {!isNew && (
+          <Text style={s.h1}>{isNew ? `New ${isAdminKind ? "Sports Admin" : kind}` : readOnly ? `View ${kind}` : `Edit ${kind}`}</Text>
+          {!isNew && canDelete && (
             <TouchableOpacity testID="delete-btn" onPress={onDelete} style={s.delBtn}>
               <Feather name="trash-2" size={18} color="#EF4444" />
             </TouchableOpacity>
@@ -568,6 +639,8 @@ export default function ManageEdit() {
 
           {isPlayerKind && (
             <>
+              <Text style={s.label}>Player ID</Text>
+              <TextInput testID="field-player-id" editable={!readOnly} value={playerId} onChangeText={setPlayerId} placeholder="e.g. APL-0001" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
               <Text style={s.label}>Centre *</Text>
               <View style={s.chipRow}>
                 {CENTRES.map((c) => (
@@ -613,8 +686,10 @@ export default function ManageEdit() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={s.label}>Father's Name</Text>
-              <TextInput testID="field-father" value={fatherName} onChangeText={setFatherName} placeholder="Father's name" placeholderTextColor="#94A3B8" style={s.input} />
+              <Text style={s.label}>Guardian Name</Text>
+              <TextInput testID="field-father" editable={!readOnly} value={guardianName || fatherName} onChangeText={(v) => { setGuardianName(v); setFatherName(v); }} placeholder="Guardian name" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+              <Text style={s.label}>Guardian Phone</Text>
+              <TextInput testID="field-guardian-phone-player" editable={!readOnly} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
               <Text style={s.label}>Date of Birth</Text>
               {Platform.OS === "web" ? (
                 // @ts-ignore — RN Web accepts a raw <input type="date">
@@ -865,7 +940,35 @@ export default function ManageEdit() {
 
           {!isUserKind && !isPlayerKind && !isStaffKind && (
             <>
-              <Text style={s.label}>{isStudentKind ? "Class / Section" : "Group"}</Text>
+              {isStudentKind && (
+                <>
+                  <Text style={s.label}>Admission Number</Text>
+                  <TextInput testID="field-admission-number" editable={!readOnly} value={admissionNumber} onChangeText={setAdmissionNumber} placeholder="e.g. PWS-20250001" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Roll Number</Text>
+                  <TextInput testID="field-roll-number" editable={!readOnly} value={rollNumber} onChangeText={setRollNumber} placeholder="e.g. 101" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Gender</Text>
+                  <View style={s.chipRow}>
+                    {(["Male", "Female", "Other"] as const).map((g) => (
+                      <TouchableOpacity key={g} disabled={readOnly} style={[s.chip, gender === g && s.chipActive]} onPress={() => setGender(g)}>
+                        <Text style={[s.chipText, gender === g && { color: "#fff" }]}>{g}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={s.label}>Date of Birth</Text>
+                  <TextInput testID="field-student-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Phone</Text>
+                  <TextInput testID="field-student-phone" editable={!readOnly} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="Student phone" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Email</Text>
+                  <TextInput testID="field-student-email" editable={!readOnly} value={personEmail} onChangeText={setPersonEmail} autoCapitalize="none" keyboardType="email-address" placeholder="student@email.com" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Address</Text>
+                  <TextInput testID="field-address" editable={!readOnly} value={address} onChangeText={setAddress} placeholder="Full address" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Guardian Name</Text>
+                  <TextInput testID="field-guardian-name" editable={!readOnly} value={guardianName} onChangeText={setGuardianName} placeholder="Parent / guardian" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <Text style={s.label}>Guardian Phone</Text>
+                  <TextInput testID="field-guardian-phone" editable={!readOnly} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                </>
+              )}
+              <Text style={s.label}>{isStudentKind ? "Grade / Section" : "Group"}</Text>
               {isStudentKind && academicSections.length > 0 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
                   {academicSections.map((sec) => (
@@ -889,14 +992,79 @@ export default function ManageEdit() {
                 </View>
                 <Switch testID="field-resident" value={isResident} onValueChange={setIsResident} trackColor={{ true: "#1E40AF" }} />
               </View>
+              {isStudentKind && (
+                <>
+                  <Text style={s.label}>Date of Admission *</Text>
+                  <TextInput testID="field-admission-date" value={dateOfAdmission} onChangeText={setDateOfAdmission} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" style={s.input} />
+                  <View style={s.feesBox} testID="fees-config">
+                    <View style={s.feesBoxHeader}>
+                      <Feather name="credit-card" size={14} color="#1E40AF" />
+                      <Text style={s.feesBoxTitle}>School fees ({isResident ? "Hostel" : "Day Scholar"})</Text>
+                    </View>
+                    {(() => {
+                      const cat = isResident ? "Hostel" : "Day Scholar";
+                      const rc = PWS_RATE_CARD[cat];
+                      const regEff = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : rc.registration;
+                      const tuition = monthlyFeeOverride ? parseInt(monthlyFeeOverride, 10) : rc.monthly;
+                      const hostel = hostelFeeOverride ? parseInt(hostelFeeOverride, 10) : (rc.hostel_monthly || 0);
+                      return (
+                        <>
+                          <View style={s.feesReadonlyBox}>
+                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Registration</Text><Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text></View>
+                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Exam fee</Text><Text style={s.feesReadonlyVal}>₹{rc.exam.toLocaleString("en-IN")}</Text></View>
+                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Tuition (monthly)</Text><Text style={s.feesReadonlyVal}>₹{tuition.toLocaleString("en-IN")}</Text></View>
+                            {isResident && hostel > 0 && (
+                              <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Hostel (monthly)</Text><Text style={s.feesReadonlyVal}>₹{hostel.toLocaleString("en-IN")}</Text></View>
+                            )}
+                            {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
+                              <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Transport (monthly)</Text><Text style={s.feesReadonlyVal}>₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}</Text></View>
+                            )}
+                          </View>
+                          {isNew && (
+                            <Text style={s.feesBoxNote}>Fees auto-create on save. First-month tuition/hostel: admission on/before 15th = full; from 16th = 50%.</Text>
+                          )}
+                          {(isNew || isSuper) && (
+                            <>
+                              {isSuper && (
+                                <>
+                                  <Text style={s.label}>Registration override (optional)</Text>
+                                  <TextInput testID="field-reg-fee-override" value={registrationFeeOverride} onChangeText={setRegistrationFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.registration}`} placeholderTextColor="#94A3B8" style={s.input} />
+                                  <Text style={s.label}>Tuition override (optional)</Text>
+                                  <TextInput testID="field-monthly-fee-override" value={monthlyFeeOverride} onChangeText={setMonthlyFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.monthly}`} placeholderTextColor="#94A3B8" style={s.input} />
+                                  {isResident && (
+                                    <>
+                                      <Text style={s.label}>Hostel override (optional)</Text>
+                                      <TextInput testID="field-hostel-fee" value={hostelFeeOverride} onChangeText={setHostelFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.hostel_monthly || 0}`} placeholderTextColor="#94A3B8" style={s.input} />
+                                    </>
+                                  )}
+                                </>
+                              )}
+                              <Text style={s.label}>Transport fee (₹/month — optional)</Text>
+                              <TextInput testID="field-transport-fee" value={transportFeeMonthly} onChangeText={setTransportFeeMonthly} keyboardType="numeric" placeholder="0 = no transport" placeholderTextColor="#94A3B8" style={s.input} />
+                            </>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </View>
+                </>
+              )}
             </>
           )}
 
           {isStaffKind && (
             <>
+              <Text style={s.label}>Employee ID</Text>
+              <TextInput testID="field-employee-id" editable={!readOnly} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-0001" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
               <Text style={s.label}>Role / Designation *</Text>
-              <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder="e.g. Canteen Supervisor, Librarian, Groundsman" placeholderTextColor="#94A3B8" style={s.input} />
-              <Text style={s.help}>Staff are managed records — no login / app access.</Text>
+              <TextInput testID="field-group" editable={!readOnly} value={group} onChangeText={setGroup} placeholder="e.g. Canteen Supervisor, Librarian" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+              <Text style={s.label}>Department</Text>
+              <TextInput testID="field-department" editable={!readOnly} value={staffDepartment} onChangeText={setStaffDepartment} placeholder="e.g. Administration, Sports" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+              <Text style={s.label}>Phone</Text>
+              <TextInput testID="field-staff-phone" editable={!readOnly} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+              <Text style={s.label}>Email</Text>
+              <TextInput testID="field-staff-email" editable={!readOnly} value={personEmail} onChangeText={setPersonEmail} autoCapitalize="none" keyboardType="email-address" placeholder="staff@email.com" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+              <Text style={s.help}>Staff roster records — login accounts auto-created for Permissions sync.</Text>
               {organization === "ALPHA" && (
                 <>
                   <Text style={s.label}>Assigned Centre *</Text>
@@ -1048,9 +1216,11 @@ export default function ManageEdit() {
         </ScrollView>
 
         <View style={s.bottomBar}>
+          {canEdit && (
           <TouchableOpacity testID="save-btn" onPress={save} disabled={saving} style={[s.saveBtn, saving && { opacity: 0.6 }]}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>{isNew ? "Create" : "Save changes"}</Text>}
           </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1067,6 +1237,7 @@ const s = StyleSheet.create({
   label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 8, marginTop: 16 },
   help: { fontSize: 12, color: "#64748B", marginTop: 2 },
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#0F172A" },
+  readonly: { backgroundColor: "#F8FAFC", color: "#64748B" },
   chipRow: { flexDirection: "row", gap: 8 },
   chip: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#fff" },
   chipActive: { backgroundColor: "#0F172A", borderColor: "#0F172A" },

@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth, ROLE_COLORS, PRIORITY_COLORS, STATUS_COLORS } from "./auth";
+import { LoadingState, ErrorState, EmptyState, getApiError } from "./ScreenStates";
+import { useBreakpoint } from "./useBreakpoint";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin", admin: "Administrator", teacher: "Teacher",
@@ -13,12 +15,16 @@ const ROLE_LABEL: Record<string, string> = {
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [data, setData] = useState<any>(null);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
   const [attSummary, setAttSummary] = useState<any>(null);
 
   const load = useCallback(async () => {
+    setError("");
     try {
       const [d, t, a] = await Promise.all([
         api.get("/dashboard"),
@@ -28,12 +34,19 @@ export default function Dashboard() {
       setData(d.data);
       setTasks(t.data.slice(0, 5));
       setAttSummary(a.data);
-    } catch {}
+    } catch (e: any) {
+      setError(getApiError(e));
+      setData(null);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  const onRefresh = () => { setRefreshing(true); load(); };
 
   if (!user) return null;
   const greeting = (() => {
@@ -45,7 +58,15 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}>
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}
+      >
+        {loading && !refreshing ? (
+          <LoadingState message="Loading dashboard…" />
+        ) : (
+        <>
+        {error ? <ErrorState message={error} onRetry={load} compact /> : null}
         {/* Header */}
         <View style={s.header}>
           <Image source={require("../assets/alpha-sports-logo.png")} style={s.headerLogo} resizeMode="contain" />
@@ -127,7 +148,7 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
         {tasks.length === 0 ? (
-          <View style={s.empty}><Text style={s.emptyText}>No tasks yet — assign one from the Tasks tab.</Text></View>
+          <EmptyState icon="clipboard" title="No tasks yet" message="Assign one from the Tasks tab or create a new task." actionLabel="View tasks" onAction={() => router.push("/(tabs)/tasks")} />
         ) : (
           tasks.map((t) => (
             <TouchableOpacity key={t.id} style={s.taskCard} onPress={() => router.push(`/task/${t.id}`)} testID={`task-${t.id}`}>
@@ -141,6 +162,8 @@ export default function Dashboard() {
               </View>
             </TouchableOpacity>
           ))
+        )}
+        </>
         )}
       </ScrollView>
     </SafeAreaView>

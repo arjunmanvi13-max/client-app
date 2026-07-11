@@ -4,42 +4,78 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../src/auth";
+import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
+import { useBreakpoint } from "../../src/useBreakpoint";
 
+type HistoryEntry = { action: string; user_name: string; at: string; note?: string };
+type Comment = { id: string; user_name: string; text: string; created_at: string };
 type Req = {
-  id: string; player_id: string; player_name: string;
-  centre?: string; sport?: string; category?: string;
-  reason?: string; status: "pending" | "approved" | "rejected";
-  requested_by_name: string; requested_at: string;
-  decided_by_name?: string; decided_at?: string; decision_note?: string;
+  id: string;
+  type: "student_deactivation" | "player_deactivation" | "fee_concession" | "refund";
+  subject_id: string;
+  subject_label: string;
+  entity_id?: string;
+  reason?: string;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  requested_by_name: string;
+  requested_at: string;
+  decided_by_name?: string;
+  decided_at?: string;
+  decision_note?: string;
+  history?: HistoryEntry[];
+  comments?: Comment[];
+  payload?: Record<string, unknown>;
+};
+
+const TYPE_LABELS: Record<Req["type"], string> = {
+  student_deactivation: "Student deactivation",
+  player_deactivation: "Player deactivation",
+  fee_concession: "Fee concession",
+  refund: "Refund",
 };
 
 export default function Approvals() {
   const router = useRouter();
   const { user } = useAuth();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [reqs, setReqs] = useState<Req[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [tab, setTab] = useState<"pending" | "approved" | "rejected">("pending");
+  const [typeFilter, setTypeFilter] = useState<"all" | Req["type"]>("all");
   const [decision, setDecision] = useState<{ req: Req; action: "approve" | "reject" } | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const allowed = user && (user.permissions?.approve_deactivation || user.role === "super_admin" || user.role === "admin");
+  const canView = user && (
+    user.permissions?.approve_requests ||
+    user.permissions?.approve_deactivation ||
+    user.role === "super_admin" ||
+    user.role === "admin"
+  );
+  const canDecide = !!user && (user.permissions?.approve_requests || user.permissions?.approve_deactivation || user.role === "super_admin");
 
   const load = useCallback(async () => {
-    if (!allowed) { setLoading(false); return; }
+    if (!canView) { setLoading(false); return; }
+    setError("");
     setLoading(true);
     try {
-      const { data } = await api.get("/deactivation-requests");
+      const params: Record<string, string> = {};
+      if (typeFilter !== "all") params.type = typeFilter;
+      const { data } = await api.get("/approval-requests", { params });
       setReqs(data);
-    } catch {} finally { setLoading(false); }
-  }, [allowed]);
+    } catch (e: any) {
+      setError(getApiError(e, "Could not load approval requests."));
+      setReqs([]);
+    } finally { setLoading(false); }
+  }, [canView, typeFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   if (!user) return null;
-  if (!allowed) {
+  if (!canView) {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.header}><Text style={s.h1}>Approvals</Text></View>
@@ -49,13 +85,12 @@ export default function Approvals() {
   }
 
   const filtered = reqs.filter((r) => r.status === tab);
-  const canDecide = !!user.permissions?.approve_deactivation || user.role === "super_admin";
 
   const submitDecision = async () => {
     if (!decision) return;
     setBusy(true);
     try {
-      await api.post(`/deactivation-requests/${decision.req.id}/${decision.action}`, { note: note || undefined });
+      await api.post(`/approval-requests/${decision.req.id}/${decision.action}`, { note: note || undefined });
       setDecision(null); setNote("");
       await load();
     } catch (e: any) {
@@ -69,9 +104,17 @@ export default function Approvals() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="appr-back"><Feather name="chevron-left" size={22} color="#0F172A" /></TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.overline}>APPROVALS</Text>
-          <Text style={s.h1}>Deactivation Requests</Text>
+          <Text style={s.h1}>Workflow Requests</Text>
         </View>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.typeRow}>
+        {(["all", "student_deactivation", "player_deactivation", "fee_concession", "refund"] as const).map((t) => (
+          <TouchableOpacity key={t} style={[s.typeChip, typeFilter === t && s.typeChipActive]} onPress={() => setTypeFilter(t)}>
+            <Text style={[s.typeChipTxt, typeFilter === t && s.typeChipTxtActive]}>{t === "all" ? "All" : TYPE_LABELS[t]}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       <View style={s.tabRow}>
         {(["pending", "approved", "rejected"] as const).map((t) => (
@@ -81,20 +124,30 @@ export default function Approvals() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
-        {loading ? <ActivityIndicator color="#1E40AF" style={{ marginTop: 32 }} /> :
-         filtered.length === 0 ? <Text style={s.emptyTextRow}>No {tab} requests.</Text> :
+      <ScrollView contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+        {loading && !refreshing ? (
+          <LoadingState message="Loading requests…" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="check-circle" title={`No ${tab} requests`} message={tab === "pending" ? "All caught up — no requests awaiting decision." : `No ${tab} requests in this filter.`} />
+        ) : (
          filtered.map((r) => (
            <View key={r.id} testID={`appr-${r.id}`} style={s.row}>
              <View style={[s.dot, { backgroundColor: r.status === "pending" ? "#D97706" : r.status === "approved" ? "#16A34A" : "#EF4444" }]}>
                <Feather name={r.status === "pending" ? "clock" : r.status === "approved" ? "check" : "x"} size={14} color="#fff" />
              </View>
              <View style={{ flex: 1 }}>
-               <Text style={s.name}>{r.player_name}</Text>
-               <Text style={s.meta}>{r.centre || "—"} · {r.sport || "—"} · {r.category || "—"}</Text>
-               <Text style={s.who}>Requested by {r.requested_by_name} · {new Date(r.requested_at).toLocaleString()}</Text>
+               <Text style={s.typeTag}>{TYPE_LABELS[r.type]}</Text>
+               <Text style={s.name}>{r.subject_label}</Text>
+               <Text style={s.meta}>{r.entity_id?.toUpperCase() || "—"} · {r.requested_by_name}</Text>
+               <Text style={s.who}>{new Date(r.requested_at).toLocaleString()}</Text>
                {r.reason && <Text style={s.reason}>Reason: {r.reason}</Text>}
-               {r.decided_by_name && <Text style={s.who}>{r.status === "approved" ? "Approved" : "Rejected"} by {r.decided_by_name}{r.decided_at ? ` · ${new Date(r.decided_at).toLocaleString()}` : ""}{r.decision_note ? ` · “${r.decision_note}”` : ""}</Text>}
+               {(r.history || []).length > 0 && (
+                 <Text style={s.who}>History: {(r.history || []).map((h) => h.action).join(" → ")}</Text>
+               )}
+               {(r.comments || []).length > 0 && <Text style={s.who}>{r.comments!.length} comment(s)</Text>}
+               {r.decided_by_name && <Text style={s.who}>{r.status} by {r.decided_by_name}{r.decision_note ? ` · “${r.decision_note}”` : ""}</Text>}
              </View>
              {tab === "pending" && canDecide && (
                <View style={{ gap: 6 }}>
@@ -103,14 +156,15 @@ export default function Approvals() {
                </View>
              )}
            </View>
-         ))}
+         ))
+        )}
       </ScrollView>
 
       <Modal transparent animationType="slide" visible={!!decision} onRequestClose={() => setDecision(null)}>
         <View style={s.modalBg}>
           <View style={s.modalCard}>
-            <Text style={s.modalTitle}>{decision?.action === "approve" ? "Approve deactivation" : "Reject deactivation"}</Text>
-            <Text style={s.modalSub}>{decision?.req.player_name}</Text>
+            <Text style={s.modalTitle}>{decision?.action === "approve" ? "Approve request" : "Reject request"}</Text>
+            <Text style={s.modalSub}>{decision ? TYPE_LABELS[decision.req.type] : ""} · {decision?.req.subject_label}</Text>
             <TextInput placeholder="Optional note" placeholderTextColor="#94A3B8" value={note} onChangeText={setNote} style={s.input} testID="appr-note" multiline />
             <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setDecision(null)} testID="appr-modal-cancel"><Text style={s.cancelTxt}>Cancel</Text></TouchableOpacity>
@@ -131,6 +185,11 @@ const s = StyleSheet.create({
   backBtn: { padding: 8 },
   overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5, color: "#94A3B8" },
   h1: { fontSize: 22, fontWeight: "700", color: "#0F172A", marginTop: 2 },
+  typeRow: { paddingHorizontal: 20, paddingTop: 12, gap: 8 },
+  typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
+  typeChipActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
+  typeChipTxt: { fontSize: 11, fontWeight: "700", color: "#64748B" },
+  typeChipTxtActive: { color: "#fff" },
   tabRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 12 },
   tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
   tabActive: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
@@ -139,7 +198,8 @@ const s = StyleSheet.create({
   scroll: { padding: 20, paddingTop: 12 },
   row: { flexDirection: "row", gap: 10, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
   dot: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  name: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
+  typeTag: { fontSize: 10, fontWeight: "800", color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5 },
+  name: { fontSize: 14, fontWeight: "800", color: "#0F172A", marginTop: 2 },
   meta: { fontSize: 12, color: "#475569", marginTop: 2 },
   who: { fontSize: 11, color: "#94A3B8", marginTop: 4 },
   reason: { fontSize: 12, color: "#0F172A", marginTop: 4, fontStyle: "italic" },

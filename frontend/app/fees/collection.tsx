@@ -20,9 +20,9 @@ import { colors } from "../../src/theme";
 const CENTRES = ["Balua", "Harding Park"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
 
-type Player = {
-  id: string; name: string; centre?: string; sport?: string; player_type?: string;
-  mobile?: string; status?: string; date_of_admission?: string;
+type PersonRow = {
+  id: string; name: string; centre?: string; sport?: string; player_type?: string; group?: string;
+  mobile?: string; status?: string; date_of_admission?: string; is_resident?: boolean;
 };
 type Fee = {
   id: string; fee_type: string; amount: number; amount_due: number;
@@ -32,7 +32,7 @@ type Fee = {
   discount_applied?: number; discount_reason?: string;
 };
 type DuesResp = {
-  player: Player;
+  player: PersonRow;
   summary: { current_month_due: number; previous_pending_due: number; total_outstanding: number; financial_year_total: number; paid_total: number };
   unpaid: Fee[]; paid: Fee[]; current_month: string;
 };
@@ -51,12 +51,14 @@ function fmtMonth(p: string) {
 export default function FeesCollection() {
   const { user } = useAuth();
   const router = useRouter();
+  const defaultInstitution = (user?.role === "principal" || user?.role === "vice_principal") ? "PWS" : "ALPHA";
+  const [institution, setInstitution] = useState<"ALPHA" | "PWS">(defaultInstitution);
   const [centre, setCentre] = useState<string | null>(null);
   const [sport, setSport] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [players, setPlayers] = useState<Player[]>([]);
+  const [players, setPlayers] = useState<PersonRow[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [selectedPlayer, setSelectedPlayer] = useState<PersonRow | null>(null);
   const [dues, setDues] = useState<DuesResp | null>(null);
   const [loadingDues, setLoadingDues] = useState(false);
   const [selectedFeeIds, setSelectedFeeIds] = useState<Set<string>>(new Set());
@@ -93,19 +95,25 @@ export default function FeesCollection() {
     }
   };
 
-  // Load players (ALPHA scope)
+  // Load people (ALPHA players or PWS students)
   const loadPlayers = useCallback(async () => {
     setLoadingPlayers(true);
     try {
-      const params: any = { kind: "player", organization: "ALPHA" };
-      if (centre) params.centre = centre;
-      if (sport) params.sport = sport;
+      const params: any = institution === "PWS"
+        ? { kind: "student", organization: "PWS" }
+        : { kind: "player", organization: "ALPHA" };
+      if (institution === "ALPHA") {
+        if (centre) params.centre = centre;
+        if (sport) params.sport = sport;
+      } else if (centre) {
+        params.group = centre;
+      }
       const { data } = await api.get("/people", { params });
       setPlayers(data || []);
     } catch (e) { setPlayers([]); }
     finally { setLoadingPlayers(false); }
-  }, [centre, sport]);
-  useEffect(() => { loadPlayers(); }, [loadPlayers]);
+  }, [centre, sport, institution]);
+  useEffect(() => { setSelectedPlayer(null); loadPlayers(); }, [loadPlayers]);
 
   // Client-side text search (name / mobile)
   const filteredPlayers = useMemo(() => {
@@ -200,13 +208,26 @@ export default function FeesCollection() {
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>FEES COLLECTION</Text>
-            <Text style={s.h1}>Collect Player Fees</Text>
-            <Text style={s.sub}>Search a player → choose months → record payment</Text>
+            <Text style={s.h1}>{institution === "PWS" ? "Collect Student Fees" : "Collect Player Fees"}</Text>
+            <Text style={s.sub}>Search a {institution === "PWS" ? "student" : "player"} → choose months → record payment</Text>
           </View>
         </View>
 
         {/* Filters */}
         <View style={s.filterCard}>
+          <Text style={s.filterLabel}>INSTITUTION</Text>
+          <View style={s.pillRow}>
+            {(["PWS", "ALPHA"] as const).map((inst) => {
+              const active = institution === inst;
+              const locked = user?.role === "admin" && inst === "PWS" || (user?.role === "principal" || user?.role === "vice_principal") && inst === "ALPHA";
+              if (locked) return null;
+              return (
+                <Pressable key={inst} testID={`inst-${inst}`} onPress={() => { setInstitution(inst); setCentre(null); setSport(null); }} style={[s.pill, active && s.pillActive]}>
+                  <Text style={[s.pillTxt, active && s.pillTxtActive]}>{inst === "PWS" ? "PWS School" : "ALPHA Sports"}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
           <Text style={s.filterLabel}>SEARCH & FILTER</Text>
           <View style={s.searchWrap}>
             <Feather name="search" size={16} color={colors.hint} />
@@ -224,38 +245,54 @@ export default function FeesCollection() {
               </Pressable>
             )}
           </View>
-          <View style={s.pillRow}>
-            <Text style={s.pillRowLabel}>CENTRE</Text>
-            {[null, ...CENTRES].map((c) => {
-              const active = (c ?? "all") === (centre ?? "all");
-              return (
-                <Pressable key={String(c)} testID={`centre-${c ?? "all"}`} onPress={() => setCentre(c)} style={[s.pill, active && s.pillActive]}>
-                  <Text style={[s.pillTxt, active && s.pillTxtActive]}>{c ?? "All"}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <View style={s.pillRow}>
-            <Text style={s.pillRowLabel}>SPORT</Text>
-            {[null, ...SPORTS].map((sp) => {
-              const active = (sp ?? "all") === (sport ?? "all");
-              return (
-                <Pressable key={String(sp)} testID={`sport-${sp ?? "all"}`} onPress={() => setSport(sp)} style={[s.pill, active && s.pillActive]}>
-                  <Text style={[s.pillTxt, active && s.pillTxtActive]}>{sp ?? "All"}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {institution === "ALPHA" ? (
+            <>
+              <View style={s.pillRow}>
+                <Text style={s.pillRowLabel}>CENTRE</Text>
+                {[null, ...CENTRES].map((c) => {
+                  const active = (c ?? "all") === (centre ?? "all");
+                  return (
+                    <Pressable key={String(c)} testID={`centre-${c ?? "all"}`} onPress={() => setCentre(c)} style={[s.pill, active && s.pillActive]}>
+                      <Text style={[s.pillTxt, active && s.pillTxtActive]}>{c ?? "All"}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={s.pillRow}>
+                <Text style={s.pillRowLabel}>SPORT</Text>
+                {[null, ...SPORTS].map((sp) => {
+                  const active = (sp ?? "all") === (sport ?? "all");
+                  return (
+                    <Pressable key={String(sp)} testID={`sport-${sp ?? "all"}`} onPress={() => setSport(sp)} style={[s.pill, active && s.pillActive]}>
+                      <Text style={[s.pillTxt, active && s.pillTxtActive]}>{sp ?? "All"}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <View style={s.pillRow}>
+              <Text style={s.pillRowLabel}>SECTION</Text>
+              {[null, ...Array.from(new Set(players.map((p) => p.group).filter(Boolean)))].slice(0, 8).map((g) => {
+                const active = (g ?? "all") === (centre ?? "all");
+                return (
+                  <Pressable key={String(g)} testID={`section-${g ?? "all"}`} onPress={() => setCentre(g)} style={[s.pill, active && s.pillActive]}>
+                    <Text style={[s.pillTxt, active && s.pillTxtActive]}>{g ?? "All"}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Player list */}
         {!selectedPlayer && (
           <>
-            <Text style={s.sectionLabel}>Players ({filteredPlayers.length})</Text>
+            <Text style={s.sectionLabel}>{institution === "PWS" ? "Students" : "Players"} ({filteredPlayers.length})</Text>
             {loadingPlayers ? (
               <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
             ) : filteredPlayers.length === 0 ? (
-              <Text style={s.empty}>No players match the current filters.</Text>
+              <Text style={s.empty}>No {institution === "PWS" ? "students" : "players"} match the current filters.</Text>
             ) : filteredPlayers.slice(0, 50).map((p) => (
               <TouchableOpacity
                 key={p.id}
@@ -267,7 +304,11 @@ export default function FeesCollection() {
                 <View style={s.avatar}><Text style={s.avatarTxt}>{p.name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</Text></View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.playerName}>{p.name}</Text>
-                  <Text style={s.playerMeta}>{p.centre} · {p.sport} · {p.player_type}{p.mobile ? ` · ${p.mobile}` : ""}</Text>
+                  <Text style={s.playerMeta}>
+                    {institution === "PWS"
+                      ? `${p.group || "—"} · ${p.is_resident ? "Hostel" : "Day Scholar"}${p.mobile ? ` · ${p.mobile}` : ""}`
+                      : `${p.centre} · ${p.sport} · ${p.player_type}${p.mobile ? ` · ${p.mobile}` : ""}`}
+                  </Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={colors.hint} />
               </TouchableOpacity>
@@ -280,7 +321,7 @@ export default function FeesCollection() {
           <>
             <View style={s.duesHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={s.sectionLabel}>Selected Player</Text>
+                <Text style={s.sectionLabel}>Selected {institution === "PWS" ? "Student" : "Player"}</Text>
                 <Text style={s.playerName}>{selectedPlayer.name}</Text>
                 <Text style={s.playerMeta}>{selectedPlayer.centre} · {selectedPlayer.sport} · {selectedPlayer.player_type}</Text>
               </View>

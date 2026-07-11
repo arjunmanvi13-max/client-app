@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, PRIORITY_COLORS, STATUS_COLORS } from "../../src/auth";
+import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
+import { useBreakpoint } from "../../src/useBreakpoint";
 
 const FILTERS: { key: "all" | "mine" | "high" | "pending"; label: string }[] = [
   { key: "all", label: "All" },
@@ -14,21 +16,33 @@ const FILTERS: { key: "all" | "mine" | "high" | "pending"; label: string }[] = [
 
 export default function Tasks() {
   const router = useRouter();
+  const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [filter, setFilter] = useState<"all" | "mine" | "high" | "pending">("all");
   const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const params: any = {};
-    if (filter === "mine") params.mine = true;
-    if (filter === "high") params.priority = "high";
-    if (filter === "pending") params.status = "assigned";
-    const { data } = await api.get("/tasks", { params });
-    setTasks(data);
+    setError("");
+    try {
+      const params: any = {};
+      if (filter === "mine") params.mine = true;
+      if (filter === "high") params.priority = "high";
+      if (filter === "pending") params.status = "open";
+      const { data } = await api.get("/tasks", { params });
+      setTasks(data);
+    } catch (e: any) {
+      setError(getApiError(e, "Could not load tasks."));
+      setTasks([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [filter]);
 
-  useEffect(() => { load(); }, [load]);
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  useEffect(() => { setLoading(true); load(); }, [load]);
+  const onRefresh = () => { setRefreshing(true); load(); };
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -56,12 +70,22 @@ export default function Tasks() {
         ))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={s.list} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}>
-        {tasks.length === 0 ? (
-          <View style={s.empty}>
-            <Feather name="inbox" size={36} color="#94A3B8" />
-            <Text style={s.emptyText}>No tasks for this filter</Text>
-          </View>
+      <ScrollView
+        contentContainerStyle={[s.list, { paddingHorizontal: horizontalPadding, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}
+      >
+        {loading && !refreshing ? (
+          <LoadingState message="Loading tasks…" compact />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : tasks.length === 0 ? (
+          <EmptyState
+            icon="inbox"
+            title="No tasks"
+            message="No tasks match this filter. Create one or try a different filter."
+            actionLabel="New task"
+            onAction={() => router.push("/task/new")}
+          />
         ) : (
           tasks.map((t) => (
             <TouchableOpacity key={t.id} style={s.card} onPress={() => router.push(`/task/${t.id}`)} testID={`task-${t.id}`}>
@@ -81,10 +105,16 @@ export default function Tasks() {
                   <Feather name="user" size={12} color="#94A3B8" />
                   <Text style={s.meta}>{t.created_by_name}</Text>
                 </View>
-                {t.deadline && (
+                {t.due_date && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <Feather name="calendar" size={12} color="#94A3B8" />
-                    <Text style={s.meta}>{new Date(t.deadline).toLocaleDateString()}</Text>
+                    <Text style={s.meta}>{new Date(t.due_date).toLocaleDateString()}</Text>
+                  </View>
+                )}
+                {t.entity_id && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Feather name="layers" size={12} color="#94A3B8" />
+                    <Text style={s.meta}>{t.entity_id.toUpperCase()}</Text>
                   </View>
                 )}
                 {t.comments?.length > 0 && (

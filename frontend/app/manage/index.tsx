@@ -7,7 +7,8 @@ import { useAuth } from "../../src/auth";
 const KINDS = [
   { key: "admin", label: "Sports Admin", icon: "shield", tint: "#7C3AED", desc: "ALPHA Sports Admin — manages players, coaches & fees" },
   { key: "coach", label: "Coaches", icon: "award", tint: "#EA580C", desc: "Sport coaches who log in & manage players" },
-  { key: "teacher", label: "Teachers", icon: "book-open", tint: "#1E40AF", desc: "PWS teachers who log in & manage students" },
+  { key: "teacher", label: "Teachers", icon: "book-open", tint: "#1E40AF", desc: "PWS teachers — attendance & marks (view only)" },
+  { key: "parent", label: "Parents / Guardians", icon: "heart", tint: "#0891B2", desc: "Parent accounts linked to students or players" },
   { key: "player", label: "Players", icon: "activity", tint: "#16A34A", desc: "ALPHA athletes — attendance roster" },
   { key: "student", label: "Students", icon: "users", tint: "#2563EB", desc: "PWS students — attendance roster" },
   { key: "staff", label: "Staff", icon: "user-check", tint: "#0EA5E9", desc: "Non-login staff (PWS & ALPHA) — attendance roster" },
@@ -20,10 +21,21 @@ export default function ManageHub() {
   const isSuper = user.role === "super_admin";
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const isSportsAdmin = user.role === "admin";
+  const perms = user.permissions || {};
+  const canKind = (key: string) => {
+    if (isAdmin) return true;
+    if ((user.can_manage || []).includes(key as any)) return true;
+    if (key === "student" && (perms.view_students || perms.add_students || perms.edit_students || perms.mark_student_attendance)) return true;
+    if (key === "player" && (perms.view_players || perms.add_players || perms.edit_players || user.role === "coach")) return true;
+    if (key === "staff" && perms.view_staff) return true;
+    if (key === "parent" && isSuper) return true;
+    return false;
+  };
   const allowed = KINDS
-    .filter((k) => isAdmin || (user.can_manage || []).includes(k.key as any))
+    .filter((k) => canKind(k.key))
     .filter((k) => !(isSportsAdmin && (k.key === "student" || k.key === "teacher")))
-    .filter((k) => !(k.key === "admin" && !isSuper));  // Only Super Admin can manage Sports Admins
+    .filter((k) => !(k.key === "admin" && !isSuper))
+    .filter((k) => !(k.key === "parent" && !isSuper && user.role !== "principal" && user.role !== "vice_principal"));
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

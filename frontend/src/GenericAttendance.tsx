@@ -37,6 +37,7 @@ export default function Attendance() {
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [people, setPeople] = useState<any[]>([]);
   const [marks, setMarks] = useState<Record<string, "present" | "absent" | "late" | "leave">>({});
+  const [session, setSession] = useState<string>("morning");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -90,8 +91,9 @@ export default function Attendance() {
       const { data } = await api.get("/people", { params });
       setPeople(data);
       const today = new Date().toISOString().slice(0, 10);
-      const attParams: any = { date: today, kind };
-      if (group) attParams.group = group;
+      const attParams: any = { date: today, kind, session };
+      if (kind === "student" && sectionId) attParams.section_id = sectionId;
+      else if (group) attParams.group = group;
       const att = await api.get("/attendance", { params: attParams });
       const m: any = {};
       // Mobile: exception-based marking — everyone defaults to Present
@@ -99,7 +101,7 @@ export default function Attendance() {
       att.data.forEach((r: any) => { m[r.person_id] = r.status; });
       setMarks(m);
     } finally { setLoading(false); }
-  }, [kind, group, sectionId, isMobile]);
+  }, [kind, group, sectionId, session, isMobile]);
 
   useEffect(() => { loadPeople(); }, [loadPeople]);
 
@@ -133,7 +135,7 @@ export default function Attendance() {
         date: today,
         kind,
         group,
-        session: null,
+        session,
         sport: null,
         marks: Object.entries(marks).map(([person_id, status]) => ({ person_id, status })),
       };
@@ -168,6 +170,19 @@ export default function Attendance() {
           >
             <Feather name={k.icon as any} size={14} color={kind === k.key ? "#fff" : k.color} />
             <Text style={[s.kindText, { color: kind === k.key ? "#fff" : k.color }]}>{k.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.hScroll} contentContainerStyle={s.groupRow}>
+        {(["morning", "afternoon", "evening"] as const).map((sess) => (
+          <TouchableOpacity
+            key={sess}
+            testID={`session-${sess}`}
+            onPress={() => setSession(sess)}
+            style={[s.groupChip, session === sess && s.groupChipActive]}
+          >
+            <Text style={[s.groupText, session === sess && { color: "#fff" }]}>{sess}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>

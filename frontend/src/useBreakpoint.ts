@@ -29,5 +29,8 @@ export function useBreakpoint() {
     isTablet: bp === "tablet",
     isDesktop: bp === "desktop",
     isWide: bp !== "mobile",
+    /** Max content width for readable tablet/desktop layouts */
+    contentMaxWidth: bp === "desktop" ? 1200 : bp === "tablet" ? 960 : undefined,
+    horizontalPadding: bp === "mobile" ? 16 : bp === "tablet" ? 20 : 24,
   };
 }

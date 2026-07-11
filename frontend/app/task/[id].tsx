@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, useAuth, PRIORITY_COLORS, STATUS_COLORS } from "../../src/auth";
 
-const STATUSES = ["assigned", "in_progress", "completed", "delayed", "reviewed"] as const;
+const STATUSES = ["open", "in_progress", "blocked", "completed", "cancelled"] as const;
 
 export default function TaskDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -59,7 +59,10 @@ export default function TaskDetail() {
           {task.description ? <Text style={s.desc}>{task.description}</Text> : null}
           <View style={s.metaCard}>
             <MetaRow icon="user" label="Created by" value={task.created_by_name} />
-            {task.deadline && <MetaRow icon="calendar" label="Deadline" value={new Date(task.deadline).toLocaleString()} />}
+            {task.assignee_name && <MetaRow icon="user-check" label="Assignee" value={task.assignee_name} />}
+            {task.entity_id && <MetaRow icon="layers" label="Entity" value={task.entity_id.toUpperCase()} />}
+            {(task.due_date || task.deadline) && <MetaRow icon="calendar" label="Due date" value={new Date(task.due_date || task.deadline).toLocaleString()} />}
+            {task.completed_at && <MetaRow icon="check-circle" label="Completed" value={new Date(task.completed_at).toLocaleString()} />}
             <MetaRow icon="clock" label="Created" value={new Date(task.created_at).toLocaleString()} />
           </View>
 

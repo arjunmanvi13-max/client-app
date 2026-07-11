@@ -32,9 +32,9 @@ const GRP_MANAGEMENT: NavGroup = {
   icon: "pie-chart",
   items: [
     { key: "dashboard", label: "Dashboard", icon: "home", href: "/(tabs)/dashboard", match: (p) => p.startsWith("/(tabs)/dashboard") || p === "/" || p === "/dashboard" },
-    { key: "reports", label: "Reports", icon: "bar-chart-2", href: "/reports", match: (p) => p.startsWith("/reports"), roles: ["super_admin", "admin"] },
+    { key: "reports", label: "Reports", icon: "bar-chart-2", href: "/reports", match: (p) => p.startsWith("/reports"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
     { key: "tasks", label: "Task Tracker", icon: "check-square", href: "/(tabs)/tasks", match: (p) => p.startsWith("/(tabs)/tasks") || p.startsWith("/task") || p === "/tasks" },
-    { key: "approvals", label: "Approvals", icon: "shield", href: "/admin/approvals", match: (p) => p.startsWith("/admin/approvals"), roles: ["super_admin"] },
+    { key: "approvals", label: "Approvals", icon: "shield", href: "/admin/approvals", match: (p) => p.startsWith("/admin/approvals"), roles: ["super_admin", "admin", "principal"] },
   ],
 };
 
@@ -59,9 +59,9 @@ const GRP_FINANCE: NavGroup = {
   label: "Financials",
   icon: "credit-card",
   items: [
-    { key: "fees", label: "Fees", icon: "credit-card", href: "/fees", match: (p) => p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.includes("overdue"), roles: ["super_admin", "admin"] },
-    { key: "collect", label: "Collect Fees", icon: "inbox", href: "/fees/collection", match: (p) => p.startsWith("/fees/collection"), roles: ["super_admin", "admin"] },
-    { key: "defaulters", label: "Defaulters", icon: "alert-triangle", href: "/fees?tab=overdue", match: (p) => p.startsWith("/fees") && p.includes("overdue"), roles: ["super_admin", "admin"] },
+    { key: "fees", label: "Fees", icon: "credit-card", href: "/fees", match: (p) => p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.includes("overdue"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
+    { key: "collect", label: "Collect Fees", icon: "inbox", href: "/fees/collection", match: (p) => p.startsWith("/fees/collection"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
+    { key: "defaulters", label: "Defaulters", icon: "alert-triangle", href: "/fees?tab=overdue", match: (p) => p.startsWith("/fees") && p.includes("overdue"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
   ],
 };
 
@@ -72,6 +72,10 @@ const GRP_OPERATIONS: NavGroup = {
   icon: "layers",
   items: [
     { key: "attendance", label: "Attendance", icon: "user-check", href: "/(tabs)/attendance", match: (p) => p.startsWith("/(tabs)/attendance") || p === "/attendance" || p === "/staff-attendance" || p === "/coach-attendance" },
+    { key: "coach-assessments", label: "Player Assessments", icon: "clipboard", href: "/coach/assessments", match: (p) => p.startsWith("/coach/assessments"), roles: ["coach", "admin", "super_admin"] },
+    { key: "attendance-reports", label: "Attendance Reports", icon: "bar-chart", href: "/admin/attendance", match: (p) => p.startsWith("/admin/attendance"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
+    { key: "marks", label: "Enter Marks", icon: "edit-3", href: "/academic/marks", match: (p) => p.startsWith("/academic/marks"), roles: ["super_admin", "principal", "vice_principal", "teacher"], pwsOnly: true },
+    { key: "report-cards", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards") || p.startsWith("/report-cards"), roles: ["super_admin", "principal", "vice_principal", "teacher"], pwsOnly: true },
     { key: "hostel", label: "Hostel", icon: "moon", href: "/(tabs)/hostel", match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel", roles: ["super_admin", "warden"] },
     { key: "bulk", label: "Bulk Upload", icon: "upload-cloud", href: "/admin/bulk-upload", match: (p) => p.startsWith("/admin/bulk-upload"), roles: ["super_admin", "admin"] },
   ],
@@ -85,6 +89,11 @@ const GRP_SYSTEM: NavGroup = {
   items: [
     { key: "perms", label: "Permissions", icon: "key", href: "/admin/permissions", match: (p) => p.startsWith("/admin/permissions"), roles: ["super_admin"] },
     { key: "academic", label: "Academic Structure", icon: "book-open", href: "/admin/academic", match: (p) => p.startsWith("/admin/academic"), roles: ["super_admin", "principal", "vice_principal"] },
+    { key: "marks-admin", label: "Marks & Assessment", icon: "edit-3", href: "/admin/marks", match: (p) => p.startsWith("/admin/marks"), roles: ["super_admin", "principal", "vice_principal"], pwsOnly: true },
+    { key: "report-cards-admin", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards"), roles: ["super_admin", "principal", "vice_principal"], pwsOnly: true },
+    { key: "coach-asm-admin", label: "Coach Assessments", icon: "clipboard", href: "/admin/coach-assessments", match: (p) => p.startsWith("/admin/coach-assessments"), roles: ["super_admin", "admin"] },
+    { key: "invoices", label: "Invoice Engine", icon: "file-text", href: "/admin/invoices", match: (p) => p.startsWith("/admin/invoices"), roles: ["super_admin", "principal", "vice_principal"] },
+    { key: "fee-catalog", label: "Fee Catalogue", icon: "layers", href: "/admin/fee-catalog", match: (p) => p.startsWith("/admin/fee-catalog"), roles: ["super_admin", "principal", "vice_principal"] },
     { key: "settings", label: "Settings", icon: "settings", href: "/(tabs)/profile", match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") },
     { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications") },
   ],

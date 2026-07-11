@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -9,9 +9,10 @@ const META: Record<string, { label: string; tint: string; isUser: boolean; subti
   admin: { label: "Sports Admins", tint: "#7C3AED", isUser: true, subtitle: (u) => `${u.email || u.mobile || ""} · ${u.organization || "ALPHA"}` },
   coach: { label: "Coaches", tint: "#EA580C", isUser: true, subtitle: (u) => `${u.email} · ${u.department || u.organization}` },
   teacher: { label: "Teachers", tint: "#1E40AF", isUser: true, subtitle: (u) => `${u.email} · ${u.department || u.organization}` },
-  player: { label: "Players", tint: "#16A34A", isUser: false, subtitle: (p) => `${p.group || ""}${p.sport ? " · " + p.sport : ""}${p.centre ? " · " + p.centre : ""}` },
-  student: { label: "Students", tint: "#2563EB", isUser: false, subtitle: (p) => `${p.group || ""} · ${p.organization}` },
-  staff: { label: "Staff", tint: "#0EA5E9", isUser: false, subtitle: (p) => `${p.group || "Staff"} · ${p.organization}${p.centre ? " · " + p.centre : ""}` },
+  parent: { label: "Parents / Guardians", tint: "#0891B2", isUser: true, subtitle: (u) => `${u.email || u.mobile || ""} · ${u.organization || "PWS"}` },
+  player: { label: "Players", tint: "#16A34A", isUser: false, subtitle: (p) => `${p.player_id || ""}${p.player_id ? " · " : ""}${p.group || ""}${p.sport ? " · " + p.sport : ""}${p.centre ? " · " + p.centre : ""}` },
+  student: { label: "Students", tint: "#2563EB", isUser: false, subtitle: (p) => `${p.admission_number || ""}${p.admission_number ? " · " : ""}${p.group || ""}${p.roll_number ? " · Roll " + p.roll_number : ""}` },
+  staff: { label: "Staff", tint: "#0EA5E9", isUser: false, subtitle: (p) => `${p.employee_id || ""}${p.employee_id ? " · " : ""}${p.group || p.department || "Staff"} · ${p.organization}${p.centre ? " · " + p.centre : ""}` },
 };
 
 export default function ManageList() {
@@ -20,13 +21,20 @@ export default function ManageList() {
   const { user } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState("");
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [sectionFilter, setSectionFilter] = useState<string | null>(null);
+  const [centreFilter, setCentreFilter] = useState<string | null>(null);
+  const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"];
   const meta = META[kind || ""];
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal";
   const isPlayer = kind === "player";
+  const isStudent = kind === "student";
+  const isTeacher = user?.role === "teacher";
   const canAdd = (() => {
+    if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
     if (!meta || meta.isUser) return (user?.can_manage || []).includes(kind || "");
     if (kind === "student") return !!user?.permissions?.add_students;
@@ -34,31 +42,46 @@ export default function ManageList() {
     return (user?.can_manage || []).includes(kind || "");
   })();
 
+  useEffect(() => {
+    if (isStudent) {
+      api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => setSections([]));
+    }
+  }, [isStudent]);
+
   const load = useCallback(async () => {
     if (!meta) return;
     setLoading(true);
     try {
       if (meta.isUser) {
         const { data } = await api.get("/users", { params: { role: kind } });
-        setItems(data);
+        let rows = data;
+        if (search.trim()) {
+          const q = search.trim().toLowerCase();
+          rows = rows.filter((u: any) =>
+            (u.name || "").toLowerCase().includes(q)
+            || (u.email || "").toLowerCase().includes(q)
+            || (u.mobile || "").includes(q)
+          );
+        }
+        setItems(rows);
       } else {
         const params: any = { kind };
+        if (search.trim()) params.q = search.trim();
         if (isPlayer && showDeactivated) params.include_deactivated = true;
+        if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
+        if (isPlayer && centreFilter) params.centre = centreFilter;
+        if (isStudent && sectionFilter) params.section_id = sectionFilter;
         const { data } = await api.get("/people", { params });
         setItems(data);
       }
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, showDeactivated]);
+  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (!meta) return null;
 
-  const visibleItems = isPlayer && typeFilter
-    ? items.filter((it) => typeFilter === "Hostel"
-        ? (it.player_type === "Hostel" || it.player_type === "Hostel Only")
-        : it.player_type === typeFilter)
-    : items;
+  const visibleItems = items;
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -76,13 +99,31 @@ export default function ManageList() {
         </TouchableOpacity>
       </View>
 
+      <View style={s.searchRow}>
+        <Feather name="search" size={16} color="#94A3B8" />
+        <TextInput
+          testID="people-search"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search name, ID, phone…"
+          placeholderTextColor="#94A3B8"
+          style={s.searchInput}
+          onSubmitEditing={load}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => { setSearch(""); }}>
+            <Feather name="x" size={16} color="#94A3B8" />
+          </TouchableOpacity>
+        )}
+      </View>
+
       {isPlayer && isAdmin && (
         <View style={s.toggleRow}>
           <TouchableOpacity testID="toggle-active" style={[s.togglePill, !showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(false)}>
             <Text style={[s.toggleTxt, !showDeactivated && s.toggleTxtActive]}>Active</Text>
           </TouchableOpacity>
           <TouchableOpacity testID="toggle-deactivated" style={[s.togglePill, showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(true)}>
-            <Text style={[s.toggleTxt, showDeactivated && s.toggleTxtActive]}>All (incl. deactivated)</Text>
+            <Text style={[s.toggleTxt, showDeactivated && s.toggleTxtActive]}>All (incl. inactive)</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -97,6 +138,24 @@ export default function ManageList() {
               <Text style={[s.toggleTxt, typeFilter === t && s.toggleTxtActive]}>{t}</Text>
             </TouchableOpacity>
           ))}
+          {["Balua", "Harding Park"].map((c) => (
+            <TouchableOpacity key={c} testID={`centre-${c}`} style={[s.togglePill, centreFilter === c && s.togglePillActive]} onPress={() => setCentreFilter(centreFilter === c ? null : c)}>
+              <Text style={[s.toggleTxt, centreFilter === c && s.toggleTxtActive]}>{c}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {isStudent && sections.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
+          <TouchableOpacity style={[s.togglePill, !sectionFilter && s.togglePillActive]} onPress={() => setSectionFilter(null)}>
+            <Text style={[s.toggleTxt, !sectionFilter && s.toggleTxtActive]}>All Sections</Text>
+          </TouchableOpacity>
+          {sections.map((sec) => (
+            <TouchableOpacity key={sec.id} style={[s.togglePill, sectionFilter === sec.id && s.togglePillActive]} onPress={() => setSectionFilter(sectionFilter === sec.id ? null : sec.id)}>
+              <Text style={[s.toggleTxt, sectionFilter === sec.id && s.toggleTxtActive]}>{sec.label}</Text>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       )}
 
@@ -106,8 +165,8 @@ export default function ManageList() {
            <View style={s.empty}>
              <Feather name="users" size={36} color="#94A3B8" />
              <Text style={s.emptyText}>
-               {isPlayer && typeFilter
-                 ? `No ${typeFilter} players${!showDeactivated ? " (active)" : ""}.`
+               {search.trim()
+                 ? `No matches for "${search.trim()}".`
                  : `No ${meta.label.toLowerCase()} yet. Tap Add to create one.`}
              </Text>
            </View>
@@ -126,7 +185,7 @@ export default function ManageList() {
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Text style={s.name}>{it.name}</Text>
-                {isDeact && <View style={s.deactPill}><Text style={s.deactPillTxt}>Deactivated</Text></View>}
+                {isDeact && <View style={s.deactPill}><Text style={s.deactPillTxt}>Inactive</Text></View>}
               </View>
               <Text style={s.metaTxt}>{meta.subtitle(it)}</Text>
               {meta.isUser && it.can_manage?.length > 0 && (
@@ -148,31 +207,33 @@ export default function ManageList() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4F5F7" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 16, paddingBottom: 4, gap: 8 },
+  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 8, gap: 8 },
   backBtn: { padding: 8 },
-  h1: { fontSize: 24, fontWeight: "700", color: "#0F172A", letterSpacing: -0.5 },
+  h1: { fontSize: 22, fontWeight: "800", color: "#0F172A" },
   sub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
-  addText: { color: "#fff", fontWeight: "700" },
-  scroll: { padding: 20 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
-  avatar: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center" },
-  avatarTxt: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  name: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
-  metaTxt: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  permRow: { flexDirection: "row", gap: 4, marginTop: 6, flexWrap: "wrap" },
-  permPill: { backgroundColor: "#DBEAFE", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  permTxt: { color: "#1E40AF", fontSize: 9, fontWeight: "700", textTransform: "uppercase" },
-  empty: { padding: 40, alignItems: "center", gap: 8 },
-  emptyText: { color: "#64748B", textAlign: "center" },
-  toggleRow: { flexDirection: "row", paddingHorizontal: 20, paddingTop: 4, paddingBottom: 8, gap: 8 },
-  typeScroll: { flexGrow: 0 },
-  typeRow: { flexDirection: "row", paddingHorizontal: 20, paddingBottom: 8, gap: 8 },
-  togglePill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
-  togglePillActive: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
+  addBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  addText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 20, marginTop: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0" },
+  searchInput: { flex: 1, fontSize: 14, color: "#0F172A", padding: 0 },
+  toggleRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 10 },
+  typeScroll: { maxHeight: 44, marginTop: 8 },
+  typeRow: { paddingHorizontal: 20, gap: 8, alignItems: "center" },
+  togglePill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#fff" },
+  togglePillActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
   toggleTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
   toggleTxtActive: { color: "#fff" },
-  rowDeact: { opacity: 0.65, borderColor: "#E2E8F0", backgroundColor: "#F8FAFC" },
+  scroll: { padding: 20, paddingBottom: 40 },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
+  rowDeact: { opacity: 0.65 },
+  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  avatarTxt: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  name: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
+  metaTxt: { fontSize: 12, color: "#64748B", marginTop: 2 },
   deactPill: { backgroundColor: "#F1F5F9", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  deactPillTxt: { color: "#64748B", fontSize: 10, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
+  deactPillTxt: { fontSize: 10, fontWeight: "800", color: "#64748B" },
+  permRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 6 },
+  permPill: { backgroundColor: "#EEF2FF", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  permTxt: { fontSize: 10, fontWeight: "700", color: "#1E40AF" },
+  empty: { alignItems: "center", padding: 40, gap: 8 },
+  emptyText: { color: "#64748B", textAlign: "center", fontSize: 13 },
 });
