@@ -26,6 +26,13 @@ export default function ManageList() {
   const meta = META[kind || ""];
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isPlayer = kind === "player";
+  const canAdd = (() => {
+    if (isAdmin) return true;
+    if (!meta || meta.isUser) return (user?.can_manage || []).includes(kind || "");
+    if (kind === "student") return !!user?.permissions?.add_students;
+    if (kind === "player") return !!user?.permissions?.add_players;
+    return (user?.can_manage || []).includes(kind || "");
+  })();
 
   const load = useCallback(async () => {
     if (!meta) return;
@@ -63,7 +70,7 @@ export default function ManageList() {
           <Text style={s.h1}>{meta.label}</Text>
           <Text style={s.sub}>{visibleItems.length} record{visibleItems.length !== 1 ? "s" : ""}</Text>
         </View>
-        <TouchableOpacity testID={`add-${kind}`} style={[s.addBtn, { backgroundColor: meta.tint }]} onPress={() => router.push(`/manage/${kind}/new`)}>
+        <TouchableOpacity testID={`add-${kind}`} style={[s.addBtn, { backgroundColor: meta.tint }, !canAdd && { opacity: 0.45 }]} disabled={!canAdd} onPress={() => router.push(`/manage/${kind}/new`)}>
           <Feather name="plus" size={18} color="#fff" />
           <Text style={s.addText}>Add</Text>
         </TouchableOpacity>

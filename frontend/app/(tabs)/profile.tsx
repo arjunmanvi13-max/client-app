@@ -17,6 +17,8 @@ export default function Profile() {
 
   if (!user) return null;
 
+  const canManageRosters = user.role === "admin" || user.role === "super_admin" || (user.role !== "teacher" && (user.can_manage || []).length > 0);
+
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
@@ -56,12 +58,14 @@ export default function Profile() {
         </View>
 
         <View style={s.menu}>
-          {(user.role === "admin" || user.role === "super_admin" || (user.can_manage || []).length > 0) && (
+          {canManageRosters && (
             <Row icon="user-plus" label="Manage users & rosters" onPress={() => router.push("/manage")} testID="menu-manage" />
           )}
           <Row icon="key" label="Change password" onPress={() => setPwdOpen(true)} testID="menu-change-pwd" />
           <Row icon="bell" label="Notifications" onPress={() => router.push("/notifications")} testID="menu-notif" />
-          <Row icon="users" label="Directory" onPress={() => router.push("/directory")} testID="menu-dir" />
+          {user.role !== "teacher" && (
+            <Row icon="users" label="Directory" onPress={() => router.push("/directory")} testID="menu-dir" />
+          )}
           <Row icon="info" label="About PWS & ALPHA" onPress={() => Alert.alert("PWS & ALPHA", "Unified task & attendance system v1.0")} testID="menu-about" />
         </View>
 

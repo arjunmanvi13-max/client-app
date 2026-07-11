@@ -7,9 +7,9 @@ import { api, useAuth } from "./auth";
 import { useBreakpoint } from "./useBreakpoint";
 
 const KIND_OPTIONS = [
-  { key: "student", label: "Students", icon: "book", color: "#2563EB" },
-  { key: "player", label: "Players", icon: "activity", color: "#16A34A" },
-  { key: "staff", label: "Staff", icon: "users", color: "#0EA5E9" },
+  { key: "student", label: "Students", icon: "book", color: "#2563EB", perm: "mark_student_attendance" },
+  { key: "player", label: "Players", icon: "activity", color: "#16A34A", perm: "mark_player_attendance" },
+  { key: "staff", label: "Staff", icon: "users", color: "#0EA5E9", perm: "mark_staff_attendance" },
 ];
 const STATUSES: { key: "present" | "absent" | "late" | "leave"; label: string; color: string }[] = [
   { key: "present", label: "P", color: "#10B981" },
@@ -38,10 +38,19 @@ export default function Attendance() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const isPrivileged = user?.role === "admin" || user?.role === "super_admin";
+  const kindOptions = KIND_OPTIONS.filter((k) => isPrivileged || !!user?.permissions?.[k.perm]);
+
   useEffect(() => {
     if (user?.role === "coach") setKind("player");
     if (user?.role === "teacher") setKind("student");
   }, [user]);
+
+  useEffect(() => {
+    if (kindOptions.length > 0 && !kindOptions.some((k) => k.key === kind)) {
+      setKind(kindOptions[0].key);
+    }
+  }, [kindOptions, kind]);
 
   useEffect(() => {
     (async () => {
@@ -124,7 +133,7 @@ export default function Attendance() {
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.hScroll} contentContainerStyle={s.kindRow}>
-        {KIND_OPTIONS.map((k) => (
+        {kindOptions.map((k) => (
           <TouchableOpacity
             key={k.key}
             testID={`kind-${k.key}`}

@@ -12,6 +12,7 @@ type NavItem = {
   href: string;
   match: (p: string) => boolean;
   roles?: string[];          // allowed roles. If absent, all.
+  excludeRoles?: string[];   // hidden for these roles
   needsManage?: boolean;
   needsCoachAttendance?: boolean;
   pwsOnly?: boolean;         // hidden when org === ALPHA (Sports Admin / ALPHA-only super admin scope)
@@ -43,12 +44,12 @@ const GRP_PEOPLE: NavGroup = {
   label: "People & Directory",
   icon: "users",
   items: [
-    { key: "coaches", label: "Coaches", icon: "award", href: "/manage/coach", match: (p) => p.startsWith("/manage/coach") },
-    { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player") },
-    { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), pwsOnly: true },
-    { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), pwsOnly: true },
-    { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff") },
-    { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory") },
+    { key: "coaches", label: "Coaches", icon: "award", href: "/manage/coach", match: (p) => p.startsWith("/manage/coach"), excludeRoles: ["teacher"] },
+    { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player"), excludeRoles: ["teacher"] },
+    { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), pwsOnly: true, excludeRoles: ["teacher"] },
+    { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), pwsOnly: true, excludeRoles: ["teacher"] },
+    { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff"), excludeRoles: ["teacher"] },
+    { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory"), excludeRoles: ["teacher"] },
   ],
 };
 
@@ -97,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
 ];
 
 const isItemAllowed = (n: NavItem, user: any) => {
+  if (n.excludeRoles?.includes(user.role)) return false;
   if (n.roles && !n.roles.includes(user.role)) return false;
   // Hide PWS-only items for Sports Admin (ALPHA org) — they shouldn't see Teachers/Students
   if (n.pwsOnly && user.organization === "ALPHA") return false;
