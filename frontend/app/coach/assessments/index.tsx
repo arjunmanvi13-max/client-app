@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { toISODate } from "../../../src/dateFormat";
 
 type PlayerRow = {
   player_id: string;
@@ -24,7 +25,7 @@ export default function CoachAssessmentEntry() {
   const [centre, setCentre] = useState<"Balua" | "Harding Park">("Balua");
   const [sport, setSport] = useState<"Cricket" | "Football">("Cricket");
   const [slot, setSlot] = useState<"Morning" | "Evening">("Morning");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => toISODate());
   const [definitions, setDefinitions] = useState<any[]>([]);
   const [definitionId, setDefinitionId] = useState<string | null>(null);
   const [definition, setDefinition] = useState<any>(null);

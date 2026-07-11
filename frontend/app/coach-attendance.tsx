@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../src/auth";
+import { formatDate, toISODate } from "../src/dateFormat";
 
 type Coach = {
   id: string;
@@ -14,11 +15,6 @@ type Coach = {
   assigned_sports?: string[];
 };
 
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-
 export default function CoachAttendance() {
   const { user } = useAuth();
   const router = useRouter();
@@ -27,7 +23,7 @@ export default function CoachAttendance() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [date] = useState(todayISO());
+  const [date] = useState(toISODate());
 
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isHeadCoach = user?.role === "coach" && user?.coach_type === "head";
@@ -83,7 +79,7 @@ export default function CoachAttendance() {
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="ca-back"><Feather name="chevron-left" size={22} color="#0F172A" /></TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.overline}>COACH ATTENDANCE · {date}</Text>
+          <Text style={s.overline}>COACH ATTENDANCE · {formatDate(date)}</Text>
           <Text style={s.h1}>{canMark ? "Mark coaches" : "Today's coaches"}</Text>
           {!canMark && <Text style={s.sub}>View-only</Text>}
         </View>

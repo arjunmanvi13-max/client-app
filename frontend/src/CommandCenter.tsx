@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
+import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 
 const SEVERITY: Record<string, { tint: string; bg: string; icon: any }> = {
@@ -54,7 +55,7 @@ export default function CommandCenter() {
         <View style={s.header}>
           <Image source={require("../assets/alpha-sports-logo.png")} style={s.headerLogo} resizeMode="contain" />
           <View style={{ flex: 1 }}>
-            <Text style={s.overline}>{user.role === "admin" ? "SPORTS ADMIN" : "COMMAND CENTRE"} · {data.date}</Text>
+            <Text style={s.overline}>{user.role === "admin" ? "SPORTS ADMIN" : "COMMAND CENTRE"} · {formatDate(data.date)}</Text>
             <Text style={s.h1}>Hello, {user.name.split(" ")[0]}</Text>
             <Text style={s.sub}>{user.role === "admin" ? "ALPHA Sports Academy operations" : "Live snapshot across PWS & ALPHA"}</Text>
           </View>

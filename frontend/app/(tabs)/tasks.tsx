@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, PRIORITY_COLORS, STATUS_COLORS } from "../../src/auth";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
+import { formatDate } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
 
 const FILTERS: { key: "all" | "mine" | "high" | "pending"; label: string }[] = [
@@ -108,7 +109,7 @@ export default function Tasks() {
                 {t.due_date && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <Feather name="calendar" size={12} color="#94A3B8" />
-                    <Text style={s.meta}>{new Date(t.due_date).toLocaleDateString()}</Text>
+                    <Text style={s.meta}>{formatDate(t.due_date)}</Text>
                   </View>
                 )}
                 {t.entity_id && (

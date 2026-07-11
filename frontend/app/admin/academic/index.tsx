@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate, DATE_PLACEHOLDER, parseToISO } from "../../../src/dateFormat";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
 
@@ -39,8 +40,8 @@ export default function AcademicAdmin() {
   const [teachers, setTeachers] = useState<any[]>([]);
 
   const [newYearName, setNewYearName] = useState("2026-27");
-  const [newYearStart, setNewYearStart] = useState("2026-04-01");
-  const [newYearEnd, setNewYearEnd] = useState("2027-03-31");
+  const [newYearStart, setNewYearStart] = useState("01/04/2026");
+  const [newYearEnd, setNewYearEnd] = useState("31/03/2027");
   const [gradeName, setGradeName] = useState("");
   const [sectionGradeId, setSectionGradeId] = useState<string | null>(null);
   const [sectionName, setSectionName] = useState("");
@@ -103,8 +104,8 @@ export default function AcademicAdmin() {
     try {
       await api.post("/academic/years", {
         name: newYearName.trim(),
-        start_date: newYearStart,
-        end_date: newYearEnd,
+        start_date: parseToISO(newYearStart) || newYearStart,
+        end_date: parseToISO(newYearEnd) || newYearEnd,
         entity_id: "pws",
       });
       setNewYearName("");
@@ -257,7 +258,7 @@ export default function AcademicAdmin() {
                   <View key={y.id} style={s.yearRow} testID={`year-${y.id}`}>
                     <TouchableOpacity style={{ flex: 1 }} onPress={() => setSelectedYearId(y.id)}>
                       <Text style={[s.yearName, selectedYearId === y.id && { color: "#1E40AF" }]}>{y.name}</Text>
-                      <Text style={s.yearMeta}>{y.start_date || "—"} → {y.end_date || "—"}</Text>
+                      <Text style={s.yearMeta}>{formatDate(y.start_date)} → {formatDate(y.end_date)}</Text>
                     </TouchableOpacity>
                     <View style={[s.statusPill, { backgroundColor: (STATUS_COLORS[y.status] || "#64748B") + "22" }]}>
                       <Text style={[s.statusPillTxt, { color: STATUS_COLORS[y.status] }]}>{y.status}</Text>
@@ -284,8 +285,8 @@ export default function AcademicAdmin() {
                 <Text style={[s.cardTitle, { marginTop: 16 }]}>Create academic year</Text>
                 <TextInput value={newYearName} onChangeText={setNewYearName} placeholder="e.g. 2026-27" style={s.input} placeholderTextColor="#94A3B8" />
                 <View style={s.row}>
-                  <TextInput value={newYearStart} onChangeText={setNewYearStart} placeholder="Start YYYY-MM-DD" style={s.input} placeholderTextColor="#94A3B8" />
-                  <TextInput value={newYearEnd} onChangeText={setNewYearEnd} placeholder="End YYYY-MM-DD" style={s.input} placeholderTextColor="#94A3B8" />
+                  <TextInput value={newYearStart} onChangeText={setNewYearStart} placeholder={`Start ${DATE_PLACEHOLDER}`} style={s.input} placeholderTextColor="#94A3B8" />
+                  <TextInput value={newYearEnd} onChangeText={setNewYearEnd} placeholder={`End ${DATE_PLACEHOLDER}`} style={s.input} placeholderTextColor="#94A3B8" />
                 </View>
                 <TouchableOpacity testID="btn-create-year" style={s.btn} onPress={createYear}>
                   <Text style={s.btnTxt}>Create year</Text>

@@ -11,6 +11,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { colors } from "./theme";
+import { formatDateTime } from "./dateFormat";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
@@ -242,7 +243,7 @@ export function AlphaERPDashboard() {
               <TaskCubeCard testID="cube-task-followup" title="Follow-ups" count={data.tasks.followup} tint="#F59E0B" icon="message-circle" width={cols === 1 ? "100%" : "18%"} />
             </View>
 
-            <Text style={s.lastUpdated}>Last updated: {new Date(data.generated_at).toLocaleTimeString()}</Text>
+            <Text style={s.lastUpdated}>Last updated: {formatDateTime(data.generated_at)}</Text>
           </>
         )}
 

@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate, DATE_PLACEHOLDER, dateHelpText, toISODate, parseToISO, isValidDisplayDate } from "../../../src/dateFormat";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -76,8 +77,9 @@ const PWS_RATE_CARD: Record<"Day Scholar" | "Hostel", { registration: number; mo
 };
 
 function calcAge(dob: string): number | null {
-  if (!dob || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
-  const [yy, mm, dd] = dob.split("-").map(Number);
+  const iso = parseToISO(dob) || dob;
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const [yy, mm, dd] = iso.split("-").map(Number);
   const d = new Date(yy, mm - 1, dd);
   if (isNaN(d.getTime())) return null;
   const today = new Date();
@@ -86,17 +88,6 @@ function calcAge(dob: string): number | null {
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) yrs--;
   return Math.max(yrs, 0);
 }
-function dobDisplay(dob: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return dob;
-  const [yy, mm, dd] = dob.split("-");
-  return `${dd}-${mm}-${yy}`;
-}
-
-function todayISO() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-
 // React Native Web's Alert.alert doesn't show buttons. Use window.confirm on web.
 function confirmAction(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === "web") {
@@ -209,7 +200,7 @@ export default function ManageEdit() {
   const [assignedCoachId, setAssignedCoachId] = useState<string | null>(null);
   const [centre, setCentre] = useState<"Balua" | "Harding Park" | "">("");
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
-  const [dateOfAdmission, setDateOfAdmission] = useState<string>(isNew && isPlayerKind ? todayISO() : "");
+  const [dateOfAdmission, setDateOfAdmission] = useState<string>(isNew && isPlayerKind ? formatDate(toISODate()) : "");
   const [dob, setDob] = useState<string>("");
   const [transportFeeMonthly, setTransportFeeMonthly] = useState<string>("");
   const [hostelFeeOverride, setHostelFeeOverride] = useState<string>("");
@@ -324,12 +315,12 @@ export default function ManageEdit() {
             setCentre(p.centre || "");
             // Migrate old "Hostel" value to "Hostel Only" for display
             setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
-            setDob(p.dob || "");
+            setDob(formatDate(p.dob || ""));
             setTransportFeeMonthly(p.transport_fee_monthly ? String(p.transport_fee_monthly) : "");
             setHostelFeeOverride(p.hostel_fee_override ? String(p.hostel_fee_override) : "");
             setMonthlyFeeOverride(p.monthly_fee_override ? String(p.monthly_fee_override) : "");
             setRegistrationFeeOverride(p.registration_fee_override ? String(p.registration_fee_override) : "");
-            setDateOfAdmission(p.date_of_admission || "");
+            setDateOfAdmission(formatDate(p.date_of_admission || ""));
             setStatus(p.status === "deactivated" ? "deactivated" : "active");
             setParentUserIds(p.parent_user_ids || []);
           }
@@ -406,7 +397,7 @@ export default function ManageEdit() {
           father_name: guardianName || fatherName || null,
           guardian_phone: guardianPhone || null,
           age: dob ? calcAge(dob) : (age ? parseInt(age, 10) : null),
-          dob: dob || null,
+          dob: dob ? (parseToISO(dob) || dob) : null,
           skill_level: skillLevel || null,
           mobile: mobile || null,
           locality: locality || null,
@@ -414,7 +405,7 @@ export default function ManageEdit() {
           slot: slot || null,
           centre: centre || null,
           player_type: playerType || null,
-          date_of_admission: dateOfAdmission || null,
+          date_of_admission: dateOfAdmission ? (parseToISO(dateOfAdmission) || dateOfAdmission) : null,
           transport_fee_monthly: transportFeeMonthly ? parseInt(transportFeeMonthly, 10) : 0,
           hostel_fee_override: isHostelType && hostelFeeOverride ? parseInt(hostelFeeOverride, 10) : null,
         };
@@ -427,7 +418,7 @@ export default function ManageEdit() {
         if (isNew) {
           const created = await api.post("/people", body);
           // After creating the player, create any ad-hoc fee heads queued during admission
-          const validAdhoc = adhocFees.filter((f) => f.fee_type && parseInt(f.amount || "0", 10) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(f.due_date));
+          const validAdhoc = adhocFees.filter((f) => f.fee_type && parseInt(f.amount || "0", 10) > 0 && isValidDisplayDate(f.due_date));
           if (validAdhoc.length > 0 && isSuper && created?.data?.id) {
             try {
               for (const f of validAdhoc) {
@@ -435,7 +426,7 @@ export default function ManageEdit() {
                   player_id: created.data.id,
                   fee_type: f.fee_type,
                   amount: parseInt(f.amount, 10),
-                  due_date: f.due_date,
+                  due_date: parseToISO(f.due_date) || f.due_date,
                 });
               }
             } catch (e: any) {
@@ -457,11 +448,11 @@ export default function ManageEdit() {
         if (isStudentKind) {
           body.admission_number = admissionNumber || null;
           body.roll_number = rollNumber || null;
-          body.dob = dob || null;
+          body.dob = dob ? (parseToISO(dob) || dob) : null;
         }
         if (isStudentKind && sectionId) body.section_id = sectionId;
         if (isStudentKind) {
-          body.date_of_admission = dateOfAdmission || todayISO();
+          body.date_of_admission = parseToISO(dateOfAdmission) || dateOfAdmission || toISODate();
           body.transport_fee_monthly = parseInt(transportFeeMonthly || "0", 10) || 0;
           if (isSuper && registrationFeeOverride) body.registration_fee_override = parseInt(registrationFeeOverride, 10);
           if (isSuper && monthlyFeeOverride) body.monthly_fee_override = parseInt(monthlyFeeOverride, 10);
@@ -691,21 +682,10 @@ export default function ManageEdit() {
               <Text style={s.label}>Guardian Phone</Text>
               <TextInput testID="field-guardian-phone-player" editable={!readOnly} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
               <Text style={s.label}>Date of Birth</Text>
-              {Platform.OS === "web" ? (
-                // @ts-ignore — RN Web accepts a raw <input type="date">
-                <input
-                  data-testid="field-dob"
-                  type="date"
-                  value={dob}
-                  onChange={(e: any) => setDob(e.target.value)}
-                  style={{ height: 44, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, padding: 12, marginTop: 6, fontSize: 14, fontFamily: "inherit", background: "#fff", color: "#0F172A" } as any}
-                />
-              ) : (
-                <TextInput testID="field-dob" value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" style={s.input} />
-              )}
+              <TextInput testID="field-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
               {dob && calcAge(dob) !== null && (
                 <Text style={s.dobHelp}>
-                  {dobDisplay(dob)} · Age {calcAge(dob)} years
+                  {formatDate(dob)} · Age {calcAge(dob)} years
                 </Text>
               )}
               <Text style={s.label}>Skill Level *</Text>
@@ -843,7 +823,7 @@ export default function ManageEdit() {
                         />
                         <TextInput
                           testID={`adhoc-${idx}-due`}
-                          placeholder="Due YYYY-MM-DD"
+                          placeholder={`Due ${DATE_PLACEHOLDER}`}
                           placeholderTextColor="#94A3B8"
                           value={f.due_date}
                           onChangeText={(v) => setAdhocFees((prev) => prev.map((x, i) => i === idx ? { ...x, due_date: v } : x))}
@@ -861,7 +841,7 @@ export default function ManageEdit() {
                   ))}
                   <TouchableOpacity
                     testID="adhoc-add-row"
-                    onPress={() => setAdhocFees((prev) => [...prev, { fee_type: "Uniform", amount: "", due_date: dateOfAdmission || todayISO() }])}
+                    onPress={() => setAdhocFees((prev) => [...prev, { fee_type: "Uniform", amount: "", due_date: dateOfAdmission || formatDate(toISODate()) }])}
                     style={s.adhocAddBtn}
                   >
                     <Feather name="plus" size={14} color="#0F766E" />
@@ -879,11 +859,11 @@ export default function ManageEdit() {
                 testID="field-doa"
                 value={dateOfAdmission}
                 onChangeText={setDateOfAdmission}
-                placeholder="YYYY-MM-DD"
+                placeholder={DATE_PLACEHOLDER}
                 placeholderTextColor="#94A3B8"
                 style={s.input}
               />
-              <Text style={s.help}>Format: YYYY-MM-DD (e.g. {todayISO()})</Text>
+              <Text style={s.help}>{dateHelpText()}</Text>
 
               {!isNew && isAdmin && (
                 <View style={s.statusCard}>
@@ -955,7 +935,7 @@ export default function ManageEdit() {
                     ))}
                   </View>
                   <Text style={s.label}>Date of Birth</Text>
-                  <TextInput testID="field-student-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
+                  <TextInput testID="field-student-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
                   <Text style={s.label}>Phone</Text>
                   <TextInput testID="field-student-phone" editable={!readOnly} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="Student phone" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
                   <Text style={s.label}>Email</Text>
@@ -995,7 +975,7 @@ export default function ManageEdit() {
               {isStudentKind && (
                 <>
                   <Text style={s.label}>Date of Admission *</Text>
-                  <TextInput testID="field-admission-date" value={dateOfAdmission} onChangeText={setDateOfAdmission} placeholder="YYYY-MM-DD" placeholderTextColor="#94A3B8" style={s.input} />
+                  <TextInput testID="field-admission-date" value={dateOfAdmission} onChangeText={setDateOfAdmission} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={s.input} />
                   <View style={s.feesBox} testID="fees-config">
                     <View style={s.feesBoxHeader}>
                       <Feather name="credit-card" size={14} color="#1E40AF" />

@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../src/auth";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
+import { formatDateTime } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
 
 type HistoryEntry = { action: string; user_name: string; at: string; note?: string };
@@ -141,7 +142,7 @@ export default function Approvals() {
                <Text style={s.typeTag}>{TYPE_LABELS[r.type]}</Text>
                <Text style={s.name}>{r.subject_label}</Text>
                <Text style={s.meta}>{r.entity_id?.toUpperCase() || "—"} · {r.requested_by_name}</Text>
-               <Text style={s.who}>{new Date(r.requested_at).toLocaleString()}</Text>
+               <Text style={s.who}>{formatDateTime(r.requested_at)}</Text>
                {r.reason && <Text style={s.reason}>Reason: {r.reason}</Text>}
                {(r.history || []).length > 0 && (
                  <Text style={s.who}>History: {(r.history || []).map((h) => h.action).join(" → ")}</Text>

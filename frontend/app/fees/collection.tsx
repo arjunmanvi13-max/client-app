@@ -16,6 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../../src/auth";
 import { colors } from "../../src/theme";
+import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../src/dateFormat";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
@@ -42,12 +43,6 @@ function inr(n: number) {
   return `₹${n.toLocaleString()}`;
 }
 
-function fmtMonth(p: string) {
-  if (!p || p.length < 7) return p;
-  const d = new Date(p + "-01");
-  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-}
-
 export default function FeesCollection() {
   const { user } = useAuth();
   const router = useRouter();
@@ -66,7 +61,7 @@ export default function FeesCollection() {
   const [showAdvance, setShowAdvance] = useState(false);
   const [mode, setMode] = useState<"Cash" | "Online">("Cash");
   const [referenceId, setReferenceId] = useState("");
-  const [txnDate, setTxnDate] = useState(new Date().toISOString().slice(0, 10));
+  const [txnDate, setTxnDate] = useState(formatDate(toISODate()));
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<any | null>(null);
@@ -184,7 +179,7 @@ export default function FeesCollection() {
         player_id: selectedPlayer?.id || null,
         payment_mode: mode,
         reference_id: referenceId || null,
-        transaction_date: txnDate,
+        transaction_date: parseToISO(txnDate) || txnDate,
         notes: notes || null,
       });
       setReceipt(data);
@@ -382,8 +377,8 @@ export default function FeesCollection() {
                                 {checked && <Feather name="check" size={14} color="#fff" />}
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={s.feeType}>{f.fee_type} · {fmtMonth(f.period_month)}</Text>
-                                <Text style={s.feeMeta}>Due {f.due_date}{f.is_first_month ? " · First-month rate" : ""}</Text>
+                                <Text style={s.feeType}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
+                                <Text style={s.feeMeta}>Due {formatDate(f.due_date)}{f.is_first_month ? " · First-month rate" : ""}</Text>
                               </View>
                               <Text style={s.feeAmt}>{inr(f.amount_due)}</Text>
                             </Pressable>
@@ -399,7 +394,7 @@ export default function FeesCollection() {
                   <View style={s.advanceBox}>
                     <Pressable testID="toggle-advance" onPress={() => setShowAdvance(!showAdvance)} style={s.advanceHead}>
                       <Feather name="fast-forward" size={14} color="#0F766E" />
-                      <Text style={s.advanceTitle}>Pay in advance · up to {fmtMonth(dues.financial_year_end)}</Text>
+                      <Text style={s.advanceTitle}>Pay in advance · up to {formatMonth(dues.financial_year_end)}</Text>
                       <Feather name={showAdvance ? "chevron-up" : "chevron-down"} size={16} color="#0F766E" />
                     </Pressable>
                     {showAdvance && (
@@ -419,7 +414,7 @@ export default function FeesCollection() {
                                 {checked && <Feather name="check" size={14} color="#fff" />}
                               </View>
                               <View style={{ flex: 1 }}>
-                                <Text style={s.feeType}>{f.fee_type} · {fmtMonth(f.period_month)}</Text>
+                                <Text style={s.feeType}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
                                 <Text style={s.feeMeta}>Advance payment</Text>
                               </View>
                               <Text style={s.feeAmt}>{inr(f.amount)}</Text>
@@ -465,7 +460,7 @@ export default function FeesCollection() {
                       </>
                     )}
                     <Text style={s.label}>Transaction date</Text>
-                    <TextInput testID="txn-date" value={txnDate} onChangeText={setTxnDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.hint} style={s.input} />
+                    <TextInput testID="txn-date" value={txnDate} onChangeText={setTxnDate} placeholder={DATE_PLACEHOLDER} placeholderTextColor={colors.hint} style={s.input} />
                     <Text style={s.label}>Notes (optional)</Text>
                     <TextInput testID="notes-input" value={notes} onChangeText={setNotes} placeholder="Any remarks…" placeholderTextColor={colors.hint} style={[s.input, { minHeight: 60 }]} multiline />
 
@@ -483,9 +478,9 @@ export default function FeesCollection() {
                       <View key={f.id} style={s.historyRow}>
                         <Feather name="check-circle" size={16} color={colors.success} />
                         <View style={{ flex: 1 }}>
-                          <Text style={s.historyType}>{f.fee_type} · {fmtMonth(f.period_month)}</Text>
+                          <Text style={s.historyType}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
                           <Text style={s.historyMeta}>
-                            Paid {f.transaction_date || (f.paid_at || "").slice(0, 10)} · {f.payment_mode || "—"}{f.reference_id ? ` · ${f.reference_id}` : ""}
+                            Paid {formatDate(f.transaction_date || f.paid_at)} · {f.payment_mode || "—"}{f.reference_id ? ` · ${f.reference_id}` : ""}
                           </Text>
                           {f.collected_by_name && <Text style={s.historyMeta}>Collected by: {f.collected_by_name}</Text>}
                         </View>
@@ -519,7 +514,7 @@ export default function FeesCollection() {
               <Text style={s.recBlockTitle}>Fees Paid</Text>
               {(receipt?.fees || []).map((f: Fee) => (
                 <View key={f.id} style={s.recFeeRow}>
-                  <Text style={s.recFeeLabel}>{f.fee_type} · {fmtMonth(f.period_month)}</Text>
+                  <Text style={s.recFeeLabel}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
                   <Text style={s.recFeeAmt}>{inr(f.amount_due)}</Text>
                 </View>
               ))}
@@ -530,9 +525,9 @@ export default function FeesCollection() {
               <View style={s.recDivider} />
               <ReceiptRow label="Payment mode" value={receipt?.payment_mode} />
               {receipt?.reference_id && <ReceiptRow label="Reference / Txn ID" value={receipt.reference_id} />}
-              <ReceiptRow label="Transaction date" value={receipt?.transaction_date} />
+              <ReceiptRow label="Transaction date" value={formatDate(receipt?.transaction_date)} />
               <ReceiptRow label="Collected by" value={`${receipt?.collected_by?.name} (${receipt?.collected_by?.role.replace("_", " ")})`} />
-              <ReceiptRow label="Timestamp" value={new Date(receipt?.paid_at).toLocaleString()} />
+              <ReceiptRow label="Timestamp" value={formatDateTime(receipt?.paid_at)} />
             </ScrollView>
             <View style={s.receiptFooter}>
               <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>

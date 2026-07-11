@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api } from "../src/auth";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../src/ScreenStates";
+import { formatDateTime } from "../src/dateFormat";
 import { useBreakpoint } from "../src/useBreakpoint";
 
 const TYPE_ICONS: Record<string, string> = {
@@ -105,7 +106,7 @@ export default function Notifications() {
                   {!n.read && <View style={s.dot} />}
                 </View>
                 <Text style={s.body} numberOfLines={3}>{n.message || n.body}</Text>
-                <Text style={s.time}>{(n.created_at || "").slice(0, 16).replace("T", " ")}</Text>
+                <Text style={s.time}>{formatDateTime(n.created_at)}</Text>
               </View>
             </TouchableOpacity>
           ))

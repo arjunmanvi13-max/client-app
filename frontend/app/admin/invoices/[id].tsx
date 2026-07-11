@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate, formatDateTime } from "../../../src/dateFormat";
 
 const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -149,7 +150,7 @@ export default function InvoiceDetail() {
         </TouchableOpacity>
         <Text style={s.h1}>{invoice.invoice_number}</Text>
         <Text style={s.sub}>
-          {invoice.person_name} · {invoice.entity_id?.toUpperCase()} · Issue {invoice.issue_date || "—"} · Due {invoice.due_date || "—"}
+          {invoice.person_name} · {invoice.entity_id?.toUpperCase()} · Issue {formatDate(invoice.issue_date)} · Due {formatDate(invoice.due_date)}
         </Text>
         <View style={[s.statusPill, { backgroundColor: st.bg, alignSelf: "flex-start" }]}>
           <Text style={[s.statusTxt, { color: st.fg }]}>{invoice.status}</Text>
@@ -231,7 +232,7 @@ export default function InvoiceDetail() {
           <View key={p.id} style={s.payRow}>
             <View style={{ flex: 1 }}>
               <Text style={s.lineDesc}>{p.receipt_number || p.id.slice(0, 8)}</Text>
-              <Text style={s.lineMeta}>{inr(p.amount)} · {p.payment_mode} · {p.transaction_date} · {p.status || "completed"}</Text>
+              <Text style={s.lineMeta}>{inr(p.amount)} · {p.payment_mode} · {formatDate(p.transaction_date)} · {p.status || "completed"}</Text>
             </View>
             <TouchableOpacity onPress={() => openPdf(`/invoices/receipts/${p.id}/pdf`)}>
               <Feather name="download" size={18} color="#1E40AF" />

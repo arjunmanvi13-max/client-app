@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, useAuth, PRIORITY_COLORS, STATUS_COLORS } from "../../src/auth";
+import { formatDateTime } from "../../src/dateFormat";
 
 const STATUSES = ["open", "in_progress", "blocked", "completed", "cancelled"] as const;
 
@@ -61,9 +62,9 @@ export default function TaskDetail() {
             <MetaRow icon="user" label="Created by" value={task.created_by_name} />
             {task.assignee_name && <MetaRow icon="user-check" label="Assignee" value={task.assignee_name} />}
             {task.entity_id && <MetaRow icon="layers" label="Entity" value={task.entity_id.toUpperCase()} />}
-            {(task.due_date || task.deadline) && <MetaRow icon="calendar" label="Due date" value={new Date(task.due_date || task.deadline).toLocaleString()} />}
-            {task.completed_at && <MetaRow icon="check-circle" label="Completed" value={new Date(task.completed_at).toLocaleString()} />}
-            <MetaRow icon="clock" label="Created" value={new Date(task.created_at).toLocaleString()} />
+            {(task.due_date || task.deadline) && <MetaRow icon="calendar" label="Due date" value={formatDateTime(task.due_date || task.deadline)} />}
+            {task.completed_at && <MetaRow icon="check-circle" label="Completed" value={formatDateTime(task.completed_at)} />}
+            <MetaRow icon="clock" label="Created" value={formatDateTime(task.created_at)} />
           </View>
 
           <Text style={s.section}>Update status</Text>
@@ -80,7 +81,7 @@ export default function TaskDetail() {
             <View key={c.id} style={s.commentCard}>
               <View style={s.commentHeader}>
                 <Text style={s.commentName}>{c.user_name}</Text>
-                <Text style={s.commentMeta}>{c.user_role} · {new Date(c.created_at).toLocaleString()}</Text>
+                <Text style={s.commentMeta}>{c.user_role} · {formatDateTime(c.created_at)}</Text>
               </View>
               <Text style={s.commentText}>{c.text}</Text>
             </View>

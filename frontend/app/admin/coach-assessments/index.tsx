@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 
 export default function CoachAssessmentAdmin() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function CoachAssessmentAdmin() {
   const [slot, setSlot] = useState<"Morning" | "Evening">("Morning");
   const [maxScore, setMaxScore] = useState("100");
   const [publishDefId, setPublishDefId] = useState<string | null>(null);
-  const [publishDate, setPublishDate] = useState(new Date().toISOString().slice(0, 10));
+  const [publishDate, setPublishDate] = useState(formatDate(toISODate()));
 
   const canManage = user?.role === "super_admin" || user?.role === "admin"
     || user?.permissions?.manage_coach_assessments;
@@ -59,7 +60,7 @@ export default function CoachAssessmentAdmin() {
     try {
       const r = await api.post("/coach-assessments/publish", {
         definition_id: publishDefId,
-        date: publishDate,
+        date: parseToISO(publishDate) || publishDate,
       });
       Alert.alert("Published", `${r.data.published} records published.`);
     } catch (e: any) {
@@ -104,7 +105,7 @@ export default function CoachAssessmentAdmin() {
         </View>
         <View style={s.card}>
           <Text style={s.cardTitle}>Publish finalized assessments</Text>
-          <TextInput value={publishDate} onChangeText={setPublishDate} placeholder="Date YYYY-MM-DD" style={s.input} placeholderTextColor="#94A3B8" />
+          <TextInput value={publishDate} onChangeText={setPublishDate} placeholder={DATE_PLACEHOLDER} style={s.input} placeholderTextColor="#94A3B8" />
           <ScrollView horizontal style={s.chipScroll}>
             {definitions.map((d) => (
               <TouchableOpacity key={d.id} style={[s.chip, publishDefId === d.id && s.chipOn]} onPress={() => setPublishDefId(d.id)}>

@@ -1,4 +1,5 @@
 import { api } from "./auth";
+import { toISODate } from "./dateFormat";
 
 /** Fetch role-based dashboard MVP; falls back when older backends lack GET /dashboard/mvp. */
 export async function fetchDashboardMvp(params?: Record<string, string>) {
@@ -18,7 +19,7 @@ async function fetchDashboardMvpFallback(entity?: string) {
     if (Array.isArray(wards)) {
       return {
         role: "parent",
-        today: new Date().toISOString().slice(0, 10),
+        today: toISODate(),
         children: wards,
         _fallback: true,
       };

@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../src/auth";
+import { formatDate, toISODate } from "../src/dateFormat";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
 
@@ -15,13 +16,6 @@ type Staff = {
   centre?: "Balua" | "Harding Park" | null;
 };
 
-function todayISO() {
-  const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-${dd}`;
-}
-
 export default function StaffAttendance() {
   const { user } = useAuth();
   const router = useRouter();
@@ -31,7 +25,7 @@ export default function StaffAttendance() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [absent, setAbsent] = useState<Set<string>>(new Set());
   const [centre, setCentre] = useState<"Balua" | "Harding Park" | null>(null);
-  const [date] = useState(todayISO());
+  const [date] = useState(toISODate());
 
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
   const isHeadCoach = user?.role === "coach" && user?.coach_type === "head";
@@ -135,7 +129,7 @@ export default function StaffAttendance() {
           <Feather name="chevron-left" size={22} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.overline}>STAFF ATTENDANCE · {date}</Text>
+          <Text style={s.overline}>STAFF ATTENDANCE · {formatDate(date)}</Text>
           <Text style={s.h1}>{scopeLabel}</Text>
         </View>
       </View>

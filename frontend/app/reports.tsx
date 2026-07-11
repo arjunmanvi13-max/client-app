@@ -6,6 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import { api, useAuth } from "../src/auth";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
+import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 
 type DateQuick = "today" | "yesterday" | "this_week" | "this_month" | "last_month" | "custom";
 type ReportTab = "summary" | "defaulters" | "payment-modes";
@@ -33,7 +34,11 @@ function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padS
 function computeDateRange(kind: DateQuick, from?: string, to?: string): { from: string; to: string } {
   const today = new Date();
   const t = iso(today);
-  if (kind === "custom") return { from: from || "", to: to || "" };
+  if (kind === "custom") {
+    const fromIso = from ? (parseToISO(from) || from) : "";
+    const toIso = to ? (parseToISO(to) || to) : "";
+    return { from: fromIso, to: toIso };
+  }
   if (kind === "today") return { from: t, to: t };
   if (kind === "yesterday") {
     const y = new Date(today); y.setDate(y.getDate() - 1);
@@ -282,22 +287,11 @@ export default function ReportsScreen() {
           </View>
           {dateKind === "custom" && (
             <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-              {Platform.OS === "web" ? (
-                <>
-                  {/* @ts-ignore */}
-                  <input data-testid="date-from" type="date" value={customFrom} onChange={(e: any) => setCustomFrom(e.target.value)} style={{ height: 40, flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, padding: 8 } as any} />
-                  {/* @ts-ignore */}
-                  <input data-testid="date-to" type="date" value={customTo} onChange={(e: any) => setCustomTo(e.target.value)} style={{ height: 40, flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, padding: 8 } as any} />
-                </>
-              ) : (
-                <>
-                  <TextInput testID="date-from" placeholder="From YYYY-MM-DD" value={customFrom} onChangeText={setCustomFrom} style={s.input} />
-                  <TextInput testID="date-to" placeholder="To YYYY-MM-DD" value={customTo} onChangeText={setCustomTo} style={s.input} />
-                </>
-              )}
+              <TextInput testID="date-from" placeholder={`From ${DATE_PLACEHOLDER}`} value={customFrom} onChangeText={setCustomFrom} style={s.input} />
+              <TextInput testID="date-to" placeholder={`To ${DATE_PLACEHOLDER}`} value={customTo} onChangeText={setCustomTo} style={s.input} />
             </View>
           )}
-          {dateKind !== "custom" && <Text style={s.rangeHelp}>{range.from} → {range.to}</Text>}
+          {dateKind !== "custom" && <Text style={s.rangeHelp}>{formatDate(range.from)} → {formatDate(range.to)}</Text>}
 
           <Text style={s.filterLabel}>Entity</Text>
           <View style={s.chipRow}>
@@ -387,7 +381,7 @@ export default function ReportsScreen() {
             <View style={s.printHeader}>
               <Text style={s.printTitle}>{data.title || mvpMeta?.title}</Text>
               <Text style={s.printSub}>
-                {data.entity_scope_label || institution} · {data.generated_at?.slice(0, 16)} · {data.summary?.total_rows ?? 0} rows
+                {data.entity_scope_label || institution} · {formatDateTime(data.generated_at)} · {data.summary?.total_rows ?? 0} rows
               </Text>
             </View>
           )}
@@ -444,7 +438,12 @@ function MvpReportView({ data }: { data: any }) {
                 rows={rows.slice(0, 500).map((r: any) => keys.map((k) => {
                   const v = r[k];
                   if (k === "amount" || k === "total" || k === "paid" || k === "balance") return inr(Number(v) || 0);
-                  if (typeof v === "string" && v.length > 10 && v.includes("T")) return v.slice(0, 10);
+                  if (k.endsWith("_at") || k === "timestamp") return formatDateTime(v);
+                  if (k.endsWith("_date") || k === "date" || k.endsWith("_month")) {
+                    return k.endsWith("_month") ? formatMonth(v) : formatDate(v);
+                  }
+                  if (typeof v === "string" && v.length > 10 && v.includes("T")) return formatDateTime(v);
+                  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return formatDate(v);
                   return v != null ? String(v) : "—";
                 }))}
                 numericFromIndex={cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) >= 0 ? cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) : 1}
@@ -519,7 +518,7 @@ function DefaultersView({ data }: { data: any }) {
             cols={["Player", "Centre", "Sport", "Category", "Fee", "Amount", "Due Date", "Days Overdue"]}
             rows={(data.rows || []).slice(0, 200).map((r: any) => [
               r.player_name || "—", r.centre || "—", r.sport || "—", r.category || "—",
-              r.fee_type || "—", inr(r.amount_due), r.due_date || "—", String(r.days_overdue),
+              r.fee_type || "—", inr(r.amount_due), formatDate(r.due_date), String(r.days_overdue),
             ])}
           />
         )}
@@ -548,7 +547,7 @@ function PaymentModesView({ data }: { data: any }) {
             rows={(data.transactions || []).slice(0, 300).map((t: any) => [
               t.player_name || "—", t.centre || "—", t.sport || "—", t.fee_type || "—",
               inr(t.amount), t.payment_mode || "—", t.reference_id || "—",
-              t.paid_at ? t.paid_at.slice(0, 10) : "—", t.collected_by_name || "—",
+              t.paid_at ? formatDateTime(t.paid_at) : "—", t.collected_by_name || "—",
             ])}
           />
         )}

@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../src/auth";
+import { formatDate, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO, isValidDisplayDate } from "../../src/dateFormat";
 
 type Fee = {
   id: string; player_id: string; player_name: string;
@@ -145,7 +146,7 @@ export default function FeesScreen() {
              <View style={{ flex: 1 }}>
                <Text style={s.feeName}>{f.player_name}</Text>
                <Text style={s.feeMeta}>{f.fee_type} · {f.centre} · {f.sport} · {f.category}</Text>
-               <Text style={s.feePeriod}>Period: {f.period_month}{f.paid_at ? ` · paid ${f.paid_at.slice(0,10)}` : ""}</Text>
+               <Text style={s.feePeriod}>Period: {formatMonth(f.period_month)}{f.paid_at ? ` · paid ${formatDate(f.paid_at)}` : ""}</Text>
                {(f as any).discount_applied > 0 && (
                  <View style={s.discountChip} testID={`fee-discount-chip-${f.id}`}>
                    <Feather name="percent" size={10} color="#0F766E" />
@@ -248,7 +249,7 @@ function EditModal({ fee, onClose, onDone }: { fee: Fee | null; onClose: () => v
               <Text style={s.modalSub}>Super Admin only · audit-logged</Text>
             </View>
           </View>
-          <Text style={s.discountInfo}>{fee.player_name} · {fee.fee_type} · {fee.period_month}</Text>
+          <Text style={s.discountInfo}>{fee.player_name} · {fee.fee_type} · {formatMonth(fee.period_month)}</Text>
           <View style={s.discountAmtRow}>
             <View style={s.discountAmtCol}>
               <Text style={s.discountAmtLabel}>Current due</Text>
@@ -286,7 +287,7 @@ function AddAdHocFeeModal({ visible, onClose, onDone }: { visible: boolean; onCl
   const [selected, setSelected] = useState<PlayerLite | null>(null);
   const [feeType, setFeeType] = useState<AdhocType>("Uniform");
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState(() => formatDate(toISODate()));
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -294,7 +295,7 @@ function AddAdHocFeeModal({ visible, onClose, onDone }: { visible: boolean; onCl
     if (!visible) return;
     // Reset state on open
     setSearch(""); setSelected(null); setFeeType("Uniform"); setAmount(""); setNotes("");
-    setDueDate(new Date().toISOString().slice(0, 10));
+    setDueDate(formatDate(toISODate()));
     setLoadingPlayers(true);
     api.get("/people", { params: { kind: "player" } })
       .then((r) => setPlayers((r.data || []).filter((p: any) => p.organization === "ALPHA" && p.status !== "deactivated")))
@@ -315,14 +316,14 @@ function AddAdHocFeeModal({ visible, onClose, onDone }: { visible: boolean; onCl
   const submit = async () => {
     if (!selected) { Alert.alert("Player required", "Please select a player for the ad-hoc fee."); return; }
     if (amt <= 0) { Alert.alert("Amount", "Enter a valid amount greater than 0."); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) { Alert.alert("Due date", "Use YYYY-MM-DD format for due date."); return; }
+    if (!isValidDisplayDate(dueDate)) { Alert.alert("Due date", `Use ${DATE_PLACEHOLDER} format for due date.`); return; }
     setBusy(true);
     try {
       await api.post(`/fees`, {
         player_id: selected.id,
         fee_type: feeType,
         amount: amt,
-        due_date: dueDate,
+        due_date: parseToISO(dueDate) || dueDate,
         notes: notes.trim() || undefined,
       });
       Alert.alert("Fee created", `${feeType} fee of ${inr(amt)} added for ${selected.name}.`);
@@ -422,7 +423,7 @@ function AddAdHocFeeModal({ visible, onClose, onDone }: { visible: boolean; onCl
             />
 
             {/* Due date */}
-            <Text style={s.discountLabel}>Due date (YYYY-MM-DD) *</Text>
+            <Text style={s.discountLabel}>Due date ({DATE_PLACEHOLDER}) *</Text>
             <TextInput
               testID="adhoc-due-date"
               placeholder="2026-06-15"

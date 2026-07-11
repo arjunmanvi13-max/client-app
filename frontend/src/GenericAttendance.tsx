@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { api, useAuth } from "./auth";
+import { formatDate, toISODate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 
 const KIND_OPTIONS = [
@@ -90,7 +91,7 @@ export default function Attendance() {
       else if (group) params.group = group;
       const { data } = await api.get("/people", { params });
       setPeople(data);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = toISODate();
       const attParams: any = { date: today, kind, session };
       if (kind === "student" && sectionId) attParams.section_id = sectionId;
       else if (group) attParams.group = group;
@@ -130,7 +131,7 @@ export default function Attendance() {
     if (Object.keys(marks).length === 0) { Alert.alert("Mark at least one"); return; }
     setSaving(true);
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = toISODate();
       const payload: any = {
         date: today,
         kind,
@@ -157,7 +158,7 @@ export default function Attendance() {
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.header}>
         <Text style={s.h1}>Attendance</Text>
-        <Text style={s.sub}>{new Date().toDateString()}</Text>
+        <Text style={s.sub}>{formatDate(new Date())}</Text>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.hScroll} contentContainerStyle={s.kindRow}>

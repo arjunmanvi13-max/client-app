@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 
 const KINDS = ["student", "player", "staff", "coach", "teacher", "hostel"];
 
@@ -19,8 +20,8 @@ export default function AttendanceAdmin() {
   const [records, setRecords] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
 
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(formatDate(toISODate()));
+  const [endDate, setEndDate] = useState(formatDate(toISODate()));
   const [kind, setKind] = useState<string | null>(null);
   const [group, setGroup] = useState("");
   const [sport, setSport] = useState("");
@@ -37,14 +38,16 @@ export default function AttendanceAdmin() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { start_date: startDate, end_date: endDate };
+      const startIso = parseToISO(startDate) || startDate;
+      const endIso = parseToISO(endDate) || endDate;
+      const params: any = { start_date: startIso, end_date: endIso };
       if (kind) params.kind = kind;
       if (group.trim()) params.group = group.trim();
       if (sport.trim()) params.sport = sport.trim();
       if (session.trim()) params.session = session.trim();
       const [sumRes, listRes, auditRes] = await Promise.all([
         api.get("/attendance/summary", { params }),
-        api.get("/attendance", { params: { ...params, start_date: startDate, end_date: endDate } }),
+        api.get("/attendance", { params }),
         api.get("/attendance/audit", { params: { limit: 30 } }),
       ]);
       setSummary(sumRes.data);
@@ -63,7 +66,9 @@ export default function AttendanceAdmin() {
 
   const exportCsv = async () => {
     try {
-      const params: any = { start_date: startDate, end_date: endDate };
+      const startIso = parseToISO(startDate) || startDate;
+      const endIso = parseToISO(endDate) || endDate;
+      const params: any = { start_date: startIso, end_date: endIso };
       if (kind) params.kind = kind;
       if (group.trim()) params.group = group.trim();
       if (sport.trim()) params.sport = sport.trim();
@@ -133,8 +138,8 @@ export default function AttendanceAdmin() {
         <View style={s.card}>
           <Text style={s.cardTitle}>Filters</Text>
           <View style={s.row}>
-            <TextInput value={startDate} onChangeText={setStartDate} placeholder="Start YYYY-MM-DD" style={s.input} placeholderTextColor="#94A3B8" />
-            <TextInput value={endDate} onChangeText={setEndDate} placeholder="End YYYY-MM-DD" style={s.input} placeholderTextColor="#94A3B8" />
+            <TextInput value={startDate} onChangeText={setStartDate} placeholder={`Start ${DATE_PLACEHOLDER}`} style={s.input} placeholderTextColor="#94A3B8" />
+            <TextInput value={endDate} onChangeText={setEndDate} placeholder={`End ${DATE_PLACEHOLDER}`} style={s.input} placeholderTextColor="#94A3B8" />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
             <TouchableOpacity style={[s.chip, !kind && s.chipActive]} onPress={() => setKind(null)}>
@@ -156,7 +161,7 @@ export default function AttendanceAdmin() {
 
         {loading ? <ActivityIndicator color="#1E40AF" /> : summary && (
           <View style={s.card}>
-            <Text style={s.cardTitle}>Summary {summary.start_date} → {summary.end_date}</Text>
+            <Text style={s.cardTitle}>Summary {formatDate(summary.start_date)} → {formatDate(summary.end_date)}</Text>
             <View style={s.statsRow}>
               <Stat label="Present" value={totals.present || 0} color="#10B981" />
               <Stat label="Absent" value={totals.absent || 0} color="#EF4444" />
@@ -176,7 +181,7 @@ export default function AttendanceAdmin() {
           {records.length === 0 ? <Text style={s.hint}>No records for filters.</Text> : records.map((r) => (
             <View key={r.id} style={s.recRow}>
               <View style={{ flex: 1 }}>
-                <Text style={s.recTitle}>{r.date} · {r.kind} · {r.session}</Text>
+                <Text style={s.recTitle}>{formatDate(r.date)} · {r.kind} · {r.session}</Text>
                 <Text style={s.recMeta}>{r.status} · {r.group || r.sport || "—"} · by {r.marked_by_name}</Text>
               </View>
               {canCorrect && (
@@ -192,7 +197,7 @@ export default function AttendanceAdmin() {
           <Text style={s.cardTitle}>Audit history</Text>
           {audit.length === 0 ? <Text style={s.hint}>No corrections yet.</Text> : audit.map((a) => (
             <View key={a.id} style={s.auditRow}>
-              <Text style={s.recTitle}>{a.date} · {a.kind} · {a.action}</Text>
+              <Text style={s.recTitle}>{formatDate(a.date)} · {a.kind} · {a.action}</Text>
               <Text style={s.recMeta}>{a.before_status} → {a.after_status} · {a.changed_by_name}</Text>
               {a.reason ? <Text style={s.hint}>Reason: {a.reason}</Text> : null}
             </View>

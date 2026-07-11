@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
+import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { fetchDashboardMvp } from "./dashboardApi";
 
@@ -59,7 +60,7 @@ export default function SuperAdminDashboard() {
       >
         <View style={s.header}>
           <View style={{ flex: 1 }}>
-            <Text style={s.overline}>DASHBOARD · {data?.today || "—"}</Text>
+            <Text style={s.overline}>DASHBOARD · {formatDate(data?.today)}</Text>
             <Text style={s.h1}>Hello, {user.name.split(" ")[0]}</Text>
             <Text style={s.sub}>{isSuperAdmin ? "Operations snapshot — PWS & ALPHA" : "ALPHA Sports Academy operations"}</Text>
           </View>

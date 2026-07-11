@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDateTime } from "../../../src/dateFormat";
 
 type User = {
   id: string;
@@ -198,7 +199,7 @@ export default function PermissionsList() {
                   {a.actor_name} → {a.target_name}
                   {a.template_applied ? `  ·  template: ${a.template_applied}` : ""}
                 </Text>
-                <Text style={s.auditTime}>{new Date(a.at).toLocaleString()}</Text>
+                <Text style={s.auditTime}>{formatDateTime(a.at)}</Text>
                 {a.changes?.permissions && (
                   <View style={s.changeWrap}>
                     {Object.keys(a.changes.permissions).slice(0, 6).map((k) => (

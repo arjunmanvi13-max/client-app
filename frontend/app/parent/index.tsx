@@ -8,6 +8,7 @@ import { entityLabelsFor, ENTITY_COLORS } from "../../src/parentPortal";
 import { LoadingState, ErrorState, EmptyState, getApiError, confirmAction } from "../../src/ScreenStates";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { fetchDashboardMvp } from "../../src/dashboardApi";
+import { formatDate } from "../../src/dateFormat";
 
 type Ward = {
   id: string;
@@ -186,7 +187,7 @@ export default function ParentHome() {
                       <View style={s.recentAttRow}>
                         {w.recent_attendance!.slice(0, 5).map((r) => (
                           <View key={r.date} style={[s.attDot, { backgroundColor: (STATUS_TINT[r.status] || "#94A3B8") + "22" }]}>
-                            <Text style={[s.attDotTxt, { color: STATUS_TINT[r.status] || "#64748B" }]}>{r.date.slice(5)}</Text>
+                            <Text style={[s.attDotTxt, { color: STATUS_TINT[r.status] || "#64748B" }]}>{formatDate(r.date).slice(0, 5)}</Text>
                           </View>
                         ))}
                       </View>

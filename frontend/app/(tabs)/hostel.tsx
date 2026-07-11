@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { api, useAuth } from "../../src/auth";
 import { LoadingState, EmptyState, ErrorState, FormLabel, InlineFieldError, getApiError, confirmAction } from "../../src/ScreenStates";
+import { formatDateTime } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
 
 export default function Hostel() {
@@ -234,7 +235,7 @@ function PassCard({ p, onDecide, residents }: any) {
       </View>
       <Text style={s.passReason}>{p.reason}</Text>
       {p.destination && <Text style={s.passMeta}>To: {p.destination}</Text>}
-      <Text style={s.passMeta}>Out: {new Date(p.out_time).toLocaleString()}</Text>
+      <Text style={s.passMeta}>Out: {formatDateTime(p.out_time)}</Text>
       {p.status === "pending" && (
         <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
           <TouchableOpacity testID={`approve-${p.id}`} style={[s.actBtn, { backgroundColor: "#10B981" }]} onPress={() => onDecide(p.id, "approved")}>

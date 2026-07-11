@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { api } from "../../src/auth";
+import { formatDate } from "../../src/dateFormat";
 
 const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -141,7 +142,7 @@ export default function ReportCardView() {
           ) : null}
 
           {card.status === "published" && card.published_at ? (
-            <Text style={s.footer}>Published {String(card.published_at).slice(0, 10)}</Text>
+            <Text style={s.footer}>Published {formatDate(card.published_at)}</Text>
           ) : (
             <Text style={s.footerDraft}>Status: {card.status}</Text>
           )}

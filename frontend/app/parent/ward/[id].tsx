@@ -7,6 +7,7 @@ import { api } from "../../../src/auth";
 import { entityLabelsFor, ENTITY_COLORS } from "../../../src/parentPortal";
 import { LoadingState, ErrorState, EmptyState, getApiError } from "../../../src/ScreenStates";
 import { useBreakpoint } from "../../../src/useBreakpoint";
+import { formatDate, formatMonth } from "../../../src/dateFormat";
 
 const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
@@ -35,12 +36,6 @@ const STATUS_TINT: Record<string, { bg: string; fg: string; label: string }> = {
   late: { bg: "#FEF3C7", fg: "#B45309", label: "L" },
   leave: { bg: "#EDE9FE", fg: "#6D28D9", label: "Lv" },
 };
-
-function shortDate(d: string) {
-  const dt = new Date(d);
-  if (isNaN(dt.valueOf())) return d;
-  return dt.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
-}
 
 export default function WardDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -162,7 +157,7 @@ export default function WardDetail() {
             <View style={s.profileCard}>
               {profile.admission_number ? <Text style={s.profileLine}>Admission: {profile.admission_number}</Text> : null}
               {profile.roll_number ? <Text style={s.profileLine}>Roll: {profile.roll_number}</Text> : null}
-              {profile.date_of_admission ? <Text style={s.profileLine}>Admitted: {profile.date_of_admission}</Text> : null}
+              {profile.date_of_admission ? <Text style={s.profileLine}>Admitted: {formatDate(profile.date_of_admission)}</Text> : null}
               {profile.is_resident != null ? <Text style={s.profileLine}>Resident: {profile.is_resident ? "Yes" : "No"}</Text> : null}
             </View>
           </>
@@ -193,7 +188,7 @@ export default function WardDetail() {
                 <Text style={[s.attBadgeTxt, { color: t.fg }]}>{t.label}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.attDate}>{shortDate(r.date)}</Text>
+                <Text style={s.attDate}>{formatDate(r.date)}</Text>
                 <Text style={s.attMeta}>
                   {r.kind === "player" ? `${r.slot || r.session || ""} · ${r.sport || ""}${r.centre ? " · " + r.centre : ""}` : r.group || r.kind}
                 </Text>
@@ -217,8 +212,8 @@ export default function WardDetail() {
                 <View key={f.id || i} style={s.feeRow}>
                   <View style={[s.feeDot, { backgroundColor: isPaid ? "#10B981" : "#F59E0B" }]} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.feeType}>{f.fee_type || f.type}{f.period_month ? ` · ${f.period_month}` : ""}</Text>
-                    <Text style={s.feeDue}>Due {f.due_date} · ₹{(f.amount_due || f.amount || 0).toLocaleString()}</Text>
+                    <Text style={s.feeType}>{f.fee_type || f.type}{f.period_month ? ` · ${formatMonth(f.period_month)}` : ""}</Text>
+                    <Text style={s.feeDue}>Due {formatDate(f.due_date)} · ₹{(f.amount_due || f.amount || 0).toLocaleString()}</Text>
                   </View>
                   <View style={[s.feeStatusPill, { backgroundColor: isPaid ? "#DCFCE7" : "#FEF3C7" }]}>
                     <Text style={[s.feeStatusTxt, { color: isPaid ? "#15803D" : "#B45309" }]}>{f.status}</Text>
@@ -275,7 +270,7 @@ export default function WardDetail() {
               <View key={inv.id} style={s.markRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.markSubject}>{inv.invoice_number}</Text>
-                  <Text style={s.markMeta}>Due {inv.due_date || "—"} · {inv.status}</Text>
+                  <Text style={s.markMeta}>Due {formatDate(inv.due_date)} · {inv.status}</Text>
                 </View>
                 <Text style={s.markScore}>₹{(inv.outstanding_amount ?? inv.balance_due ?? 0).toLocaleString()}</Text>
               </View>
@@ -290,7 +285,7 @@ export default function WardDetail() {
               <View key={p.id} style={s.markRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.markSubject}>{p.receipt_number || "Payment"}</Text>
-                  <Text style={s.markMeta}>{p.transaction_date} · {p.payment_mode}{p.invoice_number ? ` · ${p.invoice_number}` : ""}</Text>
+                  <Text style={s.markMeta}>{formatDate(p.transaction_date)} · {p.payment_mode}{p.invoice_number ? ` · ${p.invoice_number}` : ""}</Text>
                 </View>
                 <Text style={s.markScore}>₹{(p.amount || 0).toLocaleString()}</Text>
               </View>
@@ -305,7 +300,7 @@ export default function WardDetail() {
               <TouchableOpacity key={r.id} style={s.rcRow} onPress={() => r.pdf_url && openReceipt(r.pdf_url)}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.markSubject}>{r.receipt_number}</Text>
-                  <Text style={s.markMeta}>{r.transaction_date} · {r.type === "legacy_fee" ? "Fee receipt" : "Invoice receipt"} · ₹{(r.amount || 0).toLocaleString()}</Text>
+                  <Text style={s.markMeta}>{formatDate(r.transaction_date)} · {r.type === "legacy_fee" ? "Fee receipt" : "Invoice receipt"} · ₹{(r.amount || 0).toLocaleString()}</Text>
                 </View>
                 <Feather name="download" size={18} color="#1E40AF" />
               </TouchableOpacity>
@@ -320,7 +315,7 @@ export default function WardDetail() {
               <View key={a.id || i} style={s.markRow} testID={`coach-asm-${a.id}`}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.markSubject}>{a.definition_name || a.assessment_type}</Text>
-                  <Text style={s.markMeta}>{a.date} · {a.sport} · {a.centre} · {a.slot}</Text>
+                  <Text style={s.markMeta}>{formatDate(a.date)} · {a.sport} · {a.centre} · {a.slot}</Text>
                   {a.coach_remark ? <Text style={s.markMeta}>{a.coach_remark}</Text> : null}
                 </View>
                 <Text style={s.markScore}>

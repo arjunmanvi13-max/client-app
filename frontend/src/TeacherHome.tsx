@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { LoadingState, ErrorState, EmptyState, getApiError } from "./ScreenStates";
+import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { fetchDashboardMvp } from "./dashboardApi";
 
@@ -56,7 +57,7 @@ export default function TeacherHome() {
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>TEACHER DASHBOARD</Text>
             <Text style={s.h1}>{user.name.split(" ")[0]}</Text>
-            <Text style={s.sub}>{data?.today || "—"} · {classes.length} class assignment(s)</Text>
+            <Text style={s.sub}>{formatDate(data?.today)} · {classes.length} class assignment(s)</Text>
           </View>
           <TouchableOpacity testID="teacher-notif" style={s.bellBtn} onPress={() => router.push("/notifications")}>
             <Feather name="bell" size={20} color="#0F172A" />

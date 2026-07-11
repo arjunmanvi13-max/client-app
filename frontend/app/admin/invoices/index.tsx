@@ -7,6 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
+import { formatDate } from "../../../src/dateFormat";
 
 type EntityConfig = { entity_id: string; use_invoice_engine: boolean };
 type Invoice = {
@@ -172,7 +173,7 @@ export default function InvoicesAdmin() {
             <View style={{ flex: 1 }}>
               <Text style={s.invNum}>{inv.invoice_number}</Text>
               <Text style={s.invSub}>{inv.person_name} · {inv.entity_id?.toUpperCase()}</Text>
-              <Text style={s.invSub}>Due {inv.due_date || "—"} · Balance {inr(inv.balance_due)}</Text>
+              <Text style={s.invSub}>Due {formatDate(inv.due_date)} · Balance {inr(inv.balance_due)}</Text>
             </View>
             <View style={[s.statusPill, inv.status === "paid" && s.statusPaid, (inv.status === "partially_paid" || inv.status === "partial") && s.statusPartial, inv.status === "overdue" && s.statusOverdue]}>
               <Text style={s.statusTxt}>{inv.status?.replace("partial", "partially_paid")}</Text>

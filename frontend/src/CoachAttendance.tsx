@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "../src/auth";
+import { formatDate, toISODate } from "../src/dateFormat";
 
 const SKILL_TINT: Record<string, string> = { Beginner: "#10B981", Intermediate: "#0EA5E9", Advanced: "#EF4444", Unassigned: "#94A3B8" };
 
@@ -12,7 +13,7 @@ export default function CoachAttendance() {
   const [slot, setSlot] = useState<"Morning" | "Evening">("Morning");
   const [centre, setCentre] = useState<"Balua" | "Harding Park">("Balua");
   const [sport, setSport] = useState<"Cricket" | "Football">("Cricket");
-  const [date, setDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState<string>(() => toISODate());
   const [groups, setGroups] = useState<Record<string, Record<string, any[]>>>({});
   const [absent, setAbsent] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -60,7 +61,7 @@ export default function CoachAttendance() {
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.header}>
         <Text style={s.h1}>Mark attendance</Text>
-        <Text style={s.sub}>{new Date(date).toDateString()}</Text>
+        <Text style={s.sub}>{formatDate(date)}</Text>
       </View>
 
       <View style={s.slotRow}>
