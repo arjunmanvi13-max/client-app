@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Platform, Alert } from "react-native";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  ActivityIndicator, Platform, Alert, Modal, Pressable, useWindowDimensions,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -7,10 +10,12 @@ import { api, useAuth } from "../src/auth";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
+import { colors, radii, spacing } from "../src/theme";
 
-type DateQuick = "today" | "yesterday" | "this_week" | "this_month" | "last_month" | "custom";
-type ReportTab = "summary" | "defaulters" | "payment-modes";
-type ReportMode = "mvp" | "financial";
+type RunState = "idle" | "loading" | "ready" | "outdated" | "error";
+type PeriodKind = "this_month" | "last_month" | "this_quarter" | "this_year" | "custom";
+
+type ReportId = typeof MVP_REPORTS[number]["id"];
 
 const MVP_REPORTS = [
   { id: "students", title: "Student List", category: "People", icon: "users" },
@@ -25,28 +30,38 @@ const MVP_REPORTS = [
   { id: "report-card-status", title: "Report Card Status", category: "Academic", icon: "award" },
 ] as const;
 
+const CATEGORIES = ["People", "Attendance", "Finance", "Academic"] as const;
+const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
+  { key: "this_month", label: "This month" },
+  { key: "last_month", label: "Last month" },
+  { key: "this_quarter", label: "This quarter" },
+  { key: "this_year", label: "This year" },
+  { key: "custom", label: "Custom" },
+];
+
 const GRADES = ["All", "6", "7", "8", "9", "10", "11", "12"];
-const STATUS_OPTS = ["All", "active", "inactive", "present", "absent", "late", "leave", "draft", "published", "issued", "overdue"];
+const CENTRES = ["All", "Balua", "Harding Park"] as const;
+const SPORTS = ["All", "Cricket", "Football"] as const;
+const ATTENDANCE_STATUSES = ["All", "present", "absent", "late", "leave"] as const;
+const INVOICE_STATUSES = ["All", "issued", "overdue", "partially_paid", "paid", "draft"] as const;
+const PAYMENT_METHODS = ["All", "Cash", "Online", "UPI", "Cheque"] as const;
+
+const ACADEMIC_REPORTS = new Set(["students", "marks-summary", "report-card-status", "attendance-summary", "attendance-detail"]);
+const SPORTS_REPORTS = new Set(["players", "attendance-summary", "attendance-detail", "fee-collection", "payment-receipts"]);
+const FINANCE_REPORTS = new Set(["fee-collection", "outstanding-invoices", "payment-receipts"]);
+const ATTENDANCE_REPORTS = new Set(["attendance-summary", "attendance-detail"]);
 
 function inr(n: number) { return `₹${(n || 0).toLocaleString("en-IN")}`; }
-function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
-function computeDateRange(kind: DateQuick, from?: string, to?: string): { from: string; to: string } {
+function computeDateRange(kind: PeriodKind, from?: string, to?: string): { from: string; to: string } {
   const today = new Date();
   const t = iso(today);
   if (kind === "custom") {
-    const fromIso = from ? (parseToISO(from) || from) : "";
-    const toIso = to ? (parseToISO(to) || to) : "";
-    return { from: fromIso, to: toIso };
-  }
-  if (kind === "today") return { from: t, to: t };
-  if (kind === "yesterday") {
-    const y = new Date(today); y.setDate(y.getDate() - 1);
-    return { from: iso(y), to: iso(y) };
-  }
-  if (kind === "this_week") {
-    const s = new Date(today); s.setDate(s.getDate() - s.getDay());
-    return { from: iso(s), to: t };
+    return {
+      from: from ? (parseToISO(from) || from) : "",
+      to: to ? (parseToISO(to) || to) : "",
+    };
   }
   if (kind === "this_month") {
     const s = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -57,6 +72,15 @@ function computeDateRange(kind: DateQuick, from?: string, to?: string): { from: 
     const e = new Date(today.getFullYear(), today.getMonth(), 0);
     return { from: iso(s), to: iso(e) };
   }
+  if (kind === "this_quarter") {
+    const qStartMonth = Math.floor(today.getMonth() / 3) * 3;
+    const s = new Date(today.getFullYear(), qStartMonth, 1);
+    return { from: iso(s), to: t };
+  }
+  if (kind === "this_year") {
+    const s = new Date(today.getFullYear(), 0, 1);
+    return { from: iso(s), to: t };
+  }
   return { from: "", to: "" };
 }
 
@@ -65,10 +89,24 @@ function entityParam(inst: "BOTH" | "ALPHA" | "PWS") {
   return inst.toLowerCase();
 }
 
+function entityLabel(inst: "BOTH" | "ALPHA" | "PWS") {
+  if (inst === "BOTH") return "Combined";
+  return inst;
+}
+
+function periodLabel(kind: PeriodKind) {
+  return PERIOD_OPTIONS.find((p) => p.key === kind)?.label || kind;
+}
+
+function reportMeta(id: string) {
+  return MVP_REPORTS.find((r) => r.id === id);
+}
+
 export default function ReportsScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { isDesktop, horizontalPadding, contentMaxWidth } = useBreakpoint();
+  const { isDesktop, isMobile, horizontalPadding, contentMaxWidth } = useBreakpoint();
+  const { width } = useWindowDimensions();
   const printRef = useRef<View>(null);
 
   const canAccess = user?.role === "super_admin" || user?.role === "admin" || user?.role === "principal" || user?.role === "vice_principal";
@@ -76,39 +114,109 @@ export default function ReportsScreen() {
   const isPwsAdmin = user?.role === "principal" || user?.role === "vice_principal";
   const canPickEntity = user?.role === "super_admin" || user?.organization === "BOTH";
 
-  const [mode, setMode] = useState<ReportMode>("mvp");
-  const [mvpReportId, setMvpReportId] = useState("students");
-  const [dateKind, setDateKind] = useState<DateQuick>("this_month");
+  const [mvpReportId, setMvpReportId] = useState<ReportId>("students");
+  const [periodKind, setPeriodKind] = useState<PeriodKind>("this_month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [institution, setInstitution] = useState<"BOTH" | "ALPHA" | "PWS">(isSportsAdmin ? "ALPHA" : isPwsAdmin ? "PWS" : "BOTH");
+
   const [centre, setCentre] = useState("All");
   const [sport, setSport] = useState("All");
   const [grade, setGrade] = useState("All");
   const [sectionId, setSectionId] = useState("");
   const [status, setStatus] = useState("All");
-  const [paymentStatus, setPaymentStatus] = useState<"all" | "paid" | "pending" | "overdue">("all");
+  const [paymentMethod, setPaymentMethod] = useState("All");
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
 
-  const [tab, setTab] = useState<ReportTab>("summary");
+  const [reportPickerOpen, setReportPickerOpen] = useState(false);
+  const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [reportSearch, setReportSearch] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState("");
+  const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
+  const [runState, setRunState] = useState<RunState>("idle");
+  const [exportParams, setExportParams] = useState<Record<string, string> | null>(null);
+  const [snapshotKey, setSnapshotKey] = useState<string | null>(null);
 
-  const range = useMemo(() => computeDateRange(dateKind, customFrom, customTo), [dateKind, customFrom, customTo]);
-  const mvpMeta = useMemo(() => MVP_REPORTS.find((r) => r.id === mvpReportId), [mvpReportId]);
+  const range = useMemo(() => computeDateRange(periodKind, customFrom, customTo), [periodKind, customFrom, customTo]);
+  const mvpMeta = useMemo(() => reportMeta(mvpReportId), [mvpReportId]);
 
-  useEffect(() => {
-    if (!canAccess) return;
-    api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => {});
-  }, [canAccess]);
+  const filterSnapshotKey = useMemo(() => JSON.stringify({
+    mvpReportId,
+    institution,
+    periodKind,
+    customFrom,
+    customTo,
+    from: range.from,
+    to: range.to,
+    centre,
+    sport,
+    grade,
+    sectionId,
+    status,
+    paymentMethod,
+  }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, centre, sport, grade, sectionId, status, paymentMethod]);
 
-  useEffect(() => {
-    if (!canAccess) return;
-    load();
-  }, [mode, mvpReportId, tab, dateKind, customFrom, customTo, institution, centre, sport, grade, sectionId, status, paymentStatus, canAccess]);
+  const entityOptions = useMemo(() => {
+    if (isSportsAdmin) return ["ALPHA"] as const;
+    if (canPickEntity) return ["BOTH", "PWS", "ALPHA"] as const;
+    return ["PWS"] as const;
+  }, [isSportsAdmin, canPickEntity]);
 
-  const buildMvpParams = () => {
+  const showAcademic = ACADEMIC_REPORTS.has(mvpReportId);
+  const showSports = SPORTS_REPORTS.has(mvpReportId);
+  const showFinance = FINANCE_REPORTS.has(mvpReportId);
+  const showAttendance = ATTENDANCE_REPORTS.has(mvpReportId);
+
+  const advancedFilterCount = useMemo(() => {
+    let n = 0;
+    if (centre !== "All") n++;
+    if (sport !== "All") n++;
+    if (grade !== "All") n++;
+    if (sectionId) n++;
+    if (status !== "All") n++;
+    if (paymentMethod !== "All") n++;
+    if (periodKind === "custom" && (customFrom || customTo)) n++;
+    return n;
+  }, [centre, sport, grade, sectionId, status, paymentMethod, periodKind, customFrom, customTo]);
+
+  const activeChips = useMemo(() => {
+    const chips: { key: string; label: string; onRemove: () => void }[] = [];
+    chips.push({ key: "entity", label: `Entity: ${entityLabel(institution)}`, onRemove: () => {} });
+    chips[chips.length - 1].onRemove = () => {}; // entity always shown, not removable to empty
+
+    const periodText = periodKind === "custom"
+      ? `Period: ${customFrom || "…"} – ${customTo || "…"}`
+      : `Period: ${periodLabel(periodKind)}`;
+    if (periodKind !== "this_month") {
+      chips.push({
+        key: "period",
+        label: periodText,
+        onRemove: () => { setPeriodKind("this_month"); setCustomFrom(""); setCustomTo(""); },
+      });
+    }
+
+    if (centre !== "All") chips.push({ key: "centre", label: `Centre: ${centre}`, onRemove: () => setCentre("All") });
+    if (sport !== "All") chips.push({ key: "sport", label: `Sport: ${sport}`, onRemove: () => setSport("All") });
+    if (grade !== "All") chips.push({ key: "grade", label: `Grade: Class ${grade}`, onRemove: () => setGrade("All") });
+    if (sectionId) {
+      const sec = sections.find((x) => x.id === sectionId);
+      chips.push({ key: "section", label: `Section: ${sec?.label || sectionId}`, onRemove: () => setSectionId("") });
+    }
+    if (status !== "All") chips.push({ key: "status", label: `Status: ${status}`, onRemove: () => setStatus("All") });
+    if (paymentMethod !== "All") chips.push({ key: "payment", label: `Payment: ${paymentMethod}`, onRemove: () => setPaymentMethod("All") });
+    return chips;
+  }, [institution, periodKind, customFrom, customTo, centre, sport, grade, sectionId, status, paymentMethod, sections]);
+
+  const canExport = runState === "ready" && !!data && !!exportParams && !loading;
+  const showPreview = runState === "loading" || runState === "ready" || runState === "outdated" || runState === "error";
+  const customRangeIncomplete = periodKind === "custom" && (!range.from || !range.to);
+
+  const buildMvpParams = useCallback(() => {
     const p: Record<string, string> = { entity: entityParam(institution) };
     if (range.from) p.date_from = range.from;
     if (range.to) p.date_to = range.to;
@@ -118,63 +226,94 @@ export default function ReportsScreen() {
     if (sectionId) p.section_id = sectionId;
     if (status !== "All") p.status = status;
     return p;
-  };
+  }, [institution, range, centre, sport, grade, sectionId, status]);
 
-  const buildFinancialParams = () => {
-    const p: any = { institution };
-    if (range.from) p.date_from = range.from;
-    if (range.to) p.date_to = range.to;
-    if (centre !== "All") p.centre = centre;
-    if (sport !== "All") p.sport = sport;
-    if (paymentStatus !== "all") p.payment_status = paymentStatus;
-    return p;
-  };
-
-  const load = async () => {
-    setLoading(true); setError("");
+  const runReport = useCallback(async () => {
+    if (customRangeIncomplete) {
+      setFiltersOpen(true);
+      Alert.alert("Date range required", `Open Filters and enter From and To dates (${DATE_PLACEHOLDER}).`);
+      return;
+    }
+    setRunState("loading");
+    setLoading(true);
+    setError("");
+    const params = buildMvpParams();
     try {
-      if (mode === "mvp") {
-        const r = await api.get(`/reports/${mvpReportId}`, { params: buildMvpParams() });
-        setData(r.data);
-      } else {
-        const r = await api.get(`/reports/financial/${tab}`, { params: buildFinancialParams() });
-        setData(r.data);
-      }
+      const r = await api.get(`/reports/${mvpReportId}`, { params });
+      setData(r.data);
+      setLastLoadedAt(new Date().toISOString());
+      setExportParams(params);
+      setSnapshotKey(filterSnapshotKey);
+      setRunState("ready");
     } catch (e: any) {
       setError(e?.response?.data?.detail || "Failed to load report");
       setData(null);
+      setExportParams(null);
+      setRunState("error");
     } finally {
       setLoading(false);
     }
+  }, [mvpReportId, buildMvpParams, customRangeIncomplete, filterSnapshotKey]);
+
+  useEffect(() => {
+    if (!canAccess) return;
+    api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => {});
+  }, [canAccess]);
+
+  useEffect(() => {
+    setRunState("idle");
+    setData(null);
+    setError("");
+    setExportParams(null);
+    setSnapshotKey(null);
+    setLastLoadedAt(null);
+  }, [mvpReportId]);
+
+  useEffect(() => {
+    if (runState === "ready" && snapshotKey && snapshotKey !== filterSnapshotKey) {
+      setRunState("outdated");
+    }
+  }, [filterSnapshotKey, snapshotKey, runState]);
+
+  const clearAllFilters = () => {
+    setCentre("All");
+    setSport("All");
+    setGrade("All");
+    setSectionId("");
+    setStatus("All");
+    setPaymentMethod("All");
+    setPeriodKind("this_month");
+    setCustomFrom("");
+    setCustomTo("");
+    if (runState === "ready") setRunState("outdated");
   };
 
+  const filteredReports = useMemo(() => {
+    const q = reportSearch.trim().toLowerCase();
+    if (!q) return MVP_REPORTS;
+    return MVP_REPORTS.filter((r) => r.title.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
+  }, [reportSearch]);
+
   const doExport = async (format: "xlsx" | "pdf") => {
+    if (!canExport || !exportParams) return;
     try {
       if (Platform.OS !== "web") {
         Alert.alert("Export", "Open Reports on desktop web to download files.");
         return;
       }
-      if (mode === "mvp") {
-        const r = await api.get(`/reports/${mvpReportId}/export`, {
-          params: { format, ...buildMvpParams() },
-          responseType: "blob",
-        });
-        const ext = format === "pdf" ? "pdf" : "xlsx";
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(r.data);
-        a.download = `${mvpReportId}-${new Date().toISOString().slice(0, 10)}.${ext}`;
-        if (format === "pdf") a.target = "_blank";
-        document.body.appendChild(a); a.click(); a.remove();
-      } else {
-        const r = await api.get("/reports/financial/export", {
-          params: { kind: tab, ...buildFinancialParams() },
-          responseType: "blob",
-        });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(r.data);
-        a.download = `pws-alpha-${tab}-${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(a); a.click(); a.remove();
-      }
+      const r = await api.get(`/reports/${mvpReportId}/export`, {
+        params: { format, ...exportParams },
+        responseType: "blob",
+      });
+      const ext = format === "pdf" ? "pdf" : "xlsx";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(r.data);
+      a.download = `${mvpReportId}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      if (format === "pdf") a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setExportMenuOpen(false);
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.message || "Could not export";
       if (Platform.OS === "web" && typeof window !== "undefined") window.alert(`Export failed: ${msg}`);
@@ -183,11 +322,10 @@ export default function ReportsScreen() {
   };
 
   const doPrint = () => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.print();
-    } else {
-      Alert.alert("Print", "Open Reports on desktop web for printable layout.");
-    }
+    if (!canExport) return;
+    if (Platform.OS === "web" && typeof window !== "undefined") window.print();
+    else Alert.alert("Print", "Open Reports on desktop web for printable layout.");
+    setExportMenuOpen(false);
   };
 
   if (!canAccess) {
@@ -195,8 +333,8 @@ export default function ReportsScreen() {
       <SafeAreaView style={s.wrap}>
         <View style={{ padding: 24 }}>
           <Text style={s.h1}>Reports</Text>
-          <Text style={{ marginTop: 12, color: "#64748B" }}>You do not have access to Reports.</Text>
-          <TouchableOpacity testID="reports-denied-back" onPress={() => router.replace("/(tabs)")} style={{ marginTop: 16, alignSelf: "flex-start", backgroundColor: "#0F172A", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 }}>
+          <Text style={{ marginTop: 12, color: colors.muted2 }}>You do not have access to Reports.</Text>
+          <TouchableOpacity testID="reports-denied-back" onPress={() => router.replace("/(tabs)/dashboard")} style={s.deniedBtn}>
             <Text style={{ color: "#fff", fontWeight: "600" }}>Go to Dashboard</Text>
           </TouchableOpacity>
         </View>
@@ -204,7 +342,7 @@ export default function ReportsScreen() {
     );
   }
 
-  const categories = [...new Set(MVP_REPORTS.map((r) => r.category))];
+  const setupStacked = !isDesktop || width < 900;
 
   return (
     <SafeAreaView style={s.wrap} testID="reports-screen">
@@ -218,202 +356,490 @@ export default function ReportsScreen() {
           }
         `}</style>
       )}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: isDesktop ? 24 : horizontalPadding, paddingBottom: 60, maxWidth: contentMaxWidth, alignSelf: contentMaxWidth ? "center" : undefined, width: contentMaxWidth ? "100%" : undefined }}>
-        <View style={s.header}>
-          {!isDesktop && (
-            <TouchableOpacity testID="reports-back" onPress={() => router.back()} style={s.backBtn}>
-              <Feather name="chevron-left" size={22} color="#0F172A" />
-            </TouchableOpacity>
-          )}
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          padding: isDesktop ? spacing.xl : horizontalPadding,
+          paddingBottom: 72,
+          maxWidth: contentMaxWidth,
+          alignSelf: contentMaxWidth ? "center" : undefined,
+          width: contentMaxWidth ? "100%" : undefined,
+        }}
+      >
+        {/* Header */}
+        <View style={[s.header, setupStacked && s.headerStacked]} {...(Platform.OS === "web" ? { className: "no-print" } as any : {})}>
           <View style={{ flex: 1 }}>
+            {!isDesktop && (
+              <TouchableOpacity testID="reports-back" onPress={() => router.back()} style={s.backBtn}>
+                <Feather name="chevron-left" size={22} color={colors.ink} />
+              </TouchableOpacity>
+            )}
             <Text style={s.overline}>ANALYTICS · REPORTS</Text>
             <Text style={s.h1}>Reports & Exports</Text>
-            <Text style={s.hSub}>People · Attendance · Finance · Academic</Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-            <TouchableOpacity testID="reports-export-xlsx" onPress={() => doExport("xlsx")} style={s.exportBtn}>
-              <Feather name="download" size={14} color="#fff" />
-              <Text style={s.exportBtnTxt}>Excel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity testID="reports-export-pdf" onPress={() => doExport("pdf")} style={[s.exportBtn, { backgroundColor: "#0F172A" }]}>
-              <Feather name="file" size={14} color="#fff" />
-              <Text style={s.exportBtnTxt}>PDF</Text>
-            </TouchableOpacity>
-            <TouchableOpacity testID="reports-print" onPress={doPrint} style={[s.exportBtn, { backgroundColor: "#475569" }]}>
-              <Feather name="printer" size={14} color="#fff" />
-              <Text style={s.exportBtnTxt}>Print</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={s.filterCard}>
-          <View style={s.filterHead}>
-            <Feather name="filter" size={14} color="#1E40AF" />
-            <Text style={s.filterHeadTxt}>Filters</Text>
+            <Text style={s.helper}>Choose a report, set the period, then export.</Text>
           </View>
 
-          <Text style={s.filterLabel}>Report type</Text>
-          <View style={s.chipRow}>
-            <TouchableOpacity testID="mode-mvp" onPress={() => setMode("mvp")} style={[s.chip, mode === "mvp" && s.chipActive]}>
-              <Text style={[s.chipTxt, mode === "mvp" && s.chipTxtActive]}>Standard Reports</Text>
+          {isMobile ? (
+            <TouchableOpacity
+              testID="reports-export-menu"
+              onPress={() => setExportMenuOpen(true)}
+              style={[s.exportBtn, !canExport && s.exportBtnDisabled]}
+              disabled={!canExport}
+            >
+              <Feather name="download" size={16} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity testID="mode-financial" onPress={() => setMode("financial")} style={[s.chip, mode === "financial" && s.chipActive]}>
-              <Text style={[s.chipTxt, mode === "financial" && s.chipTxtActive]}>Financial Analytics</Text>
-            </TouchableOpacity>
-          </View>
-
-          {mode === "mvp" && categories.map((cat) => (
-            <View key={cat}>
-              <Text style={s.filterLabel}>{cat}</Text>
-              <View style={s.chipRow}>
-                {MVP_REPORTS.filter((r) => r.category === cat).map((r) => (
-                  <TouchableOpacity key={r.id} testID={`report-${r.id}`} onPress={() => setMvpReportId(r.id)} style={[s.chip, mvpReportId === r.id && s.chipActive]}>
-                    <Text style={[s.chipTxt, mvpReportId === r.id && s.chipTxtActive]}>{r.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          ))}
-
-          <Text style={s.filterLabel}>Date range</Text>
-          <View style={s.chipRow}>
-            {(["today", "yesterday", "this_week", "this_month", "last_month", "custom"] as DateQuick[]).map((k) => (
-              <TouchableOpacity key={k} testID={`date-${k}`} onPress={() => setDateKind(k)} style={[s.chip, dateKind === k && s.chipActive]}>
-                <Text style={[s.chipTxt, dateKind === k && s.chipTxtActive]}>
-                  {k === "today" ? "Today" : k === "yesterday" ? "Yesterday" : k === "this_week" ? "This week" : k === "this_month" ? "This month" : k === "last_month" ? "Last month" : "Custom"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {dateKind === "custom" && (
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-              <TextInput testID="date-from" placeholder={`From ${DATE_PLACEHOLDER}`} value={customFrom} onChangeText={setCustomFrom} style={s.input} />
-              <TextInput testID="date-to" placeholder={`To ${DATE_PLACEHOLDER}`} value={customTo} onChangeText={setCustomTo} style={s.input} />
+          ) : (
+            <View style={s.exportRow}>
+              <ExportBtn testID="reports-export-xlsx" label="Excel" icon="download" onPress={() => doExport("xlsx")} disabled={!canExport} />
+              <ExportBtn testID="reports-export-pdf" label="PDF" icon="file" onPress={() => doExport("pdf")} disabled={!canExport} variant="dark" />
+              <ExportBtn testID="reports-print" label="Print" icon="printer" onPress={doPrint} disabled={!canExport} variant="muted" />
             </View>
           )}
-          {dateKind !== "custom" && <Text style={s.rangeHelp}>{formatDate(range.from)} → {formatDate(range.to)}</Text>}
+        </View>
 
-          <Text style={s.filterLabel}>Entity</Text>
-          <View style={s.chipRow}>
-            {(isSportsAdmin ? (["ALPHA"] as const) : canPickEntity ? (["BOTH", "ALPHA", "PWS"] as const) : (["PWS"] as const)).map((v) => (
-              <TouchableOpacity key={v} testID={`inst-${v}`} onPress={() => setInstitution(v as any)} style={[s.chip, institution === v && s.chipActive]}>
-                <Text style={[s.chipTxt, institution === v && s.chipTxtActive]}>{v === "BOTH" ? "Combined" : v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+        {/* Setup bar */}
+        <View style={[s.setupBar, setupStacked && s.setupBarStacked]} {...(Platform.OS === "web" ? { className: "no-print" } as any : {})}>
+          <SetupField label="Report" flex={2}>
+            <TouchableOpacity testID="report-picker" style={s.selectBtn} onPress={() => { setReportSearch(""); setReportPickerOpen(true); }}>
+              <Feather name={(mvpMeta?.icon as any) || "file-text"} size={15} color={colors.primary} />
+              <Text style={s.selectBtnTxt} numberOfLines={1}>{mvpMeta?.title || "Select report"}</Text>
+              <Feather name="chevron-down" size={16} color={colors.muted2} />
+            </TouchableOpacity>
+          </SetupField>
 
-          <Text style={s.filterLabel}>Centre</Text>
-          <View style={s.chipRow}>
-            {(["All", "Balua", "Harding Park"] as const).map((v) => (
-              <TouchableOpacity key={v} testID={`centre-${v}`} onPress={() => setCentre(v)} style={[s.chip, centre === v && s.chipActive]}>
-                <Text style={[s.chipTxt, centre === v && s.chipTxtActive]}>{v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={s.filterLabel}>Sport</Text>
-          <View style={s.chipRow}>
-            {(["All", "Cricket", "Football"] as const).map((v) => (
-              <TouchableOpacity key={v} testID={`sport-${v}`} onPress={() => setSport(v)} style={[s.chip, sport === v && s.chipActive]}>
-                <Text style={[s.chipTxt, sport === v && s.chipTxtActive]}>{v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={s.filterLabel}>Grade</Text>
-          <View style={s.chipRow}>
-            {GRADES.map((v) => (
-              <TouchableOpacity key={v} testID={`grade-${v}`} onPress={() => setGrade(v)} style={[s.chip, grade === v && s.chipActive]}>
-                <Text style={[s.chipTxt, grade === v && s.chipTxtActive]}>{v === "All" ? "All" : `Class ${v}`}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {sections.length > 0 && (
-            <>
-              <Text style={s.filterLabel}>Section</Text>
-              <View style={s.chipRow}>
-                <TouchableOpacity testID="section-all" onPress={() => setSectionId("")} style={[s.chip, !sectionId && s.chipActive]}>
-                  <Text style={[s.chipTxt, !sectionId && s.chipTxtActive]}>All</Text>
+          <SetupField label="Entity" flex={1.2}>
+            <View style={s.segment}>
+              {entityOptions.map((v) => (
+                <TouchableOpacity
+                  key={v}
+                  testID={`inst-${v}`}
+                  onPress={() => setInstitution(v as any)}
+                  style={[s.segmentItem, institution === v && s.segmentItemActive, entityOptions.length === 1 && { flex: 1 }]}
+                >
+                  <Text style={[s.segmentTxt, institution === v && s.segmentTxtActive]}>
+                    {v === "BOTH" ? "Combined" : v}
+                  </Text>
                 </TouchableOpacity>
-                {sections.slice(0, 12).map((sec) => (
-                  <TouchableOpacity key={sec.id} testID={`section-${sec.id}`} onPress={() => setSectionId(sec.id)} style={[s.chip, sectionId === sec.id && s.chipActive]}>
-                    <Text style={[s.chipTxt, sectionId === sec.id && s.chipTxtActive]}>{sec.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
+              ))}
+            </View>
+          </SetupField>
 
-          <Text style={s.filterLabel}>Status</Text>
-          <View style={s.chipRow}>
-            {STATUS_OPTS.map((v) => (
-              <TouchableOpacity key={v} testID={`status-${v}`} onPress={() => setStatus(v)} style={[s.chip, status === v && s.chipActive]}>
-                <Text style={[s.chipTxt, status === v && s.chipTxtActive]}>{v === "All" ? "All" : v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SetupField label="Period" flex={1}>
+            <TouchableOpacity testID="period-picker" style={s.selectBtn} onPress={() => setPeriodPickerOpen(true)}>
+              <Feather name="calendar" size={15} color={colors.primary} />
+              <Text style={s.selectBtnTxt}>{periodLabel(periodKind)}</Text>
+              <Feather name="chevron-down" size={16} color={colors.muted2} />
+            </TouchableOpacity>
+          </SetupField>
 
-          {mode === "financial" && (
-            <>
-              <Text style={s.filterLabel}>Payment status</Text>
-              <View style={s.chipRow}>
-                {(["all", "paid", "pending", "overdue"] as const).map((v) => (
-                  <TouchableOpacity key={v} testID={`ps-${v}`} onPress={() => setPaymentStatus(v)} style={[s.chip, paymentStatus === v && s.chipActive]}>
-                    <Text style={[s.chipTxt, paymentStatus === v && s.chipTxtActive]}>{v === "all" ? "All" : v[0].toUpperCase() + v.slice(1)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
+          <SetupField label=" " flex={0.9}>
+            <TouchableOpacity testID="more-filters" style={s.filtersBtn} onPress={() => setFiltersOpen((o) => !o)}>
+              <Feather name="sliders" size={15} color={colors.primary} />
+              <Text style={s.filtersBtnTxt}>Filters{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}</Text>
+            </TouchableOpacity>
+          </SetupField>
+
+          <SetupField label=" " flex={0.9}>
+            <TouchableOpacity
+              testID="run-report"
+              style={[s.runBtn, (loading || customRangeIncomplete) && s.runBtnDisabled]}
+              onPress={runReport}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Feather name="play" size={15} color="#fff" />
+              )}
+              <Text style={s.runBtnTxt}>{loading ? "Running…" : "Run report"}</Text>
+            </TouchableOpacity>
+          </SetupField>
         </View>
 
-        {mode === "financial" && (
-          <View style={s.tabs}>
-            <TabBtn label="Revenue Summary" active={tab === "summary"} onPress={() => setTab("summary")} testID="tab-summary" icon="pie-chart" />
-            <TabBtn label="Defaulters & Aging" active={tab === "defaulters"} onPress={() => setTab("defaulters")} testID="tab-defaulters" icon="alert-triangle" />
-            <TabBtn label="Payment Modes" active={tab === "payment-modes"} onPress={() => setTab("payment-modes")} testID="tab-payment-modes" icon="credit-card" />
-          </View>
+        {/* Advanced filters — desktop inline panel */}
+        {filtersOpen && !isMobile && (
+          <AdvancedFiltersPanel
+            showAcademic={showAcademic}
+            showSports={showSports}
+            showFinance={showFinance}
+            showAttendance={showAttendance}
+            periodKind={periodKind}
+            customFrom={customFrom}
+            customTo={customTo}
+            setCustomFrom={setCustomFrom}
+            setCustomTo={setCustomTo}
+            centre={centre} setCentre={setCentre}
+            sport={sport} setSport={setSport}
+            grade={grade} setGrade={setGrade}
+            sectionId={sectionId} setSectionId={setSectionId}
+            status={status} setStatus={setStatus}
+            paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
+            sections={sections}
+            onClose={() => setFiltersOpen(false)}
+          />
         )}
 
-        <View nativeID="report-print-area" ref={printRef}>
-          {mode === "mvp" && data && (
-            <View style={s.printHeader}>
-              <Text style={s.printTitle}>{data.title || mvpMeta?.title}</Text>
-              <Text style={s.printSub}>
-                {data.entity_scope_label || institution} · {formatDateTime(data.generated_at)} · {data.summary?.total_rows ?? 0} rows
-              </Text>
+        {/* Active filter chips */}
+        <View style={s.chipBar} {...(Platform.OS === "web" ? { className: "no-print" } as any : {})}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipBarInner}>
+            <View style={s.activeChipStatic}>
+              <Text style={s.activeChipTxt}>Entity: {entityLabel(institution)}</Text>
             </View>
-          )}
-
-          {loading ? (
-            <LoadingState message="Generating report…" />
-          ) : error ? (
-            <ErrorState message={error} onRetry={load} compact />
-          ) : mode === "mvp" ? (
-            <MvpReportView data={data} />
-          ) : (
-            <>
-              {tab === "summary" && <SummaryView data={data} />}
-              {tab === "defaulters" && <DefaultersView data={data} />}
-              {tab === "payment-modes" && <PaymentModesView data={data} />}
-            </>
-          )}
+            {activeChips.filter((c) => c.key !== "entity").map((chip) => (
+              <TouchableOpacity key={chip.key} style={s.activeChip} onPress={chip.onRemove}>
+                <Text style={s.activeChipTxt}>{chip.label}</Text>
+                <Feather name="x" size={12} color={colors.primary} />
+              </TouchableOpacity>
+            ))}
+            {advancedFilterCount > 0 && (
+              <TouchableOpacity testID="clear-filters" onPress={clearAllFilters} style={s.clearAll}>
+                <Text style={s.clearAllTxt}>Clear all</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+          {periodKind === "custom" && customFrom && customTo ? (
+            <Text style={s.rangeHint}>{formatDate(range.from)} → {formatDate(range.to)}</Text>
+          ) : periodKind !== "custom" ? (
+            <Text style={s.rangeHint}>{formatDate(range.from)} → {formatDate(range.to)}</Text>
+          ) : null}
         </View>
+
+        {/* Report area */}
+        {!showPreview ? (
+          <ReadyStatusCard reportTitle={mvpMeta?.title || "—"} runState={runState} />
+        ) : (
+          <View style={s.previewCard} nativeID="report-print-area" ref={printRef}>
+            {runState === "outdated" && (
+              <View style={s.outdatedBanner} {...(Platform.OS === "web" ? { className: "no-print" } as any : {})}>
+                <Feather name="alert-circle" size={14} color="#B45309" />
+                <Text style={s.outdatedTxt}>Filters changed — run the report again to refresh results before exporting.</Text>
+                <TouchableOpacity testID="run-report-refresh" style={s.outdatedRun} onPress={runReport}>
+                  <Text style={s.outdatedRunTxt}>Run report</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={s.previewHead}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.previewTitle}>{data?.title || mvpMeta?.title || "Report preview"}</Text>
+                <Text style={s.previewSub}>
+                  {entityLabel(institution)} · {formatDate(range.from)} → {formatDate(range.to)}
+                  {data?.summary?.total_rows != null ? ` · ${data.summary.total_rows} rows` : ""}
+                </Text>
+              </View>
+              {lastLoadedAt && (runState === "ready" || runState === "outdated") && (
+                <Text style={s.lastUpdated}>Last updated {formatDateTime(lastLoadedAt)}</Text>
+              )}
+            </View>
+
+            {runState === "loading" ? (
+              <LoadingState message="Generating report…" />
+            ) : runState === "error" ? (
+              <ErrorState message={error} onRetry={runReport} compact />
+            ) : (
+              <MvpReportView data={data} />
+            )}
+          </View>
+        )}
       </ScrollView>
+
+      {/* Report picker modal */}
+      <PickerModal visible={reportPickerOpen} onClose={() => setReportPickerOpen(false)} title="Select report">
+        <TextInput
+          testID="report-search"
+          value={reportSearch}
+          onChangeText={setReportSearch}
+          placeholder="Search reports…"
+          placeholderTextColor={colors.hint}
+          style={s.searchInput}
+        />
+        <ScrollView style={{ maxHeight: 420 }}>
+          {CATEGORIES.map((cat) => {
+            const items = filteredReports.filter((r) => r.category === cat);
+            if (items.length === 0) return null;
+            return (
+              <View key={cat}>
+                <Text style={s.pickerGroup}>{cat}</Text>
+                {items.map((r) => (
+                  <TouchableOpacity
+                    key={r.id}
+                    testID={`report-${r.id}`}
+                    style={[s.pickerRow, mvpReportId === r.id && s.pickerRowActive]}
+                    onPress={() => { setMvpReportId(r.id); setReportPickerOpen(false); }}
+                  >
+                    <Feather name={r.icon as any} size={16} color={mvpReportId === r.id ? colors.primary : colors.muted2} />
+                    <Text style={[s.pickerRowTxt, mvpReportId === r.id && s.pickerRowTxtActive]}>{r.title}</Text>
+                    {mvpReportId === r.id && <Feather name="check" size={16} color={colors.primary} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          })}
+        </ScrollView>
+      </PickerModal>
+
+      {/* Period picker modal */}
+      <PickerModal visible={periodPickerOpen} onClose={() => setPeriodPickerOpen(false)} title="Select period">
+        {PERIOD_OPTIONS.map((p) => (
+          <TouchableOpacity
+            key={p.key}
+            testID={`date-${p.key}`}
+            style={[s.pickerRow, periodKind === p.key && s.pickerRowActive]}
+            onPress={() => {
+              setPeriodKind(p.key);
+              setPeriodPickerOpen(false);
+              if (p.key === "custom") setFiltersOpen(true);
+            }}
+          >
+            <Text style={[s.pickerRowTxt, periodKind === p.key && s.pickerRowTxtActive]}>{p.label}</Text>
+            {periodKind === p.key && <Feather name="check" size={16} color={colors.primary} />}
+          </TouchableOpacity>
+        ))}
+      </PickerModal>
+
+      {/* Mobile filters bottom sheet */}
+      <PickerModal
+        visible={filtersOpen && isMobile}
+        onClose={() => setFiltersOpen(false)}
+        title="Advanced filters"
+        sheet
+      >
+        <AdvancedFiltersPanel
+          showAcademic={showAcademic}
+          showSports={showSports}
+          showFinance={showFinance}
+          showAttendance={showAttendance}
+          periodKind={periodKind}
+          customFrom={customFrom}
+          customTo={customTo}
+          setCustomFrom={setCustomFrom}
+          setCustomTo={setCustomTo}
+          centre={centre} setCentre={setCentre}
+          sport={sport} setSport={setSport}
+          grade={grade} setGrade={setGrade}
+          sectionId={sectionId} setSectionId={setSectionId}
+          status={status} setStatus={setStatus}
+          paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
+          sections={sections}
+          embedded
+        />
+      </PickerModal>
+
+      {/* Mobile export menu */}
+      <PickerModal visible={exportMenuOpen} onClose={() => setExportMenuOpen(false)} title="Export" sheet>
+        <TouchableOpacity style={s.pickerRow} onPress={() => doExport("xlsx")} disabled={!canExport}>
+          <Feather name="download" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Download Excel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.pickerRow} onPress={() => doExport("pdf")} disabled={!canExport}>
+          <Feather name="file" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Download PDF</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.pickerRow} onPress={doPrint} disabled={!canExport}>
+          <Feather name="printer" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Print</Text>
+        </TouchableOpacity>
+      </PickerModal>
     </SafeAreaView>
   );
 }
 
+function ReadyStatusCard({ reportTitle, runState }: { reportTitle: string; runState: RunState }) {
+  const statusRight = runState === "outdated" ? "Outdated" : "Ready to run";
+  const statusColor = runState === "outdated" ? "#B45309" : colors.primary;
+
+  return (
+    <View style={s.readyCard} testID="report-ready-card">
+      <View style={s.readyCol}>
+        <Text style={s.readyLabel}>Selected report</Text>
+        <Text style={s.readyValue}>{reportTitle}</Text>
+      </View>
+      <View style={[s.readyCol, s.readyColMid]}>
+        <Text style={s.readyHint}>Choose filters, then run the report.</Text>
+      </View>
+      <View style={s.readyCol}>
+        <Text style={[s.readyStatus, { color: statusColor }]}>{statusRight}</Text>
+      </View>
+    </View>
+  );
+}
+
+function SetupField({ label, flex, children }: { label: string; flex?: number; children: React.ReactNode }) {
+  return (
+    <View style={{ flex: flex ?? 1, minWidth: 140 }}>
+      {label.trim() ? <Text style={s.fieldLabel}>{label}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
+function ExportBtn({ label, icon, onPress, disabled, variant, testID }: {
+  label: string; icon: any; onPress: () => void; disabled?: boolean; variant?: "primary" | "dark" | "muted"; testID?: string;
+}) {
+  const bg = variant === "dark" ? colors.ink : variant === "muted" ? colors.muted : colors.primary;
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onPress}
+      disabled={disabled}
+      style={[s.exportBtn, { backgroundColor: bg }, disabled && s.exportBtnDisabled]}
+    >
+      <Feather name={icon} size={14} color="#fff" />
+      <Text style={s.exportBtnTxt}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PickerModal({ visible, onClose, title, children, sheet }: {
+  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; sheet?: boolean;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={s.modalOverlay} onPress={onClose}>
+        <Pressable style={[s.modalCard, sheet && s.modalSheet]} onPress={(e) => e.stopPropagation?.()}>
+          <View style={s.modalHead}>
+            <Text style={s.modalTitle}>{title}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <Feather name="x" size={20} color={colors.muted} />
+            </TouchableOpacity>
+          </View>
+          {children}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function FilterSelect({ label, value, options, onChange, testID }: {
+  label: string; value: string; options: readonly string[]; onChange: (v: string) => void; testID?: string;
+}) {
+  return (
+    <View style={s.filterField}>
+      <Text style={s.filterFieldLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={s.miniSelectRow}>
+          {options.map((opt) => (
+            <TouchableOpacity
+              key={opt}
+              testID={testID ? `${testID}-${opt}` : undefined}
+              onPress={() => onChange(opt)}
+              style={[s.miniSelect, value === opt && s.miniSelectActive]}
+            >
+              <Text style={[s.miniSelectTxt, value === opt && s.miniSelectTxtActive]}>
+                {opt === "All" ? "All" : opt.replace(/_/g, " ")}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function AdvancedFiltersPanel(props: {
+  showAcademic: boolean; showSports: boolean; showFinance: boolean; showAttendance: boolean;
+  periodKind: PeriodKind; customFrom: string; customTo: string;
+  setCustomFrom: (v: string) => void; setCustomTo: (v: string) => void;
+  centre: string; setCentre: (v: string) => void;
+  sport: string; setSport: (v: string) => void;
+  grade: string; setGrade: (v: string) => void;
+  sectionId: string; setSectionId: (v: string) => void;
+  status: string; setStatus: (v: string) => void;
+  paymentMethod: string; setPaymentMethod: (v: string) => void;
+  sections: { id: string; label: string }[];
+  onClose?: () => void; embedded?: boolean;
+}) {
+  const {
+    showAcademic, showSports, showFinance, showAttendance,
+    periodKind, customFrom, customTo, setCustomFrom, setCustomTo,
+    centre, setCentre, sport, setSport, grade, setGrade,
+    sectionId, setSectionId, status, setStatus, paymentMethod, setPaymentMethod,
+    sections, onClose, embedded,
+  } = props;
+
+  const sectionOptions = ["All", ...sections.map((x) => x.label)];
+
+  return (
+    <View style={[s.advPanel, embedded && { borderWidth: 0, marginBottom: 0, padding: 0 }]}>
+      {!embedded && (
+        <View style={s.advPanelHead}>
+          <Text style={s.advPanelTitle}>Advanced filters</Text>
+          {onClose && (
+            <TouchableOpacity onPress={onClose}>
+              <Feather name="x" size={18} color={colors.muted2} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {periodKind === "custom" && (
+        <View style={s.filterGroup}>
+          <Text style={s.filterGroupTitle}>Custom period</Text>
+          <View style={s.dateRow}>
+            <TextInput testID="date-from" placeholder={`From ${DATE_PLACEHOLDER}`} value={customFrom} onChangeText={setCustomFrom} style={s.dateInput} placeholderTextColor={colors.hint} />
+            <TextInput testID="date-to" placeholder={`To ${DATE_PLACEHOLDER}`} value={customTo} onChangeText={setCustomTo} style={s.dateInput} placeholderTextColor={colors.hint} />
+          </View>
+        </View>
+      )}
+
+      {showAcademic && (
+        <View style={s.filterGroup}>
+          <Text style={s.filterGroupTitle}>People & Academic</Text>
+          <FilterSelect label="Grade" value={grade} options={GRADES} onChange={setGrade} testID="grade" />
+          {sections.length > 0 && (
+            <FilterSelect
+              label="Section"
+              value={sectionId ? (sections.find((x) => x.id === sectionId)?.label || "All") : "All"}
+              options={sectionOptions}
+              onChange={(v) => {
+                if (v === "All") setSectionId("");
+                else {
+                  const sec = sections.find((x) => x.label === v);
+                  setSectionId(sec?.id || "");
+                }
+              }}
+              testID="section"
+            />
+          )}
+        </View>
+      )}
+
+      {showSports && (
+        <View style={s.filterGroup}>
+          <Text style={s.filterGroupTitle}>Sports</Text>
+          <FilterSelect label="Centre" value={centre} options={CENTRES} onChange={setCentre} testID="centre" />
+          <FilterSelect label="Sport" value={sport} options={SPORTS} onChange={setSport} testID="sport" />
+        </View>
+      )}
+
+          {showFinance && !showAttendance && (
+        <View style={s.filterGroup}>
+          <Text style={s.filterGroupTitle}>Finance</Text>
+          <FilterSelect label="Invoice status" value={status} options={INVOICE_STATUSES} onChange={setStatus} testID="status" />
+          <FilterSelect label="Payment method" value={paymentMethod} options={PAYMENT_METHODS} onChange={setPaymentMethod} testID="payment-method" />
+        </View>
+      )}
+
+      {showAttendance && (
+        <View style={s.filterGroup}>
+          <Text style={s.filterGroupTitle}>Attendance</Text>
+          <FilterSelect label="Status" value={status} options={ATTENDANCE_STATUSES} onChange={setStatus} testID="att-status" />
+        </View>
+      )}
+    </View>
+  );
+}
+
 function MvpReportView({ data }: { data: any }) {
-  if (!data) return <Text style={s.empty}>No data.</Text>;
+  if (!data) return <EmptyState icon="bar-chart-2" title="No report loaded" message="Select a report and period to preview results here." />;
   const cols: string[] = data.columns || [];
   const rows: any[] = data.rows || [];
   const keys: string[] = data.row_keys || (rows[0] ? Object.keys(rows[0]) : []);
   const summary = data.summary || {};
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: spacing.md }}>
       {Object.keys(summary).filter((k) => k !== "total_rows").length > 0 && (
         <View style={s.kpiRow}>
           {summary.total_collected != null && <KPI label="Total Collected" value={inr(summary.total_collected)} tint="#16A34A" icon="dollar-sign" />}
@@ -425,138 +851,37 @@ function MvpReportView({ data }: { data: any }) {
           {summary.by_status && Object.entries(summary.by_status).map(([st, cnt]) => (
             <KPI key={st} label={st} value={String(cnt)} tint="#7C3AED" icon="file-text" />
           ))}
+          {summary.total_rows != null && <KPI label="Total rows" value={String(summary.total_rows)} tint={colors.primary} icon="list" />}
         </View>
       )}
-      <SectionCard title={`${data.title} (${rows.length})`} icon="list">
-        {rows.length === 0 ? (
-          <EmptyState icon="filter" title="No matching rows" message="Try adjusting your filters or date range." />
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator>
-            <View style={{ minWidth: "100%" }}>
-              <DataTable
-                columns={cols}
-                rows={rows.slice(0, 500).map((r: any) => keys.map((k) => {
-                  const v = r[k];
-                  if (k === "amount" || k === "total" || k === "paid" || k === "balance") return inr(Number(v) || 0);
-                  if (k.endsWith("_at") || k === "timestamp") return formatDateTime(v);
-                  if (k.endsWith("_date") || k === "date" || k.endsWith("_month")) {
-                    return k.endsWith("_month") ? formatMonth(v) : formatDate(v);
-                  }
-                  if (typeof v === "string" && v.length > 10 && v.includes("T")) return formatDateTime(v);
-                  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return formatDate(v);
-                  return v != null ? String(v) : "—";
-                }))}
-                numericFromIndex={cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) >= 0 ? cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) : 1}
-              />
-            </View>
-          </ScrollView>
-        )}
-      </SectionCard>
+      {rows.length === 0 ? (
+        <EmptyState icon="filter" title="No matching rows" message="Try adjusting your filters or date range." />
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator>
+          <View style={{ minWidth: "100%" }}>
+            <DataTable
+              columns={cols}
+              rows={rows.slice(0, 500).map((r: any) => keys.map((k) => {
+                const v = r[k];
+                if (k === "amount" || k === "total" || k === "paid" || k === "balance") return inr(Number(v) || 0);
+                if (k.endsWith("_at") || k === "timestamp") return formatDateTime(v);
+                if (k.endsWith("_date") || k === "date" || k.endsWith("_month")) {
+                  return k.endsWith("_month") ? formatMonth(v) : formatDate(v);
+                }
+                if (typeof v === "string" && v.length > 10 && v.includes("T")) return formatDateTime(v);
+                if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return formatDate(v);
+                return v != null ? String(v) : "—";
+              }))}
+              numericFromIndex={cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) >= 0 ? cols.findIndex((c) => /amount|total|paid|balance|collected/i.test(c)) : 1}
+            />
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 }
 
-function TabBtn({ label, active, onPress, testID, icon }: { label: string; active: boolean; onPress: () => void; testID: string; icon: any }) {
-  return (
-    <TouchableOpacity testID={testID} onPress={onPress} style={[s.tabBtn, active && s.tabBtnActive]}>
-      <Feather name={icon} size={14} color={active ? "#fff" : "#475569"} />
-      <Text style={[s.tabBtnTxt, active && s.tabBtnTxtActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function SummaryView({ data }: { data: any }) {
-  if (!data) return <Text style={s.empty}>No data.</Text>;
-  const t = data.totals || {};
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={s.kpiRow}>
-        <KPI label="Total Collected" value={inr(t.collected_all_time)} tint="#1E40AF" icon="trending-up" testID="kpi-collected" />
-        <KPI label="Current Month" value={inr(t.current_month)} tint="#16A34A" icon="calendar" testID="kpi-current" />
-        <KPI label="Previous Month" value={inr(t.previous_month)} tint="#0EA5E9" icon="clock" testID="kpi-prev" />
-        <KPI label="Outstanding" value={inr(t.outstanding)} tint="#EA580C" icon="alert-triangle" testID="kpi-outstanding" />
-      </View>
-      <SectionCard title="Collection by Fee Head" icon="tag">
-        {(data.by_fee_head || []).length === 0 ? <Text style={s.empty}>No collections in this window.</Text> : (
-          <TableRows cols={["Fee Head", "Count", "Amount"]} rows={(data.by_fee_head || []).map((r: any) => [r.fee_head, String(r.count), inr(r.amount)])} />
-        )}
-      </SectionCard>
-      <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
-        <View style={{ flex: 1, minWidth: 280 }}>
-          <SectionCard title="Collection by Centre" icon="map-pin">
-            {(data.by_centre || []).length === 0 ? <Text style={s.empty}>—</Text> : (
-              <TableRows cols={["Centre", "Count", "Amount"]} rows={(data.by_centre || []).map((r: any) => [r.centre, String(r.count), inr(r.collected)])} />
-            )}
-          </SectionCard>
-        </View>
-        <View style={{ flex: 1, minWidth: 280 }}>
-          <SectionCard title="Collection by Sport" icon="target">
-            {(data.by_sport || []).length === 0 ? <Text style={s.empty}>—</Text> : (
-              <TableRows cols={["Sport", "Count", "Amount"]} rows={(data.by_sport || []).map((r: any) => [r.sport, String(r.count), inr(r.collected)])} />
-            )}
-          </SectionCard>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function DefaultersView({ data }: { data: any }) {
-  if (!data) return <Text style={s.empty}>No data.</Text>;
-  const b = data.buckets || {};
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={s.kpiRow}>
-        <KPI label="0–7 days" value={String(b["0_7"] || 0)} tint="#16A34A" icon="clock" testID="bucket-07" />
-        <KPI label="8–15 days" value={String(b["8_15"] || 0)} tint="#0EA5E9" icon="clock" testID="bucket-815" />
-        <KPI label="16–30 days" value={String(b["16_30"] || 0)} tint="#EA580C" icon="clock" testID="bucket-1630" />
-        <KPI label=">30 days" value={String(b["gt_30"] || 0)} tint="#DC2626" icon="alert-octagon" testID="bucket-gt30" />
-      </View>
-      <SectionCard title={`Overdue Invoices (${(data.rows || []).length})`} icon="alert-triangle">
-        {(data.rows || []).length === 0 ? <Text style={s.empty}>No overdue invoices.</Text> : (
-          <TableRows
-            cols={["Player", "Centre", "Sport", "Category", "Fee", "Amount", "Due Date", "Days Overdue"]}
-            rows={(data.rows || []).slice(0, 200).map((r: any) => [
-              r.player_name || "—", r.centre || "—", r.sport || "—", r.category || "—",
-              r.fee_type || "—", inr(r.amount_due), formatDate(r.due_date), String(r.days_overdue),
-            ])}
-          />
-        )}
-      </SectionCard>
-    </View>
-  );
-}
-
-function PaymentModesView({ data }: { data: any }) {
-  if (!data) return <Text style={s.empty}>No data.</Text>;
-  const modes = data.summary || {};
-  const modeEntries = Object.entries(modes) as [string, { count: number; sum: number }][];
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={s.kpiRow}>
-        {modeEntries.length === 0 ? (
-          <View style={s.emptyKpi}><Text style={s.empty}>No collections in this window.</Text></View>
-        ) : modeEntries.map(([mode, agg]) => (
-          <KPI key={mode} label={mode} value={inr(agg.sum)} tint={mode === "Cash" ? "#16A34A" : mode === "Online" ? "#0EA5E9" : "#7C3AED"} icon={mode === "Cash" ? "dollar-sign" : "credit-card"} testID={`mode-${mode}`} sub={`${agg.count} txn`} />
-        ))}
-      </View>
-      <SectionCard title={`Transactions (${(data.transactions || []).length})`} icon="list">
-        {(data.transactions || []).length === 0 ? <Text style={s.empty}>No transactions.</Text> : (
-          <TableRows
-            cols={["Player", "Centre", "Sport", "Fee", "Amount", "Mode", "Reference", "Paid At", "By"]}
-            rows={(data.transactions || []).slice(0, 300).map((t: any) => [
-              t.player_name || "—", t.centre || "—", t.sport || "—", t.fee_type || "—",
-              inr(t.amount), t.payment_mode || "—", t.reference_id || "—",
-              t.paid_at ? formatDateTime(t.paid_at) : "—", t.collected_by_name || "—",
-            ])}
-          />
-        )}
-      </SectionCard>
-    </View>
-  );
-}
-
-function KPI({ label, value, tint, icon, testID, sub }: { label: string; value: string; tint: string; icon: any; testID?: string; sub?: string }) {
+function KPI({ label, value, tint, icon, testID }: { label: string; value: string; tint: string; icon: any; testID?: string }) {
   return (
     <View style={[s.kpi, { borderLeftColor: tint }]} testID={testID}>
       <View style={[s.kpiIcon, { backgroundColor: `${tint}22` }]}>
@@ -565,74 +890,147 @@ function KPI({ label, value, tint, icon, testID, sub }: { label: string; value: 
       <View style={{ flex: 1 }}>
         <Text style={s.kpiLabel}>{label}</Text>
         <Text style={s.kpiValue}>{value}</Text>
-        {sub ? <Text style={s.kpiSub}>{sub}</Text> : null}
       </View>
     </View>
-  );
-}
-
-function SectionCard({ title, icon, children }: any) {
-  return (
-    <View style={s.section}>
-      <View style={s.sectionHead}><Feather name={icon} size={14} color="#1E40AF" /><Text style={s.sectionTitle}>{title}</Text></View>
-      {children}
-    </View>
-  );
-}
-
-function TableRows({ cols, rows }: { cols: string[]; rows: string[][] }) {
-  const numIdx = cols.findIndex((c) => /amount|count|₹/i.test(c));
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator style={{ marginTop: 8 }}>
-      <View style={{ minWidth: "100%" }}>
-        <DataTable columns={cols} rows={rows} numericFromIndex={numIdx >= 0 ? numIdx : 1} />
-      </View>
-    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
-  backBtn: { padding: 6, borderRadius: 8, backgroundColor: "#EFF6FF" },
-  overline: { fontSize: 10, color: "#1E40AF", fontWeight: "800", letterSpacing: 0.8 },
-  h1: { fontSize: 24, fontWeight: "800", color: "#0F172A", marginTop: 2 },
-  hSub: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  exportBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#1E40AF", paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
+  wrap: { flex: 1, backgroundColor: colors.bg },
+  deniedBtn: { marginTop: 16, alignSelf: "flex-start", backgroundColor: colors.ink, paddingHorizontal: 16, paddingVertical: 10, borderRadius: radii.md },
+  header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.md, marginBottom: spacing.lg },
+  headerStacked: { flexDirection: "column" },
+  backBtn: { padding: 6, borderRadius: radii.sm, backgroundColor: colors.primarySofter, marginBottom: spacing.sm, alignSelf: "flex-start" },
+  overline: { fontSize: 10, color: colors.primary, fontWeight: "800", letterSpacing: 0.8 },
+  h1: { fontSize: 26, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  helper: { fontSize: 13, color: colors.muted2, marginTop: 4, lineHeight: 18 },
+  exportRow: { flexDirection: "row", gap: 6, flexWrap: "wrap", alignItems: "flex-start" },
+  exportBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 9, borderRadius: radii.md },
+  exportBtnDisabled: { opacity: 0.45 },
   exportBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 11, letterSpacing: 0.3 },
-  filterCard: { backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: "#E2E8F0" },
-  filterHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
-  filterHeadTxt: { color: "#1E40AF", fontWeight: "800", fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase" },
-  filterLabel: { fontSize: 11, color: "#475569", fontWeight: "700", marginTop: 10, textTransform: "uppercase", letterSpacing: 0.4 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
-  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: "#E2E8F0" },
-  chipActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
-  chipTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
-  chipTxtActive: { color: "#fff" },
-  input: { height: 40, flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 8, paddingHorizontal: 10, fontSize: 13 },
-  rangeHelp: { fontSize: 11, color: "#94A3B8", marginTop: 4, fontStyle: "italic" },
-  tabs: { flexDirection: "row", gap: 8, marginBottom: 14, flexWrap: "wrap" },
-  tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
-  tabBtnActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
-  tabBtnTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
-  tabBtnTxtActive: { color: "#fff" },
-  errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#FEF2F2", borderColor: "#FECACA", borderWidth: 1, padding: 12, borderRadius: 10 },
-  errorTxt: { color: "#B91C1C", fontSize: 13 },
+
+  setupBar: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...Platform.select({ web: { boxShadow: "0 1px 3px rgba(15,23,42,0.06)" } as any, default: {} }),
+  },
+  setupBarStacked: { flexDirection: "column", alignItems: "stretch" },
+  fieldLabel: { fontSize: 10, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
+  selectBtn: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, minHeight: 42,
+  },
+  selectBtnTxt: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.ink },
+  segment: { flexDirection: "row", backgroundColor: colors.surface2, borderRadius: radii.md, padding: 3, borderWidth: 1, borderColor: colors.border },
+  segmentItem: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, borderRadius: radii.sm, alignItems: "center" },
+  segmentItemActive: { backgroundColor: colors.primary, },
+  segmentTxt: { fontSize: 11, fontWeight: "800", color: colors.muted },
+  segmentTxtActive: { color: "#fff" },
+  filtersBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    borderWidth: 1.5, borderColor: colors.primary, borderRadius: radii.md,
+    paddingHorizontal: 12, paddingVertical: 10, minHeight: 42, backgroundColor: colors.primarySofter,
+  },
+  filtersBtnTxt: { fontSize: 12, fontWeight: "800", color: colors.primary },
+  runBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    backgroundColor: colors.primary, borderRadius: radii.md,
+    paddingHorizontal: 12, paddingVertical: 10, minHeight: 42,
+  },
+  runBtnDisabled: { opacity: 0.55 },
+  runBtnTxt: { fontSize: 12, fontWeight: "800", color: "#fff" },
+
+  readyCard: {
+    flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.md,
+    backgroundColor: colors.surface2, borderRadius: radii.md, paddingVertical: 12, paddingHorizontal: spacing.md,
+    marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  readyCol: { flex: 1, minWidth: 140 },
+  readyColMid: { flex: 1.4, minWidth: 180 },
+  readyLabel: { fontSize: 10, fontWeight: "700", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.4 },
+  readyValue: { fontSize: 14, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  readyHint: { fontSize: 13, color: colors.muted2, lineHeight: 18 },
+  readyStatus: { fontSize: 12, fontWeight: "800", textAlign: "right" },
+
+  outdatedBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap",
+    backgroundColor: "#FEF3C7", borderRadius: radii.sm, padding: 10, marginBottom: spacing.md,
+    borderWidth: 1, borderColor: "#FDE68A",
+  },
+  outdatedTxt: { flex: 1, fontSize: 12, color: "#92400E", fontWeight: "600", minWidth: 200 },
+  outdatedRun: { backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm },
+  outdatedRunTxt: { color: "#fff", fontSize: 11, fontWeight: "800" },
+
+  advPanel: {
+    backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md,
+    marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border,
+  },
+  advPanelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
+  advPanelTitle: { fontSize: 13, fontWeight: "800", color: colors.ink },
+  filterGroup: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  filterGroupTitle: { fontSize: 11, fontWeight: "800", color: colors.primary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: spacing.sm },
+  filterField: { marginBottom: spacing.sm },
+  filterFieldLabel: { fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 6 },
+  miniSelectRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  miniSelect: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  miniSelectActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  miniSelectTxt: { fontSize: 11, fontWeight: "700", color: colors.muted, textTransform: "capitalize" },
+  miniSelectTxtActive: { color: "#fff" },
+  dateRow: { flexDirection: "row", gap: 8 },
+  dateInput: { flex: 1, height: 40, borderWidth: 1, borderColor: colors.border, borderRadius: radii.sm, paddingHorizontal: 10, fontSize: 13, backgroundColor: colors.surface },
+
+  chipBar: { marginBottom: spacing.md },
+  chipBarInner: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
+  activeChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: colors.primarySofter, borderRadius: radii.pill,
+    paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.primarySoft,
+  },
+  activeChipStatic: {
+    backgroundColor: colors.surface2, borderRadius: radii.pill,
+    paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.border,
+  },
+  activeChipTxt: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  clearAll: { paddingHorizontal: 8, paddingVertical: 5 },
+  clearAllTxt: { fontSize: 11, fontWeight: "800", color: colors.muted2, textDecorationLine: "underline" },
+  rangeHint: { fontSize: 11, color: colors.hint, marginTop: 4, marginLeft: 2 },
+
+  previewCard: {
+    backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg,
+    borderWidth: 1, borderColor: colors.border, minHeight: 280,
+    ...Platform.select({ web: { boxShadow: "0 2px 8px rgba(15,23,42,0.04)" } as any, default: {} }),
+  },
+  previewHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginBottom: spacing.lg, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  previewTitle: { fontSize: 18, fontWeight: "800", color: colors.ink },
+  previewSub: { fontSize: 12, color: colors.muted2, marginTop: 4, lineHeight: 16 },
+  lastUpdated: { fontSize: 10, color: colors.hint, fontWeight: "600", textAlign: "right", maxWidth: 140 },
+
   kpiRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kpi: { flex: 1, minWidth: 200, flexDirection: "row", gap: 10, backgroundColor: "#fff", padding: 14, borderRadius: 10, borderLeftWidth: 4, borderColor: "#E2E8F0", borderWidth: 1 },
-  kpiIcon: { width: 34, height: 34, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  kpiLabel: { fontSize: 11, color: "#64748B", fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 },
-  kpiValue: { fontSize: 18, color: "#0F172A", fontWeight: "800", marginTop: 2 },
-  kpiSub: { fontSize: 11, color: "#94A3B8", marginTop: 2 },
-  emptyKpi: { flex: 1, padding: 20, backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#E2E8F0" },
-  section: { backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#E2E8F0" },
-  sectionHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
-  sectionTitle: { fontSize: 13, fontWeight: "800", color: "#0F172A" },
-  tRow: { flexDirection: "row", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
-  tHeadCell: { fontSize: 11, fontWeight: "800", color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, paddingHorizontal: 8 },
-  tCell: { fontSize: 12, color: "#0F172A", paddingHorizontal: 8 },
-  empty: { color: "#94A3B8", fontStyle: "italic", padding: 12, fontSize: 12 },
-  printHeader: { marginBottom: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: "#E2E8F0" },
-  printTitle: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  printSub: { fontSize: 11, color: "#64748B", marginTop: 4 },
+  kpi: { flex: 1, minWidth: 160, flexDirection: "row", gap: 10, backgroundColor: colors.surface2, padding: 12, borderRadius: radii.md, borderLeftWidth: 4, borderWidth: 1, borderColor: colors.border },
+  kpiIcon: { width: 34, height: 34, borderRadius: radii.sm, alignItems: "center", justifyContent: "center" },
+  kpiLabel: { fontSize: 10, color: colors.muted2, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.4 },
+  kpiValue: { fontSize: 17, color: colors.ink, fontWeight: "800", marginTop: 2 },
+
+  modalOverlay: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "center", padding: spacing.lg },
+  modalCard: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, maxWidth: 480, alignSelf: "center", width: "100%" },
+  modalSheet: { alignSelf: "stretch", marginTop: "auto" as any, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxWidth: "100%" },
+  modalHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md },
+  modalTitle: { fontSize: 16, fontWeight: "800", color: colors.ink },
+  searchInput: {
+    height: 42, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+    paddingHorizontal: 12, marginBottom: spacing.sm, fontSize: 14, backgroundColor: colors.surface2,
+  },
+  pickerGroup: { fontSize: 10, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.6, marginTop: spacing.sm, marginBottom: 4 },
+  pickerRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, paddingHorizontal: 8, borderRadius: radii.sm },
+  pickerRowActive: { backgroundColor: colors.primarySofter },
+  pickerRowTxt: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.ink },
+  pickerRowTxtActive: { color: colors.primary, fontWeight: "800" },
 });
