@@ -6,6 +6,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { useBreakpoint } from "./useBreakpoint";
+import { colors } from "./theme";
 
 const SLOT_TINT: Record<string, string> = { Morning: "#F59E0B", Evening: "#7C3AED", Unassigned: "#94A3B8" };
 const SKILL_TINT: Record<string, string> = { Beginner: "#10B981", Intermediate: "#0EA5E9", Advanced: "#EF4444", Unassigned: "#94A3B8" };
@@ -123,7 +124,7 @@ export default function CoachHome() {
         <Text style={s.section}>Quick actions</Text>
         <View style={s.actionsRow}>
           <Action icon="check-square" label="Mark attendance" tint="#1E40AF" onPress={() => router.push("/(tabs)/attendance")} testID="qa-attendance" />
-          <Action icon="clipboard" label="Assessments" tint="#EA580C" onPress={() => router.push("/coach/assessments")} testID="qa-assessments" />
+          <Action icon="clipboard" label="Assessments" tint={colors.primary} onPress={() => router.push("/coach/assessments")} testID="qa-assessments" />
           {(isAdmin || (user.coach_permissions || []).includes("add_players")) && (
             <Action icon="user-plus" label="Add player" tint="#16A34A" onPress={() => router.push("/manage/player/new")} testID="qa-addplayer" />
           )}

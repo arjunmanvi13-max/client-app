@@ -314,12 +314,32 @@ export default function WardDetail() {
             {coachAsm.map((a: any, i: number) => (
               <View key={a.id || i} style={s.markRow} testID={`coach-asm-${a.id}`}>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.markSubject}>{a.definition_name || a.assessment_type}</Text>
-                  <Text style={s.markMeta}>{formatDate(a.date)} · {a.sport} · {a.centre} · {a.slot}</Text>
+                  <Text style={s.markSubject}>
+                    {a.assessment_stage_label || a.definition_name || "Assessment"}
+                  </Text>
+                  <Text style={s.markMeta}>
+                    {formatDate(a.date)} · {a.sport} · {a.centre} · {a.session || a.slot}
+                  </Text>
+                  {a.schema_version >= 2 && (a.technical_skill_avg != null || a.overall_score != null) ? (
+                    <Text style={s.markMeta}>
+                      Technical {a.technical_skill_avg ?? "—"}/10 · Overall {a.overall_score ?? "—"}/10
+                    </Text>
+                  ) : a.schema_version === 2 && a.scores ? (
+                    <Text style={s.markMeta}>
+                      Avg{" "}
+                      {(
+                        Object.values(a.scores).filter((v: any) => v != null).reduce((s: number, v: any) => s + Number(v), 0)
+                        / Math.max(Object.values(a.scores).filter((v: any) => v != null).length, 1)
+                      ).toFixed(1)}
+                      /10 across 5 parameters
+                    </Text>
+                  ) : null}
                   {a.coach_remark ? <Text style={s.markMeta}>{a.coach_remark}</Text> : null}
                 </View>
                 <Text style={s.markScore}>
-                  {a.rating || (a.score != null ? `${a.score}${a.max_score ? `/${a.max_score}` : ""}` : "—")}
+                  {a.schema_version === 2 && a.scores
+                    ? `${Object.values(a.scores).filter((v: any) => v != null).length}/5`
+                    : a.rating || (a.score != null ? `${a.score}${a.max_score ? `/${a.max_score}` : ""}` : "—")}
                 </Text>
               </View>
             ))}
