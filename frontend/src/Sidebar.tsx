@@ -84,6 +84,7 @@ const GRP_SYSTEM: NavGroup = {
   icon: "settings",
   items: [
     { key: "perms", label: "Permissions", icon: "key", href: "/admin/permissions", match: (p) => p.startsWith("/admin/permissions"), roles: ["super_admin"] },
+    { key: "academic", label: "Academic Structure", icon: "book-open", href: "/admin/academic", match: (p) => p.startsWith("/admin/academic"), roles: ["super_admin", "principal", "vice_principal"] },
     { key: "settings", label: "Settings", icon: "settings", href: "/(tabs)/profile", match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") },
     { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications") },
   ],

@@ -33,6 +33,8 @@ export default function Attendance() {
   const [kind, setKind] = useState<string>("student");
   const [groups, setGroups] = useState<string[]>([]);
   const [group, setGroup] = useState<string | null>(null);
+  const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
+  const [sectionId, setSectionId] = useState<string | null>(null);
   const [people, setPeople] = useState<any[]>([]);
   const [marks, setMarks] = useState<Record<string, "present" | "absent" | "late" | "leave">>({});
   const [loading, setLoading] = useState(false);
@@ -54,27 +56,50 @@ export default function Attendance() {
 
   useEffect(() => {
     (async () => {
+      if (kind === "student") {
+        try {
+          const { data } = await api.get("/academic/sections/for-attendance");
+          const list = (data.sections || []).map((s: any) => ({ id: s.id, label: s.label }));
+          setSections(list);
+          setSectionId(list[0]?.id || null);
+          setGroup(list[0]?.label || null);
+        } catch {
+          setSections([]);
+          setSectionId(null);
+          setGroup(null);
+        }
+        setGroups([]);
+        return;
+      }
       const { data } = await api.get("/people/groups", { params: { kind } });
       setGroups(data.groups);
       setGroup(data.groups[0] || null);
+      setSections([]);
+      setSectionId(null);
     })();
   }, [kind]);
 
   const loadPeople = useCallback(async () => {
-    if (!group) return;
+    const rosterKey = kind === "student" ? sectionId : group;
+    if (!rosterKey) return;
     setLoading(true);
     try {
-      const { data } = await api.get("/people", { params: { kind, group } });
+      const params: any = { kind };
+      if (kind === "student" && sectionId) params.section_id = sectionId;
+      else if (group) params.group = group;
+      const { data } = await api.get("/people", { params });
       setPeople(data);
       const today = new Date().toISOString().slice(0, 10);
-      const att = await api.get("/attendance", { params: { date: today, kind, group } });
+      const attParams: any = { date: today, kind };
+      if (group) attParams.group = group;
+      const att = await api.get("/attendance", { params: attParams });
       const m: any = {};
       // Mobile: exception-based marking — everyone defaults to Present
       if (isMobile) data.forEach((p: any) => { m[p.id] = "present"; });
       att.data.forEach((r: any) => { m[r.person_id] = r.status; });
       setMarks(m);
     } finally { setLoading(false); }
-  }, [kind, group, isMobile]);
+  }, [kind, group, sectionId, isMobile]);
 
   useEffect(() => { loadPeople(); }, [loadPeople]);
 
@@ -104,7 +129,7 @@ export default function Attendance() {
     setSaving(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const payload = {
+      const payload: any = {
         date: today,
         kind,
         group,
@@ -112,6 +137,7 @@ export default function Attendance() {
         sport: null,
         marks: Object.entries(marks).map(([person_id, status]) => ({ person_id, status })),
       };
+      if (kind === "student" && sectionId) payload.section_id = sectionId;
       await api.post("/attendance/batch", payload);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       Alert.alert("Saved", `Attendance saved for ${Object.keys(marks).length} people.`);
@@ -147,12 +173,29 @@ export default function Attendance() {
       </ScrollView>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.hScroll} contentContainerStyle={s.groupRow}>
-        {groups.length === 0 && <Text style={s.empty}>No groups for this kind yet.</Text>}
-        {groups.map((g) => (
-          <TouchableOpacity key={g} testID={`group-${g}`} onPress={() => setGroup(g)} style={[s.groupChip, group === g && s.groupChipActive]}>
-            <Text style={[s.groupText, group === g && { color: "#fff" }]}>{g}</Text>
-          </TouchableOpacity>
-        ))}
+        {kind === "student" ? (
+          sections.length === 0 ? (
+            <Text style={s.empty}>No sections assigned. Contact the school administrator.</Text>
+          ) : sections.map((sec) => (
+            <TouchableOpacity
+              key={sec.id}
+              testID={`section-${sec.label}`}
+              onPress={() => { setSectionId(sec.id); setGroup(sec.label); }}
+              style={[s.groupChip, sectionId === sec.id && s.groupChipActive]}
+            >
+              <Text style={[s.groupText, sectionId === sec.id && { color: "#fff" }]}>{sec.label}</Text>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <>
+            {groups.length === 0 && <Text style={s.empty}>No groups for this kind yet.</Text>}
+            {groups.map((g) => (
+              <TouchableOpacity key={g} testID={`group-${g}`} onPress={() => setGroup(g)} style={[s.groupChip, group === g && s.groupChipActive]}>
+                <Text style={[s.groupText, group === g && { color: "#fff" }]}>{g}</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
       </ScrollView>
 
       {!isMobile && (

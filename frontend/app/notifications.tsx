@@ -41,8 +41,8 @@ export default function Notifications() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.title}>{n.title}</Text>
-              <Text style={s.message}>{n.message}</Text>
-              <Text style={s.time}>{new Date(n.created_at).toLocaleString()}</Text>
+              <Text style={s.message}>{n.message || n.body}</Text>
+              <Text style={s.time}>{new Date(n.created_at || n.at).toLocaleString()}</Text>
             </View>
             {!n.read && <View style={s.dot} />}
           </TouchableOpacity>

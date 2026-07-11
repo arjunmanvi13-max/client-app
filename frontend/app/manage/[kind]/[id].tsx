@@ -38,6 +38,7 @@ const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] 
     { key: "dashboard_access", label: "Dashboard access" },
     { key: "lifecycle_dashboard", label: "Lifecycle dashboard" },
     { key: "manage_users", label: "Manage users" },
+    { key: "manage_academic_structure", label: "Manage academic structure" },
   ]},
   { group: "Fees & Bulk", items: [
     { key: "view_fees", label: "View fees" },
@@ -114,6 +115,19 @@ export default function ManageEdit() {
   const isAdminKind = kind === "admin"; // Sports Admin
   const isPlayerKind = kind === "player";
   const isStaffKind = kind === "staff";
+  const isStudentKind = kind === "student";
+
+  useEffect(() => {
+    if (kind !== "student") return;
+    (async () => {
+      try {
+        const { data } = await api.get("/academic/sections");
+        setAcademicSections(data.map((s: any) => ({ id: s.id, label: s.label })));
+      } catch {
+        setAcademicSections([]);
+      }
+    })();
+  }, [kind]);
   const isAdmin = user?.role === "admin" || user?.role === "super_admin";
 
   const [loading, setLoading] = useState(!isNew);
@@ -142,6 +156,8 @@ export default function ManageEdit() {
 
   // Person base
   const [group, setGroup] = useState("");
+  const [sectionId, setSectionId] = useState<string | null>(null);
+  const [academicSections, setAcademicSections] = useState<{ id: string; label: string }[]>([]);
   const [sport, setSport] = useState("");
   const [isResident, setIsResident] = useState(false);
 
@@ -250,6 +266,7 @@ export default function ManageEdit() {
           if (p) {
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
+            setSectionId(p.section_id || null);
             setFatherName(p.father_name || "");
             setAge(p.age ? String(p.age) : "");
             setSkillLevel(p.skill_level || "");
@@ -380,6 +397,7 @@ export default function ManageEdit() {
         else { delete body.kind; await api.patch(`/people/${id}`, body); }
       } else {
         const body: any = { name, kind, organization, group: group || null, sport: sport || null, is_resident: isResident };
+        if (isStudentKind && sectionId) body.section_id = sectionId;
         if (isStaffKind) {
           body.centre = organization === "ALPHA" ? (centre || null) : null;
           body.is_resident = false;
@@ -847,8 +865,23 @@ export default function ManageEdit() {
 
           {!isUserKind && !isPlayerKind && !isStaffKind && (
             <>
-              <Text style={s.label}>{kind === "student" ? "Class / Section" : "Group"}</Text>
-              <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder={kind === "student" ? "e.g. 9-A" : "Group"} placeholderTextColor="#94A3B8" style={s.input} />
+              <Text style={s.label}>{isStudentKind ? "Class / Section" : "Group"}</Text>
+              {isStudentKind && academicSections.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                  {academicSections.map((sec) => (
+                    <TouchableOpacity
+                      key={sec.id}
+                      testID={`field-section-${sec.label}`}
+                      style={[s.miniChip, sectionId === sec.id && s.miniChipActive]}
+                      onPress={() => { setSectionId(sec.id); setGroup(sec.label); }}
+                    >
+                      <Text style={[s.miniChipTxt, sectionId === sec.id && s.miniChipTxtActive]}>{sec.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder={isStudentKind ? "e.g. 9-A" : "Group"} placeholderTextColor="#94A3B8" style={s.input} />
+              )}
               <View style={s.switchRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.switchLabel}>Hostel resident</Text>
@@ -1102,4 +1135,8 @@ const s = StyleSheet.create({
   unlinkTxt: { fontSize: 11, fontWeight: "800", color: "#DC2626" },
   linkParentBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10, marginTop: 10, borderWidth: 1, borderStyle: "dashed", borderColor: "#7C3AED", backgroundColor: "#fff" },
   linkParentBtnTxt: { fontSize: 12, fontWeight: "800", color: "#7C3AED" },
+  miniChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#E2E8F0", marginRight: 8, backgroundColor: "#fff" },
+  miniChipActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
+  miniChipTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
+  miniChipTxtActive: { color: "#fff" },
 });

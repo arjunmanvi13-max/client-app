@@ -181,7 +181,7 @@ export default function ParentHome() {
                     <Feather name="bell" size={18} color="#475569" />
                     <View style={{ flex: 1, marginLeft: 10 }}>
                       <Text style={[s.alertTitle, { color: "#0F172A" }]}>{n.title}</Text>
-                      <Text style={s.alertMsg}>{n.body}</Text>
+                      <Text style={s.alertMsg}>{n.message || n.body}</Text>
                     </View>
                   </View>
                 ))}

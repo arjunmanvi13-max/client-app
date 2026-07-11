@@ -27,6 +27,7 @@ const PERM_LABELS: Record<string, string> = {
   dashboard_access: "Dashboard Access",
   lifecycle_dashboard: "Lifecycle Dashboard",
   manage_users: "Manage Users",
+  manage_academic_structure: "Manage Academic Structure",
 };
 
 export default function PermissionsEdit() {
