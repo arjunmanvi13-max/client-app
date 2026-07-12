@@ -28,7 +28,6 @@ import {
   isComplete,
   normalizeScoresFromApi,
   scoreTint,
-  type AssessmentStage,
 } from "../../../src/assessmentSchema";
 
 type LoadState = "idle" | "loading" | "ready" | "outdated" | "error" | "locked";
@@ -72,8 +71,8 @@ type PlayerRow = {
 
 type DraftRow = { scores: PlayerScores; remark: string };
 
-function stageLabel(id: AssessmentStage): string {
-  return ASSESSMENT_STAGES.find((s) => s.id === id)?.label || id;
+function stageLabel(id: string, stages: { id: string; label: string }[]): string {
+  return stages.find((s) => s.id === id)?.label || id;
 }
 
 export default function CoachAssessmentEntry() {
@@ -88,7 +87,7 @@ export default function CoachAssessmentEntry() {
   const [centre, setCentre] = useState<typeof CENTRES[number]>("Balua");
   const [sport, setSport] = useState<typeof SPORTS[number]>("Cricket");
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
-  const [assessmentStage, setAssessmentStage] = useState<AssessmentStage>("assessment_1");
+  const [assessmentStage, setAssessmentStage] = useState("");
   const [assessmentDate, setAssessmentDate] = useState(() => formatDate(toISODate()));
   const [sessionType, setSessionType] = useState<typeof SESSIONS[number] | "">("");
 
@@ -123,13 +122,18 @@ export default function CoachAssessmentEntry() {
     sport === "Football" ? metadata?.football_technical : metadata?.cricket_technical
   ) || [], [sport, metadata]);
 
+  const stageOptions: { id: string; label: string }[] = useMemo(() => {
+    if (metadata?.stages?.length) return metadata.stages;
+    return ASSESSMENT_STAGES;
+  }, [metadata]);
+
   const setupReady = useMemo(() => {
-    if (!playerType) return false;
+    if (!playerType || !assessmentStage) return false;
     const isoDate = parseToISO(assessmentDate) || assessmentDate;
     if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return false;
     if (playerType === "Daily" && !sessionType) return false;
     return true;
-  }, [playerType, assessmentDate, sessionType]);
+  }, [playerType, assessmentStage, assessmentDate, sessionType]);
 
   const filterSnapshotKey = useMemo(() => JSON.stringify({
     centre, sport, playerType, assessmentStage,
@@ -164,6 +168,10 @@ export default function CoachAssessmentEntry() {
       if (allowed?.length === 1) setCentre(allowed[0]);
       const sports = r.data?.allowed_sports;
       if (sports?.length === 1) setSport(sports[0]);
+      const stages = r.data?.stages;
+      if (stages?.length) {
+        setAssessmentStage((prev) => (prev && stages.some((s: { id: string }) => s.id === prev) ? prev : stages[0].id));
+      }
     }).catch(() => {});
   }, [canEnter]);
 
@@ -485,7 +493,7 @@ export default function CoachAssessmentEntry() {
           <SetupField label="Assessment stage" flex={1.2}>
             <TouchableOpacity style={s.selectBtn} onPress={() => setStagePickerOpen(true)} testID="stage-picker">
               <Feather name="layers" size={15} color={colors.primary} />
-              <Text style={s.selectBtnTxt} numberOfLines={1}>{stageLabel(assessmentStage)}</Text>
+              <Text style={s.selectBtnTxt} numberOfLines={1}>{stageLabel(assessmentStage, stageOptions) || "Select stage"}</Text>
               <Feather name="chevron-down" size={16} color={colors.muted2} />
             </TouchableOpacity>
           </SetupField>
@@ -539,7 +547,7 @@ export default function CoachAssessmentEntry() {
               <View style={{ flex: 1 }}>
                 <Text style={s.previewTitle}>Player assessment</Text>
                 <Text style={s.previewSub}>
-                  {centre} · {sport} · {playerType}{playerType === "Daily" && sessionType ? ` · ${sessionType}` : ""} · {stageLabel(assessmentStage)} · {formatDate(isoDate)} · {players.length} players
+                  {centre} · {sport} · {playerType}{playerType === "Daily" && sessionType ? ` · ${sessionType}` : ""} · {stageLabel(assessmentStage, stageOptions)} · {formatDate(isoDate)} · {players.length} players
                 </Text>
               </View>
               <Text style={s.progressTxt} testID="assessment-progress">{progressCount} of {players.length} completed{autoSaving ? " · saving…" : ""}</Text>
@@ -650,7 +658,7 @@ export default function CoachAssessmentEntry() {
         ))}
       </PickerModal>
       <PickerModal visible={stagePickerOpen} onClose={() => setStagePickerOpen(false)} title="Assessment stage">
-        {ASSESSMENT_STAGES.map((st) => (
+        {stageOptions.map((st) => (
           <PickerRow key={st.id} label={st.label} selected={assessmentStage === st.id} onPress={() => { setAssessmentStage(st.id); setStagePickerOpen(false); }} />
         ))}
       </PickerModal>
