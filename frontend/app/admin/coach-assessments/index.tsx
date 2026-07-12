@@ -12,9 +12,10 @@ import { colors, radii, spacing } from "../../../src/theme";
 import { getApiError } from "../../../src/ScreenStates";
 
 const STAGES = [
-  { id: "week_1_baseline", label: "Week 1 - Baseline" },
-  { id: "week_4_progress", label: "Week 4 - Progress" },
-  { id: "week_8_12_final", label: "Week 8-12 - Final" },
+  { id: "assessment_1", label: "Assessment 1 — Term 1 (Jan–Mar)" },
+  { id: "assessment_2", label: "Assessment 2 — Term 2 (Apr–Jun)" },
+  { id: "assessment_3", label: "Assessment 3 — Term 3 (Jul–Sep)" },
+  { id: "assessment_4", label: "Assessment 4 — Term 4 (Oct–Dec)" },
 ] as const;
 const PLAYER_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"] as const;
 const SESSIONS = ["Morning", "Evening"] as const;
@@ -27,7 +28,7 @@ export default function CoachAssessmentAdmin() {
   const [sport, setSport] = useState<"Cricket" | "Football">("Cricket");
   const [playerType, setPlayerType] = useState<typeof PLAYER_TYPES[number]>("Daily");
   const [session, setSession] = useState<typeof SESSIONS[number]>("Morning");
-  const [stage, setStage] = useState<typeof STAGES[number]["id"]>("week_1_baseline");
+  const [stage, setStage] = useState<typeof STAGES[number]["id"]>("assessment_1");
   const [publishDate, setPublishDate] = useState(formatDate(toISODate()));
   const [reopenReason, setReopenReason] = useState("");
 

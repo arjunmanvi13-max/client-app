@@ -12,24 +12,32 @@ import { LoadingState, ErrorState, EmptyState, getApiError, confirmAction } from
 import { formatDate, formatDateTime, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 import { colors, radii, spacing } from "../../../src/theme";
 
+import {
+  ASSESSMENT_STAGES,
+  CORE_KEYS,
+  CoreKey,
+  PlayerScores,
+  TechAreaMeta,
+  buildEntryPayload,
+  calcAreaAvg,
+  calcOverall,
+  calcTechnicalMaster,
+  completionLabel,
+  completionStatus,
+  emptyScores,
+  isComplete,
+  normalizeScoresFromApi,
+  scoreTint,
+  type AssessmentStage,
+} from "../../../src/assessmentSchema";
+
 type LoadState = "idle" | "loading" | "ready" | "outdated" | "error" | "locked";
-type AssessmentStage = "week_1_baseline" | "week_4_progress" | "week_8_12_final";
 type PlayerType = "Daily" | "Day Boarding" | "Hostel" | "Boarding";
 
 const PLAYER_TYPES: PlayerType[] = ["Daily", "Day Boarding", "Hostel", "Boarding"];
 const CENTRES = ["Balua", "Harding Park"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
 const SESSIONS = ["Morning", "Evening"] as const;
-const STAGES: { id: AssessmentStage; label: string }[] = [
-  { id: "week_1_baseline", label: "Week 1 - Baseline" },
-  { id: "week_4_progress", label: "Week 4 - Progress" },
-  { id: "week_8_12_final", label: "Week 8-12 - Final" },
-];
-const CORE_KEYS = ["strength_conditioning", "game_awareness", "mental_attributes", "training_attitude"] as const;
-type CoreKey = typeof CORE_KEYS[number];
-
-const CRICKET_TECH = ["batting", "bowling", "fielding", "wicket_keeping", "running_between_wickets", "cricket_iq"] as const;
-const FOOTBALL_TECH = ["dribbling", "passing", "shooting", "defending", "heading", "football_iq"] as const;
 
 const CORE_LABELS: Record<CoreKey, string> = {
   strength_conditioning: "Strength & Conditioning",
@@ -45,22 +53,13 @@ const CORE_HINTS: Record<CoreKey, string> = {
   training_attitude: "Discipline, effort, coachability, teamwork and attendance.",
 };
 
-type TechKey = string;
-type PlayerScores = {
-  technical_sub: Record<string, number | null>;
-  strength_conditioning: number | null;
-  game_awareness: number | null;
-  mental_attributes: number | null;
-  training_attitude: number | null;
-};
-
 type PlayerRow = {
   player_id: string;
   name: string;
   age_group?: string;
   role?: string;
   scores: PlayerScores;
-  technical_skill_avg?: number | null;
+  technical_skill_master_average?: number | null;
   overall_score?: number | null;
   completion_status?: string;
   coach_remark: string | null;
@@ -73,76 +72,8 @@ type PlayerRow = {
 
 type DraftRow = { scores: PlayerScores; remark: string };
 
-function techKeys(sport: string): readonly string[] {
-  return sport === "Football" ? FOOTBALL_TECH : CRICKET_TECH;
-}
-
-function emptyScores(sport: string): PlayerScores {
-  const technical_sub: Record<string, number | null> = {};
-  techKeys(sport).forEach((k) => { technical_sub[k] = null; });
-  return {
-    technical_sub,
-    strength_conditioning: null,
-    game_awareness: null,
-    mental_attributes: null,
-    training_attitude: null,
-  };
-}
-
-function scoreLabel(n: number): string {
-  if (n <= 3) return "Beginner";
-  if (n <= 5) return "Developing";
-  if (n <= 7) return "Good";
-  if (n <= 9) return "Very Good";
-  return "Elite";
-}
-
-function scoreTint(n: number | null): string | undefined {
-  if (n == null) return undefined;
-  if (n <= 3) return colors.dangerSoft;
-  if (n <= 5) return colors.warningSoft;
-  if (n <= 7) return colors.infoSoft;
-  if (n <= 9) return colors.primarySoft;
-  return colors.successSoft;
-}
-
-function calcTechnicalAvg(technical_sub: Record<string, number | null>, sport: string): number | null {
-  const keys = techKeys(sport);
-  const vals = keys.map((k) => technical_sub[k]);
-  if (vals.some((v) => v == null)) return null;
-  return Math.round((vals.reduce((s, v) => s + (v || 0), 0) / keys.length) * 10) / 10;
-}
-
-function calcOverall(scores: PlayerScores, sport: string): number | null {
-  const techAvg = calcTechnicalAvg(scores.technical_sub, sport);
-  if (techAvg == null) return null;
-  if (CORE_KEYS.some((k) => scores[k] == null)) return null;
-  const sum = techAvg + CORE_KEYS.reduce((s, k) => s + (scores[k] || 0), 0);
-  return Math.round((sum / 5) * 10) / 10;
-}
-
-function isComplete(scores: PlayerScores, sport: string): boolean {
-  if (calcTechnicalAvg(scores.technical_sub, sport) == null) return false;
-  return CORE_KEYS.every((k) => scores[k] != null);
-}
-
-function completionStatus(scores: PlayerScores, sport: string): string {
-  const any = techKeys(sport).some((k) => scores.technical_sub[k] != null) || CORE_KEYS.some((k) => scores[k] != null);
-  if (!any) return "Not Started";
-  if (isComplete(scores, sport)) return "Completed";
-  return "In Progress";
-}
-
 function stageLabel(id: AssessmentStage): string {
-  return STAGES.find((s) => s.id === id)?.label || id;
-}
-
-function techLabel(key: string, meta: any[]): string {
-  return meta.find((m) => m.key === key)?.label || key;
-}
-
-function techHint(key: string, meta: any[]): string {
-  return meta.find((m) => m.key === key)?.coach || "";
+  return ASSESSMENT_STAGES.find((s) => s.id === id)?.label || id;
 }
 
 export default function CoachAssessmentEntry() {
@@ -157,7 +88,7 @@ export default function CoachAssessmentEntry() {
   const [centre, setCentre] = useState<typeof CENTRES[number]>("Balua");
   const [sport, setSport] = useState<typeof SPORTS[number]>("Cricket");
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
-  const [assessmentStage, setAssessmentStage] = useState<AssessmentStage>("week_1_baseline");
+  const [assessmentStage, setAssessmentStage] = useState<AssessmentStage>("assessment_1");
   const [assessmentDate, setAssessmentDate] = useState(() => formatDate(toISODate()));
   const [sessionType, setSessionType] = useState<typeof SESSIONS[number] | "">("");
 
@@ -179,9 +110,16 @@ export default function CoachAssessmentEntry() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [viewTab, setViewTab] = useState<"entry" | "year">("entry");
+  const [yearSummary, setYearSummary] = useState<any>(null);
+  const [yearLoading, setYearLoading] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
+
   const [exportParams, setExportParams] = useState<Record<string, string> | null>(null);
 
-  const techMeta = useMemo(() => (
+  const techMeta: TechAreaMeta[] = useMemo(() => (
     sport === "Football" ? metadata?.football_technical : metadata?.cricket_technical
   ) || [], [sport, metadata]);
 
@@ -213,8 +151,10 @@ export default function CoachAssessmentEntry() {
   const showGrid = setupReady && (loadState === "loading" || loadState === "ready" || loadState === "outdated" || loadState === "error" || loadState === "locked");
 
   const progressCount = useMemo(() => (
-    Object.values(draft).filter((d) => isComplete(d.scores, sport)).length
-  ), [draft, sport]);
+    players.filter((p) => isComplete((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta)).length
+  ), [draft, players, techMeta]);
+
+  const selectedPlayer = players[selectedIndex] || null;
 
   useEffect(() => {
     if (!canEnter) return;
@@ -247,9 +187,9 @@ export default function CoachAssessmentEntry() {
         name: p.name,
         age_group: p.age_group,
         role: p.role,
-        scores: normalizeScoresFromApi(p.scores, sport),
-        technical_skill_avg: p.technical_skill_avg,
-        overall_score: p.overall_score,
+        scores: normalizeScoresFromApi(p.scores, techMeta),
+        technical_skill_master_average: p.technical_skill_master_average ?? p.scores?.technical_skill_master_average,
+        overall_score: p.overall_score ?? p.scores?.overall_score,
         completion_status: p.completion_status,
         coach_remark: p.coach_remark,
         status: p.status,
@@ -259,9 +199,13 @@ export default function CoachAssessmentEntry() {
         read_only: p.read_only,
       }));
       setPlayers(rows);
+      setSelectedIndex(0);
       const d: Record<string, DraftRow> = {};
       rows.forEach((p) => {
-        d[p.player_id] = { scores: { ...p.scores, technical_sub: { ...p.scores.technical_sub } }, remark: p.coach_remark || "" };
+        d[p.player_id] = {
+          scores: JSON.parse(JSON.stringify(p.scores)),
+          remark: p.coach_remark || "",
+        };
       });
       setDraft(d);
       setBatchStatus(data.batch_status);
@@ -280,7 +224,7 @@ export default function CoachAssessmentEntry() {
       setPlayers([]);
       setLoadState("error");
     }
-  }, [setupReady, playerType, centre, sport, assessmentStage, assessmentDate, sessionType, ageGroup, playerSearch, sport]);
+  }, [setupReady, playerType, centre, sport, assessmentStage, assessmentDate, sessionType, ageGroup, playerSearch, techMeta]);
 
   useEffect(() => {
     if (!setupReady) {
@@ -294,29 +238,71 @@ export default function CoachAssessmentEntry() {
 
   useEffect(() => {
     if (loadState === "ready" && players.length > 0) {
-      const allDone = players.every((p) => isComplete((draft[p.player_id] || { scores: emptyScores(sport) }).scores, sport));
+      const allDone = players.every((p) => isComplete((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta));
       setAllComplete(allDone && progressCount === players.length);
     }
-  }, [draft, players, loadState, sport, progressCount]);
+  }, [draft, players, loadState, techMeta, progressCount]);
 
-  const buildEntries = () => players.map((p) => {
-    const row = draft[p.player_id] || { scores: emptyScores(sport), remark: "" };
-    return {
-      player_id: p.player_id,
-      technical_sub: row.scores.technical_sub,
-      strength_conditioning: row.scores.strength_conditioning,
-      game_awareness: row.scores.game_awareness,
-      mental_attributes: row.scores.mental_attributes,
-      training_attitude: row.scores.training_attitude,
-      coach_remark: row.remark.trim().slice(0, 300) || null,
-    };
-  });
+  const buildEntryFor = (playerId: string) => {
+    const row = draft[playerId] || { scores: emptyScores(techMeta), remark: "" };
+    return { player_id: playerId, ...buildEntryPayload(row.scores, row.remark) };
+  };
+
+  const buildEntries = () => players.map((p) => buildEntryFor(p.player_id));
+
+  const autoSavePlayer = async (playerId: string) => {
+    if (!showGrid || isLocked || !playerType) return;
+    const isoDate = parseToISO(assessmentDate) || assessmentDate;
+    setAutoSaving(true);
+    try {
+      await api.post("/coach-assessments/player", {
+        centre, sport, player_type: playerType,
+        session: playerType === "Daily" ? sessionType : undefined,
+        assessment_stage: assessmentStage, date: isoDate,
+        entry: buildEntryFor(playerId),
+      });
+      if (loadState === "outdated") setLoadState("ready");
+    } catch {
+      // silent on auto-save failure
+    } finally {
+      setAutoSaving(false);
+    }
+  };
+
+  const navigateToPlayer = async (index: number) => {
+    if (index < 0 || index >= players.length || index === selectedIndex) return;
+    if (!isLocked && selectedPlayer) {
+      await autoSavePlayer(selectedPlayer.player_id);
+    }
+    setSelectedIndex(index);
+    setViewTab("entry");
+  };
+
+  const loadYearSummary = async (playerId: string) => {
+    setYearLoading(true);
+    try {
+      const isoDate = parseToISO(assessmentDate) || assessmentDate;
+      const year = parseInt(isoDate.slice(0, 4), 10);
+      const { data } = await api.get(`/coach-assessments/year-summary/${playerId}`, { params: { year } });
+      setYearSummary(data);
+    } catch {
+      setYearSummary(null);
+    } finally {
+      setYearLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewTab === "year" && selectedPlayer) {
+      loadYearSummary(selectedPlayer.player_id);
+    }
+  }, [viewTab, selectedPlayer?.player_id, assessmentDate]);
 
   const save = async (status: "draft" | "final") => {
     if (!showGrid || players.length === 0 || !playerType) return;
     const isoDate = parseToISO(assessmentDate) || assessmentDate;
     if (status === "final") {
-      const incomplete = players.filter((p) => !isComplete((draft[p.player_id] || { scores: emptyScores(sport) }).scores, sport));
+      const incomplete = players.filter((p) => !isComplete((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta));
       if (incomplete.length > 0) {
         Alert.alert("Cannot finalize", `All scores are required for every player. ${incomplete.length} player(s) incomplete.`);
         return;
@@ -344,15 +330,16 @@ export default function CoachAssessmentEntry() {
     }
   };
 
-  const doExportPdf = async (playerId?: string) => {
+  const doExportPdf = async (playerId?: string, completedOnly = false) => {
     if (!canExport || !exportParams) return;
     try {
       if (Platform.OS !== "web") {
         Alert.alert("Export PDF", "Open Player Assessment on desktop web to download PDF reports.");
         return;
       }
-      const params = { ...exportParams };
+      const params: Record<string, string> = { ...exportParams };
       if (playerId) params.player_id = playerId;
+      if (completedOnly) params.completed_only = "true";
       const r = await api.get("/coach-assessments/export/pdf", { params, responseType: "blob" });
       const isZip = r.headers["content-type"]?.includes("zip");
       const ext = isZip ? "zip" : "pdf";
@@ -371,17 +358,20 @@ export default function CoachAssessmentEntry() {
     }
   };
 
-  const updateTechScore = (playerId: string, key: string, value: number | null) => {
+  const updateSubScore = (playerId: string, area: string, subKey: string, value: number) => {
     if (isLocked) return;
     setDraft((d) => {
-      const row = d[playerId] || { scores: emptyScores(sport), remark: "" };
+      const row = d[playerId] || { scores: emptyScores(techMeta), remark: "" };
       return {
         ...d,
         [playerId]: {
           ...row,
           scores: {
             ...row.scores,
-            technical_sub: { ...row.scores.technical_sub, [key]: value },
+            technical_detail: {
+              ...row.scores.technical_detail,
+              [area]: { ...row.scores.technical_detail[area], [subKey]: value },
+            },
           },
         },
       };
@@ -389,10 +379,10 @@ export default function CoachAssessmentEntry() {
     if (loadState === "ready") setLoadState("outdated");
   };
 
-  const updateCoreScore = (playerId: string, key: CoreKey, value: number | null) => {
+  const updateCoreScore = (playerId: string, key: CoreKey, value: number) => {
     if (isLocked) return;
     setDraft((d) => {
-      const row = d[playerId] || { scores: emptyScores(sport), remark: "" };
+      const row = d[playerId] || { scores: emptyScores(techMeta), remark: "" };
       return { ...d, [playerId]: { ...row, scores: { ...row.scores, [key]: value } } };
     });
     if (loadState === "ready") setLoadState("outdated");
@@ -400,7 +390,7 @@ export default function CoachAssessmentEntry() {
 
   const updateRemark = (playerId: string, remark: string) => {
     if (isLocked) return;
-    setDraft((d) => ({ ...d, [playerId]: { scores: d[playerId]?.scores || emptyScores(sport), remark: remark.slice(0, 300) } }));
+    setDraft((d) => ({ ...d, [playerId]: { scores: d[playerId]?.scores || emptyScores(techMeta), remark: remark.slice(0, 300) } }));
     if (loadState === "ready") setLoadState("outdated");
   };
 
@@ -461,7 +451,7 @@ export default function CoachAssessmentEntry() {
                 <Feather name="file-text" size={16} color="#fff" />
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[s.exportBtn, !canExport && s.btnDisabled]} onPress={() => doExportPdf()} disabled={!canExport} testID="export-pdf">
+              <TouchableOpacity style={[s.exportBtn, !canExport && s.btnDisabled]} onPress={() => setExportMenuOpen(true)} disabled={!canExport} testID="export-pdf">
                 <Feather name="file-text" size={14} color="#fff" />
                 <Text style={s.exportBtnTxt}>Export PDF</Text>
               </TouchableOpacity>
@@ -521,7 +511,7 @@ export default function CoachAssessmentEntry() {
         )}
 
         <View style={s.legendBar}>
-          <Text style={s.legendTxt}>Score guide: 1–3 Beginner · 4–5 Developing · 6–7 Good · 8–9 Very Good · 10 Elite</Text>
+          <Text style={s.legendTxt}>Score guide: 0 = N/A · 1–3 Beginner · 4–5 Developing · 6–7 Good · 8–9 Very Good · 10 Elite</Text>
         </View>
 
         {!setupReady ? null : loadState === "loading" ? (
@@ -552,24 +542,94 @@ export default function CoachAssessmentEntry() {
                   {centre} · {sport} · {playerType}{playerType === "Daily" && sessionType ? ` · ${sessionType}` : ""} · {stageLabel(assessmentStage)} · {formatDate(isoDate)} · {players.length} players
                 </Text>
               </View>
-              <Text style={s.progressTxt} testID="assessment-progress">{progressCount} of {players.length} completed</Text>
+              <Text style={s.progressTxt} testID="assessment-progress">{progressCount} of {players.length} completed{autoSaving ? " · saving…" : ""}</Text>
             </View>
 
-            <View style={{ gap: spacing.md }}>
-              {players.map((p) => (
-                <PlayerCard
-                  key={p.player_id}
-                  player={p}
-                  draft={draft[p.player_id]}
-                  sport={sport}
-                  techMeta={techMeta}
-                  locked={isLocked || !!p.read_only}
-                  onTechScore={updateTechScore}
-                  onCoreScore={updateCoreScore}
-                  onRemark={updateRemark}
-                />
-              ))}
-            </View>
+            {selectedPlayer && (
+              <>
+                <View style={s.tabRow}>
+                  <TouchableOpacity style={[s.tabBtn, viewTab === "entry" && s.tabBtnActive]} onPress={() => setViewTab("entry")}>
+                    <Text style={[s.tabBtnTxt, viewTab === "entry" && s.tabBtnTxtActive]}>Data entry</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.tabBtn, viewTab === "year" && s.tabBtnActive]} onPress={() => setViewTab("year")}>
+                    <Text style={[s.tabBtnTxt, viewTab === "year" && s.tabBtnTxtActive]}>Year summary</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={s.playerNav}>
+                  <Text style={s.playerNavTitle}>
+                    Player {selectedIndex + 1} of {players.length} — {selectedPlayer.name}
+                  </Text>
+                  <View style={s.playerNavActions}>
+                    <TouchableOpacity style={[s.navBtn, selectedIndex === 0 && s.btnDisabled]} disabled={selectedIndex === 0} onPress={() => navigateToPlayer(selectedIndex - 1)}>
+                      <Feather name="chevron-left" size={16} color={colors.primary} />
+                      <Text style={s.navBtnTxt}>Previous</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.navBtn, selectedIndex >= players.length - 1 && s.btnDisabled]} disabled={selectedIndex >= players.length - 1} onPress={() => navigateToPlayer(selectedIndex + 1)}>
+                      <Text style={s.navBtnTxt}>Next</Text>
+                      <Feather name="chevron-right" size={16} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                  <View style={s.chipRow}>
+                    {players.map((p, idx) => {
+                      const st = completionStatus((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta);
+                      return (
+                        <TouchableOpacity
+                          key={p.player_id}
+                          style={[s.playerChip, idx === selectedIndex && s.playerChipActive]}
+                          onPress={() => navigateToPlayer(idx)}
+                        >
+                          <Text style={[s.playerChipTxt, idx === selectedIndex && s.playerChipTxtActive]}>{p.name}</Text>
+                          <Text style={s.playerChipSub}>{p.role || p.age_group || "—"}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <TouchableOpacity style={s.checklistToggle} onPress={() => setChecklistOpen((o) => !o)}>
+                  <Feather name={checklistOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.primary} />
+                  <Text style={s.checklistToggleTxt}>Player checklist</Text>
+                </TouchableOpacity>
+                {checklistOpen && (
+                  <View style={s.checklistPanel}>
+                    {players.map((p, idx) => {
+                      const st = completionStatus((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta);
+                      return (
+                        <TouchableOpacity key={p.player_id} style={s.checklistRow} onPress={() => navigateToPlayer(idx)}>
+                          <Text style={s.checklistName}>{p.name}</Text>
+                          <Text style={[s.checklistStatus, st === "completed" ? s.statusComplete : st === "in_progress" ? s.statusProgress : s.statusPending]}>
+                            {completionLabel(st)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {viewTab === "entry" ? (
+                  <PlayerForm
+                    player={selectedPlayer}
+                    draft={draft[selectedPlayer.player_id]}
+                    techMeta={techMeta}
+                    locked={isLocked || !!selectedPlayer.read_only}
+                    onSubScore={updateSubScore}
+                    onCoreScore={updateCoreScore}
+                    onRemark={updateRemark}
+                  />
+                ) : (
+                  <YearSummaryPanel
+                    loading={yearLoading}
+                    summary={yearSummary}
+                    onExport={() => doExportPdf(selectedPlayer.player_id)}
+                    canExport={canExport}
+                  />
+                )}
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -590,7 +650,7 @@ export default function CoachAssessmentEntry() {
         ))}
       </PickerModal>
       <PickerModal visible={stagePickerOpen} onClose={() => setStagePickerOpen(false)} title="Assessment stage">
-        {STAGES.map((st) => (
+        {ASSESSMENT_STAGES.map((st) => (
           <PickerRow key={st.id} label={st.label} selected={assessmentStage === st.id} onPress={() => { setAssessmentStage(st.id); setStagePickerOpen(false); }} />
         ))}
       </PickerModal>
@@ -606,29 +666,17 @@ export default function CoachAssessmentEntry() {
       </PickerModal>
 
       <PickerModal visible={exportMenuOpen} onClose={() => setExportMenuOpen(false)} title="Export PDF" sheet>
-        <TouchableOpacity style={s.pickerRow} onPress={() => doExportPdf()} disabled={!canExport}>
-          <Feather name="file-text" size={16} color={colors.primary} />
-          <Text style={s.pickerRowTxt}>All players</Text>
+        <TouchableOpacity style={s.pickerRow} onPress={() => doExportPdf(selectedPlayer?.player_id)} disabled={!canExport}>
+          <Feather name="user" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Export this player</Text>
         </TouchableOpacity>
-        {players.map((p) => (
-          <TouchableOpacity key={p.player_id} style={s.pickerRow} onPress={() => doExportPdf(p.player_id)} disabled={!canExport}>
-            <Feather name="user" size={16} color={colors.primary} />
-            <Text style={s.pickerRowTxt}>{p.name}</Text>
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity style={s.pickerRow} onPress={() => doExportPdf(undefined, true)} disabled={!canExport}>
+          <Feather name="users" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Export all completed players</Text>
+        </TouchableOpacity>
       </PickerModal>
     </SafeAreaView>
   );
-}
-
-function normalizeScoresFromApi(raw: any, sport: string): PlayerScores {
-  const base = emptyScores(sport);
-  if (!raw) return base;
-  if (raw.technical_sub) {
-    techKeys(sport).forEach((k) => { base.technical_sub[k] = raw.technical_sub[k] ?? null; });
-  }
-  CORE_KEYS.forEach((k) => { base[k] = raw[k] ?? null; });
-  return base;
 }
 
 function SetupField({ label, flex, children }: { label: string; flex?: number; children: React.ReactNode }) {
@@ -713,51 +761,42 @@ function FilterChips({ label, value, options, onChange, testID, required }: {
   );
 }
 
-function ScoreSelector({ value, onChange, disabled }: { value: number | null; onChange: (v: number | null) => void; disabled?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const tint = scoreTint(value);
+function SegmentedScore({ value, onChange, disabled }: { value: number | null; onChange: (v: number) => void; disabled?: boolean }) {
   return (
-    <>
-      <TouchableOpacity style={[s.scorePill, tint ? { backgroundColor: tint } : null, disabled && s.scoreDisabled]} onPress={() => !disabled && setOpen(true)} disabled={disabled}>
-        <Text style={[s.scorePillTxt, value != null && { color: colors.ink }]}>{value != null ? value : "—"}</Text>
-        {value != null && <Text style={s.scorePillHint}>{scoreLabel(value)}</Text>}
-      </TouchableOpacity>
-      <ScorePickerModal visible={open} value={value} onSelect={(v) => { onChange(v); setOpen(false); }} onClose={() => setOpen(false)} />
-    </>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={s.segmentRow}>
+        {Array.from({ length: 11 }, (_, i) => i).map((n) => {
+          const active = value === n;
+          const tint = scoreTint(n);
+          return (
+            <TouchableOpacity
+              key={n}
+              style={[s.segmentBtn, active && s.segmentBtnActive, tint && active ? { backgroundColor: tint } : null, disabled && s.scoreDisabled]}
+              onPress={() => !disabled && onChange(n)}
+              disabled={disabled}
+            >
+              <Text style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{n === 0 ? "N/A" : n}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
 
-function ScorePickerModal({ visible, value, onSelect, onClose }: { visible: boolean; value: number | null; onSelect: (v: number) => void; onClose: () => void }) {
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={s.scoreModalOverlay} onPress={onClose}>
-        <Pressable style={s.scoreModalCard} onPress={(e) => e.stopPropagation?.()}>
-          <Text style={s.scoreModalTitle}>Score (1–10)</Text>
-          <View style={s.scoreGrid}>
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <TouchableOpacity key={n} style={[s.scoreOption, value === n && s.scoreOptionActive, { backgroundColor: scoreTint(n) }]} onPress={() => onSelect(n)}>
-                <Text style={[s.scoreOptionTxt, value === n && s.scoreOptionTxtActive]}>{n}</Text>
-                <Text style={s.scoreOptionHint}>{scoreLabel(n)}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
-
-function PlayerCard({ player, draft, sport, techMeta, locked, onTechScore, onCoreScore, onRemark }: {
-  player: PlayerRow; draft?: DraftRow; sport: string; techMeta: any[];
+function PlayerForm({ player, draft, techMeta, locked, onSubScore, onCoreScore, onRemark }: {
+  player: PlayerRow;
+  draft?: DraftRow;
+  techMeta: TechAreaMeta[];
   locked: boolean;
-  onTechScore: (id: string, key: string, v: number | null) => void;
-  onCoreScore: (id: string, key: CoreKey, v: number | null) => void;
+  onSubScore: (id: string, area: string, subKey: string, v: number) => void;
+  onCoreScore: (id: string, key: CoreKey, v: number) => void;
   onRemark: (id: string, v: string) => void;
 }) {
-  const row = draft || { scores: emptyScores(sport), remark: "" };
-  const techAvg = calcTechnicalAvg(row.scores.technical_sub, sport);
-  const overall = calcOverall(row.scores, sport);
-  const status = completionStatus(row.scores, sport);
+  const row = draft || { scores: emptyScores(techMeta), remark: "" };
+  const techMaster = calcTechnicalMaster(row.scores.technical_detail, techMeta);
+  const overall = calcOverall(row.scores, techMeta);
+  const status = completionStatus(row.scores, techMeta);
 
   return (
     <View style={s.playerCard} testID={`coach-asm-${player.player_id}`}>
@@ -770,32 +809,56 @@ function PlayerCard({ player, draft, sport, techMeta, locked, onTechScore, onCor
           )}
         </View>
         <View style={s.statusCol}>
-          <Text style={[s.playerStatus, status === "Completed" ? s.statusComplete : status === "In Progress" ? s.statusProgress : s.statusPending]}>{status}</Text>
+          <Text style={[s.playerStatus, status === "completed" ? s.statusComplete : status === "in_progress" ? s.statusProgress : s.statusPending]}>
+            {completionLabel(status)}
+          </Text>
           {overall != null && <Text style={s.overallBadge}>Overall: {overall}/10</Text>}
         </View>
       </View>
 
-      <Text style={s.sectionTitle}>Technical Skill — {sport}</Text>
-      {techAvg != null && (
-        <View style={s.avgBadge}><Text style={s.avgBadgeTxt}>Technical Skill: {techAvg} / 10</Text></View>
+      <Text style={s.sectionTitle}>Technical Skill</Text>
+      {techMaster != null && (
+        <View style={s.avgBadge}><Text style={s.avgBadgeTxt}>Technical Skill: {techMaster} / 10</Text></View>
       )}
-      {techKeys(sport).map((k) => (
-        <View key={k} style={s.paramRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.paramLabel}>{techLabel(k, techMeta)}</Text>
-            <Text style={s.paramHint}>{techHint(k, techMeta)}</Text>
-          </View>
-          <ScoreSelector value={row.scores.technical_sub[k]} onChange={(v) => onTechScore(player.player_id, k, v)} disabled={locked} />
-        </View>
-      ))}
 
+      {techMeta.map((area) => {
+        const areaAvg = calcAreaAvg(row.scores.technical_detail, area.key);
+        return (
+          <View key={area.key} style={s.areaBlock}>
+            <View style={s.areaHead}>
+              <Text style={s.areaTitle}>{area.label}</Text>
+              {areaAvg != null && <Text style={s.areaAvg}>{areaAvg}/10</Text>}
+            </View>
+            <Text style={s.areaParent}>{area.parent}</Text>
+            {area.sub_params.map((sp) => (
+              <View key={sp.key} style={s.subParamBlock}>
+                <View style={{ marginBottom: 6 }}>
+                  <Text style={s.paramLabel}>{sp.label}</Text>
+                  <Text style={s.paramHint}>{sp.coach}</Text>
+                </View>
+                <SegmentedScore
+                  value={row.scores.technical_detail[area.key]?.[sp.key] ?? null}
+                  onChange={(v) => onSubScore(player.player_id, area.key, sp.key, v)}
+                  disabled={locked}
+                />
+              </View>
+            ))}
+          </View>
+        );
+      })}
+
+      <Text style={[s.sectionTitle, { marginTop: spacing.md }]}>Other Parameters</Text>
       {CORE_KEYS.map((k) => (
-        <View key={k} style={s.paramRow}>
-          <View style={{ flex: 1 }}>
+        <View key={k} style={s.subParamBlock}>
+          <View style={{ marginBottom: 6 }}>
             <Text style={s.paramLabel}>{CORE_LABELS[k]}</Text>
             <Text style={s.paramHint}>{CORE_HINTS[k]}</Text>
           </View>
-          <ScoreSelector value={row.scores[k]} onChange={(v) => onCoreScore(player.player_id, k, v)} disabled={locked} />
+          <SegmentedScore
+            value={row.scores[k]}
+            onChange={(v) => onCoreScore(player.player_id, k, v)}
+            disabled={locked}
+          />
         </View>
       ))}
 
@@ -809,6 +872,90 @@ function PlayerCard({ player, draft, sport, techMeta, locked, onTechScore, onCor
         multiline
         maxLength={300}
       />
+    </View>
+  );
+}
+
+function YearSummaryPanel({ loading, summary, onExport, canExport }: {
+  loading: boolean; summary: any; onExport: () => void; canExport: boolean;
+}) {
+  if (loading) return <ActivityIndicator color={colors.primary} style={{ marginVertical: 24 }} />;
+  if (!summary?.comparison_rows?.length) {
+    return <EmptyState icon="bar-chart-2" title="No year data yet" message="Complete and finalize assessments across terms to see year-over-year progress." compact />;
+  }
+  const stages = summary.stages || [];
+  return (
+    <View style={s.yearPanel}>
+      <View style={s.yearPanelHead}>
+        <Text style={s.yearPanelTitle}>Year summary — {summary.assessment_year}</Text>
+        <TouchableOpacity style={[s.secondaryBtn, !canExport && s.btnDisabled]} onPress={onExport} disabled={!canExport}>
+          <Text style={s.secondaryBtnTxt}>Export PDF</Text>
+        </TouchableOpacity>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View>
+          <View style={s.yearTableHead}>
+            <Text style={[s.yearCell, s.yearCellParam]}>Parameter</Text>
+            {stages.map((st: any) => (
+              <Text key={st.id} style={s.yearCell}>{st.label.split("—")[0].trim()}</Text>
+            ))}
+            <Text style={s.yearCell}>Change</Text>
+          </View>
+          {summary.comparison_rows.map((row: any) => (
+            <View key={row.key} style={[s.yearTableRow, row.key === "overall_score" && s.yearRowBold]}>
+              <Text style={[s.yearCell, s.yearCellParam]}>{row.label}</Text>
+              {(row.values || []).map((v: number | null, i: number) => (
+                <Text key={i} style={s.yearCell}>{v != null ? v.toFixed(1) : "—"}</Text>
+              ))}
+              <Text style={[s.yearCell, row.change > 0 ? s.changeUp : row.change < 0 ? s.changeDown : null]}>
+                {row.change != null ? `${row.change >= 0 ? "+" : ""}${row.change.toFixed(1)} ${row.change > 0 ? "↑" : row.change < 0 ? "↓" : ""}` : "—"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      {Platform.OS === "web" && summary.completed_count >= 2 && (
+        <YearProgressChart rows={summary.comparison_rows} stages={stages} />
+      )}
+    </View>
+  );
+}
+
+function YearProgressChart({ rows, stages }: { rows: any[]; stages: any[] }) {
+  const chartRows = rows.filter((r) => ["overall_score", "technical_skill"].includes(r.key) || r.key.includes("_"));
+  const w = 520;
+  const h = 180;
+  const pad = 28;
+  const colors_list = ["#1E3A8A", "#DC2626", "#059669", "#D97706", "#7C3AED", "#0891B2"];
+  const lines = chartRows.slice(0, 6).map((row, li) => {
+    const pts = (row.values || []).map((v: number | null, i: number) => {
+      if (v == null) return null;
+      const x = pad + (i / Math.max(stages.length - 1, 1)) * (w - pad * 2);
+      const y = h - pad - (v / 10) * (h - pad * 2);
+      return `${x},${y}`;
+    }).filter(Boolean).join(" ");
+    return { pts, color: colors_list[li % colors_list.length], label: row.label, bold: row.key === "overall_score" };
+  }).filter((l) => l.pts.includes(","));
+
+  if (!lines.length) return null;
+  return (
+    <View style={s.chartWrap}>
+      <Text style={s.chartTitle}>Progress chart</Text>
+      {/* @ts-ignore web svg */}
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
+        {[0, 2, 4, 6, 8, 10].map((tick) => {
+          const y = h - pad - (tick / 10) * (h - pad * 2);
+          return <line key={tick} x1={pad} y1={y} x2={w - pad} y2={y} stroke="#E2E8F0" strokeWidth={1} />;
+        })}
+        {lines.map((line, i) => (
+          <polyline key={i} fill="none" stroke={line.color} strokeWidth={line.bold ? 3 : 1.5} points={line.pts} />
+        ))}
+      </svg>
+      <View style={s.chartLegend}>
+        {lines.map((line, i) => (
+          <Text key={i} style={{ fontSize: 10, color: line.color, fontWeight: line.bold ? "800" : "600" }}>{line.label}</Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -905,4 +1052,51 @@ const s = StyleSheet.create({
   pickerRowActive: { backgroundColor: colors.primarySofter, borderRadius: radii.sm },
   pickerRowTxt: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.ink },
   pickerRowTxtActive: { color: colors.primary, fontWeight: "800" },
+  tabRow: { flexDirection: "row", gap: 8, marginBottom: spacing.md },
+  tabBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2 },
+  tabBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  tabBtnTxt: { fontSize: 12, fontWeight: "700", color: colors.muted },
+  tabBtnTxtActive: { color: "#fff" },
+  playerNav: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm, flexWrap: "wrap", gap: 8 },
+  playerNavTitle: { fontSize: 14, fontWeight: "800", color: colors.ink, flex: 1 },
+  playerNavActions: { flexDirection: "row", gap: 8 },
+  navBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2 },
+  navBtnTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
+  chipScroll: { marginBottom: spacing.sm },
+  chipRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
+  playerChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface2, minWidth: 120 },
+  playerChipActive: { borderColor: colors.primary, backgroundColor: colors.primarySofter },
+  playerChipTxt: { fontSize: 12, fontWeight: "800", color: colors.ink },
+  playerChipTxtActive: { color: colors.primary },
+  playerChipSub: { fontSize: 10, color: colors.muted2, marginTop: 2 },
+  checklistToggle: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8, marginBottom: spacing.sm },
+  checklistToggleTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
+  checklistPanel: { backgroundColor: colors.surface2, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
+  checklistRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  checklistName: { fontSize: 13, fontWeight: "600", color: colors.ink },
+  checklistStatus: { fontSize: 11, fontWeight: "800" },
+  areaBlock: { marginBottom: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  areaHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
+  areaTitle: { fontSize: 13, fontWeight: "800", color: colors.primary },
+  areaAvg: { fontSize: 12, fontWeight: "800", color: colors.ink },
+  areaParent: { fontSize: 10, color: colors.muted2, marginBottom: 8, lineHeight: 14 },
+  subParamBlock: { marginBottom: 12 },
+  segmentRow: { flexDirection: "row", gap: 4 },
+  segmentBtn: { minWidth: 34, paddingHorizontal: 6, paddingVertical: 6, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center" },
+  segmentBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  segmentBtnTxt: { fontSize: 11, fontWeight: "700", color: colors.muted2 },
+  segmentBtnTxtActive: { color: colors.primary, fontWeight: "800" },
+  yearPanel: { backgroundColor: colors.surface2, borderRadius: radii.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
+  yearPanelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md },
+  yearPanelTitle: { fontSize: 14, fontWeight: "800", color: colors.ink },
+  yearTableHead: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 6, marginBottom: 4 },
+  yearTableRow: { flexDirection: "row", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  yearRowBold: { backgroundColor: colors.primarySofter },
+  yearCell: { width: 72, fontSize: 10, fontWeight: "600", color: colors.ink, paddingRight: 6 },
+  yearCellParam: { width: 120, fontWeight: "800" },
+  changeUp: { color: colors.success },
+  changeDown: { color: colors.danger },
+  chartWrap: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  chartTitle: { fontSize: 12, fontWeight: "800", color: colors.ink, marginBottom: 8 },
+  chartLegend: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 8 },
 });

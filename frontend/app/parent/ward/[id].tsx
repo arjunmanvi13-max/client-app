@@ -320,9 +320,9 @@ export default function WardDetail() {
                   <Text style={s.markMeta}>
                     {formatDate(a.date)} · {a.sport} · {a.centre} · {a.session || a.slot}
                   </Text>
-                  {a.schema_version >= 2 && (a.technical_skill_avg != null || a.overall_score != null) ? (
+                  {a.schema_version >= 2 && (a.technical_skill_master_average != null || a.technical_skill_avg != null || a.overall_score != null) ? (
                     <Text style={s.markMeta}>
-                      Technical {a.technical_skill_avg ?? "—"}/10 · Overall {a.overall_score ?? "—"}/10
+                      Technical {(a.technical_skill_master_average ?? a.technical_skill_avg) ?? "—"}/10 · Overall {a.overall_score ?? "—"}/10
                     </Text>
                   ) : a.schema_version === 2 && a.scores ? (
                     <Text style={s.markMeta}>
