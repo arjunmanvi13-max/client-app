@@ -116,11 +116,14 @@ export default function CoachAssessmentEntry() {
   const [yearLoading, setYearLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
 
+  const [gridTechMeta, setGridTechMeta] = useState<TechAreaMeta[]>([]);
   const [exportParams, setExportParams] = useState<Record<string, string> | null>(null);
 
-  const techMeta: TechAreaMeta[] = useMemo(() => (
-    sport === "Football" ? metadata?.football_technical : metadata?.cricket_technical
-  ) || [], [sport, metadata]);
+  const techMeta: TechAreaMeta[] = useMemo(() => {
+    const fromMeta = sport === "Football" ? metadata?.football_technical : metadata?.cricket_technical;
+    if (fromMeta?.length) return fromMeta;
+    return gridTechMeta;
+  }, [sport, metadata, gridTechMeta]);
 
   const stageOptions: { id: string; label: string }[] = useMemo(() => {
     if (metadata?.stages?.length) return metadata.stages;
@@ -172,7 +175,9 @@ export default function CoachAssessmentEntry() {
       if (stages?.length) {
         setAssessmentStage((prev) => (prev && stages.some((s: { id: string }) => s.id === prev) ? prev : stages[0].id));
       }
-    }).catch(() => {});
+    }).catch(() => {
+      Alert.alert("Setup unavailable", "Could not load assessment parameters. Check your connection and refresh.");
+    });
   }, [canEnter]);
 
   const loadPlayers = useCallback(async () => {
@@ -190,12 +195,18 @@ export default function CoachAssessmentEntry() {
 
     try {
       const { data } = await api.get("/coach-assessments/grid", { params });
+      const effectiveMeta: TechAreaMeta[] = (
+        data.technical_parameters?.length ? data.technical_parameters : techMeta
+      ) as TechAreaMeta[];
+      if (data.technical_parameters?.length) {
+        setGridTechMeta(data.technical_parameters);
+      }
       const rows: PlayerRow[] = (data.players || []).map((p: any) => ({
         player_id: p.player_id,
         name: p.name,
         age_group: p.age_group,
         role: p.role,
-        scores: normalizeScoresFromApi(p.scores, techMeta),
+        scores: normalizeScoresFromApi(p.scores, effectiveMeta),
         technical_skill_master_average: p.technical_skill_master_average ?? p.scores?.technical_skill_master_average,
         overall_score: p.overall_score ?? p.scores?.overall_score,
         completion_status: p.completion_status,
@@ -242,7 +253,27 @@ export default function CoachAssessmentEntry() {
     }
     const t = setTimeout(() => { loadPlayers(); }, 300);
     return () => clearTimeout(t);
-  }, [filterSnapshotKey, setupReady]);
+  }, [filterSnapshotKey, setupReady, loadPlayers]);
+
+  useEffect(() => {
+    if (!techMeta.length || players.length === 0) return;
+    setDraft((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      players.forEach((p) => {
+        const row = next[p.player_id];
+        if (!row) return;
+        const normalized = normalizeScoresFromApi(row.scores, techMeta);
+        const hadAreas = Object.keys(row.scores.technical_detail || {}).length > 0;
+        const hasAreas = Object.keys(normalized.technical_detail || {}).length > 0;
+        if (!hadAreas && hasAreas) {
+          next[p.player_id] = { ...row, scores: normalized };
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [techMeta, players]);
 
   useEffect(() => {
     if (loadState === "ready" && players.length > 0) {
@@ -370,6 +401,12 @@ export default function CoachAssessmentEntry() {
     if (isLocked) return;
     setDraft((d) => {
       const row = d[playerId] || { scores: emptyScores(techMeta), remark: "" };
+      const areaMeta = techMeta.find((a) => a.key === area);
+      const areaScores: Record<string, number | null> = { ...(row.scores.technical_detail[area] || {}) };
+      areaMeta?.sub_params.forEach((sp) => {
+        if (areaScores[sp.key] === undefined) areaScores[sp.key] = null;
+      });
+      areaScores[subKey] = value;
       return {
         ...d,
         [playerId]: {
@@ -378,7 +415,7 @@ export default function CoachAssessmentEntry() {
             ...row.scores,
             technical_detail: {
               ...row.scores.technical_detail,
-              [area]: { ...row.scores.technical_detail[area], [subKey]: value },
+              [area]: areaScores,
             },
           },
         },
@@ -423,6 +460,8 @@ export default function CoachAssessmentEntry() {
     <SafeAreaView style={s.wrap} testID="coach-assessment-screen">
       <ScrollView
         style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
         contentContainerStyle={{
           padding: isDesktop ? spacing.xl : horizontalPadding,
           paddingBottom: 72,
@@ -771,24 +810,30 @@ function FilterChips({ label, value, options, onChange, testID, required }: {
 
 function SegmentedScore({ value, onChange, disabled }: { value: number | null; onChange: (v: number) => void; disabled?: boolean }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={s.segmentRow}>
-        {Array.from({ length: 11 }, (_, i) => i).map((n) => {
-          const active = value === n;
-          const tint = scoreTint(n);
-          return (
-            <TouchableOpacity
-              key={n}
-              style={[s.segmentBtn, active && s.segmentBtnActive, tint && active ? { backgroundColor: tint } : null, disabled && s.scoreDisabled]}
-              onPress={() => !disabled && onChange(n)}
-              disabled={disabled}
-            >
-              <Text style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{n === 0 ? "N/A" : n}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </ScrollView>
+    <View style={s.segmentRow}>
+      {Array.from({ length: 11 }, (_, i) => i).map((n) => {
+        const active = value === n;
+        const tint = scoreTint(n);
+        return (
+          <Pressable
+            key={n}
+            style={({ pressed }) => [
+              s.segmentBtn,
+              active && s.segmentBtnActive,
+              tint && active ? { backgroundColor: tint } : null,
+              disabled && s.scoreDisabled,
+              pressed && !disabled ? s.segmentBtnPressed : null,
+            ]}
+            onPress={() => !disabled && onChange(n)}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={n === 0 ? "Not applicable" : `Score ${n}`}
+          >
+            <Text style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{n === 0 ? "N/A" : n}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -825,6 +870,9 @@ function PlayerForm({ player, draft, techMeta, locked, onSubScore, onCoreScore, 
       </View>
 
       <Text style={s.sectionTitle}>Technical Skill</Text>
+      {techMeta.length === 0 ? (
+        <Text style={s.paramHint}>Loading assessment parameters…</Text>
+      ) : null}
       {techMaster != null && (
         <View style={s.avgBadge}><Text style={s.avgBadgeTxt}>Technical Skill: {techMaster} / 10</Text></View>
       )}
@@ -1089,8 +1137,19 @@ const s = StyleSheet.create({
   areaAvg: { fontSize: 12, fontWeight: "800", color: colors.ink },
   areaParent: { fontSize: 10, color: colors.muted2, marginBottom: 8, lineHeight: 14 },
   subParamBlock: { marginBottom: 12 },
-  segmentRow: { flexDirection: "row", gap: 4 },
-  segmentBtn: { minWidth: 34, paddingHorizontal: 6, paddingVertical: 6, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: "center" },
+  segmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  segmentBtn: {
+    minWidth: 34,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    ...Platform.select({ web: { cursor: "pointer" as const } }),
+  },
+  segmentBtnPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   segmentBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   segmentBtnTxt: { fontSize: 11, fontWeight: "700", color: colors.muted2 },
   segmentBtnTxtActive: { color: colors.primary, fontWeight: "800" },
