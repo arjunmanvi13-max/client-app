@@ -40,6 +40,62 @@ export type CollectionSummary = {
   current_month: string;
 };
 
+export type PaymentReceiptFee = {
+  id: string;
+  fee_type: string;
+  amount?: number;
+  amount_due: number;
+  period_month?: string;
+  discount_applied?: number;
+  discount_reason?: string;
+};
+
+export type PaymentReceiptBranding = {
+  entityCode: "PWS" | "ALPHA";
+  entityId: "pws" | "alpha";
+  displayName: string;
+  shortName: string;
+  addressLines: string[];
+  receiptTitle: string;
+  receiptPrefix: string;
+  logoAlt: string;
+};
+
+export type PaymentReceipt = {
+  batch_id: string;
+  receipt_number?: string;
+  entity_id?: "pws" | "alpha";
+  entity_code?: "PWS" | "ALPHA";
+  organization_title?: string;
+  branding?: PaymentReceiptBranding;
+  paid_at?: string;
+  transaction_date?: string;
+  player: {
+    id?: string;
+    name?: string;
+    mobile?: string;
+    admission_number?: string;
+    centre?: string;
+    sport?: string;
+    group?: string;
+    pws_class?: string;
+    grade?: string;
+    section?: string;
+    category?: string;
+    player_type?: string;
+    kind?: string;
+    organization?: string;
+    is_resident?: boolean;
+  };
+  fees: PaymentReceiptFee[];
+  total_amount: number;
+  balance_after_payment?: number;
+  payment_mode: PaymentMode;
+  reference_id?: string | null;
+  notes?: string | null;
+  collected_by?: { id?: string; name?: string; role?: string };
+};
+
 export type DuesFee = {
   id: string;
   fee_type: string;

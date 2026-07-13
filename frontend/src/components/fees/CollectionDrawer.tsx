@@ -9,7 +9,7 @@ import { api, useAuth, userHasPermission } from "../../auth";
 import { Permission } from "../../rbac";
 import { colors } from "../../theme";
 import { formatDate, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../dateFormat";
-import type { CollectionPlayer, Institution, PaymentMode, PlayerDues } from "../../feesCollectionTypes";
+import type { CollectionPlayer, Institution, PaymentMode, PaymentReceipt, PlayerDues } from "../../feesCollectionTypes";
 
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
@@ -30,7 +30,7 @@ export function CollectionDrawer({
   institution: Institution;
   visible: boolean;
   onClose: () => void;
-  onCollected: (receipt: any) => void;
+  onCollected: (receipt: PaymentReceipt) => void;
 }) {
   const router = useRouter();
   const { user } = useAuth();
@@ -110,11 +110,6 @@ export function CollectionDrawer({
       });
       onCollected(data);
       onClose();
-      if (Platform.OS === "web") {
-        window.alert(`Payment recorded — ${inr(data.total_amount || totalSelected)}`);
-      } else {
-        Alert.alert("Payment recorded", inr(data.total_amount || totalSelected));
-      }
     } catch (e: any) {
       Alert.alert("Collection failed", e?.response?.data?.detail || "Try again.");
     } finally {

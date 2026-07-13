@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  RefreshControl, Modal, Pressable, Platform, Linking, Share,
+  RefreshControl, Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -12,16 +12,16 @@ import { useRouter } from "expo-router";
 import { api, useAuth } from "../../src/auth";
 import { colors, radii, spacing } from "../../src/theme";
 import { useBreakpoint } from "../../src/useBreakpoint";
-import { formatMonth } from "../../src/dateFormat";
 import { FeeSummaryBar } from "../../src/components/fees/FeeSummaryBar";
 import { CompactFilterBar } from "../../src/components/fees/CompactFilterBar";
 import { PlayerFeeRow, PlayerListSkeleton } from "../../src/components/fees/PlayerFeeRow";
 import { PlayerFeeTable, TableSkeleton } from "../../src/components/fees/PlayerFeeTable";
 import { CollectionDrawer } from "../../src/components/fees/CollectionDrawer";
+import { PaymentReceiptModal } from "../../src/components/fees/PaymentReceiptModal";
 import { BulkReminderBar } from "../../src/components/fees/BulkReminderBar";
 import { inr } from "../../src/components/fees/feesUi";
 import type {
-  CollectionPlayer, CollectionSummary, FeeSort, FeeStatusFilter, Institution,
+  CollectionPlayer, CollectionSummary, FeeSort, FeeStatusFilter, Institution, PaymentReceipt,
 } from "../../src/feesCollectionTypes";
 
 export default function FeesCollection() {
@@ -45,7 +45,7 @@ export default function FeesCollection() {
   const [drawerPlayer, setDrawerPlayer] = useState<CollectionPlayer | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [receipt, setReceipt] = useState<any | null>(null);
+  const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
 
   const canSwitchInstitution =
     user?.role !== "admin" &&
@@ -252,70 +252,8 @@ export default function FeesCollection() {
         />
       )}
 
-      <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
+      <PaymentReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
     </SafeAreaView>
-  );
-}
-
-function ReceiptModal({ receipt, onClose }: { receipt: any; onClose: () => void }) {
-  if (!receipt) return null;
-  const download = () => {
-    const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/fees/receipt/${receipt.batch_id}/pdf`;
-    if (Platform.OS === "web") window.open(url, "_blank");
-    else Linking.openURL(url);
-  };
-  const share = async () => {
-    const url = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/fees/receipt/${receipt.batch_id}/pdf`;
-    if (Platform.OS === "web") {
-      try {
-        await navigator.clipboard.writeText(url);
-        window.alert("Receipt link copied.");
-      } catch {
-        window.prompt("Copy link:", url);
-      }
-    } else {
-      await Share.share({ message: `Receipt — ${receipt?.player?.name}\n${url}` });
-    }
-  };
-  return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <View style={s.modalBg}>
-        <View style={s.modalCard}>
-          <View style={s.receiptHeader}>
-            <Feather name="check-circle" size={28} color="#fff" />
-            <Text style={s.receiptTitle}>Payment recorded</Text>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16 }}>
-            <ReceiptRow label="Name" value={receipt?.player?.name} />
-            <ReceiptRow label="Total" value={inr(receipt?.total_amount || 0)} />
-            <ReceiptRow label="Mode" value={receipt?.payment_mode} />
-            {(receipt?.fees || []).map((f: any) => (
-              <View key={f.id} style={s.recFeeRow}>
-                <Text style={s.recFeeLabel}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
-                <Text style={s.recFeeAmt}>{inr(f.amount_due)}</Text>
-              </View>
-            ))}
-          </ScrollView>
-          <View style={s.receiptFooter}>
-            <TouchableOpacity onPress={download} style={s.outlineBtnSm}>
-              <Text style={s.outlineBtnTxt}>Download PDF</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onClose} style={s.primaryBtnSm}>
-              <Text style={s.primaryBtnTxt}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function ReceiptRow({ label, value }: { label: string; value: any }) {
-  return (
-    <View style={s.recRow}>
-      <Text style={s.recRowLabel}>{label}</Text>
-      <Text style={s.recRowValue}>{value || "—"}</Text>
-    </View>
   );
 }
 
@@ -363,19 +301,4 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
   },
   footerTxt: { fontSize: 12, fontWeight: "600", color: colors.muted, textAlign: "center" },
-  modalBg: { flex: 1, backgroundColor: "rgba(15,23,42,0.5)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: colors.surface, borderRadius: radii.lg, maxHeight: "85%", overflow: "hidden" },
-  receiptHeader: { padding: 20, alignItems: "center", gap: 8, backgroundColor: colors.primary },
-  receiptTitle: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  recRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
-  recRowLabel: { fontSize: 12, color: colors.muted },
-  recRowValue: { fontSize: 13, fontWeight: "700", color: colors.ink },
-  recFeeRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  recFeeLabel: { fontSize: 12, color: colors.ink },
-  recFeeAmt: { fontSize: 12, fontWeight: "700" },
-  receiptFooter: { flexDirection: "row", gap: 8, padding: 14, borderTopWidth: 1, borderTopColor: colors.border },
-  outlineBtnSm: { flex: 1, paddingVertical: 11, borderRadius: radii.sm, borderWidth: 1, borderColor: colors.primary, alignItems: "center" },
-  outlineBtnTxt: { color: colors.primary, fontWeight: "700", fontSize: 13 },
-  primaryBtnSm: { flex: 1, backgroundColor: colors.primary, paddingVertical: 11, borderRadius: radii.sm, alignItems: "center" },
-  primaryBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
 });

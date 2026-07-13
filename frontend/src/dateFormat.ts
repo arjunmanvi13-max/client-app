@@ -62,6 +62,18 @@ export function formatTime(value?: string | Date | null): string {
   return `${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
 }
 
+export function formatMonthLong(value?: string | null): string {
+  if (!value) return "—";
+  const s = String(value).trim();
+  const m = s.match(ISO_MONTH);
+  if (m) {
+    const monthIdx = parseInt(m[2], 10) - 1;
+    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${names[monthIdx] ?? m[2]} ${m[1]}`;
+  }
+  return formatMonth(s);
+}
+
 export function formatMonth(value?: string | null): string {
   if (!value) return "—";
   const s = String(value).trim();
