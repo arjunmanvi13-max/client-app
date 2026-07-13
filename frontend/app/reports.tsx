@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { api, useAuth } from "../src/auth";
+import { api, useAuth, userHasPermission } from "../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
@@ -109,10 +110,11 @@ export default function ReportsScreen() {
   const { width } = useWindowDimensions();
   const printRef = useRef<View>(null);
 
-  const canAccess = user?.role === "super_admin" || user?.role === "admin" || user?.role === "principal" || user?.role === "vice_principal";
-  const isSportsAdmin = user?.role === "admin";
-  const isPwsAdmin = user?.role === "principal" || user?.role === "vice_principal";
-  const canPickEntity = user?.role === "super_admin" || user?.organization === "BOTH";
+  const canAccess = userHasPermission(user, Permission.RUN_PWS_REPORTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.RUN_ALPHA_REPORTS, BusinessEntity.ALPHA);
+  const isSportsAdmin = normalizeRole(user?.role || "") === UserRole.ALPHA_ADMIN;
+  const isPwsAdmin = normalizeRole(user?.role || "") === UserRole.PWS_ADMIN;
+  const canPickEntity = userHasPermission(user, Permission.MANAGE_ACCESS) || user?.organization === "BOTH";
 
   const [mvpReportId, setMvpReportId] = useState<ReportId>("students");
   const [periodKind, setPeriodKind] = useState<PeriodKind>("this_month");

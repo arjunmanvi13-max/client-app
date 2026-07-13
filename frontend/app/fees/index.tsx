@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../src/auth";
+import { api, useAuth, userHasPermission } from "../../src/auth";
+import { BusinessEntity, Permission } from "../../src/rbac";
 import { formatDate, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO, isValidDisplayDate } from "../../src/dateFormat";
 
 type Fee = {
@@ -40,7 +41,8 @@ export default function FeesScreen() {
   const [editFee, setEditFee] = useState<Fee | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
-  const allowed = user && (user.permissions?.view_fees || user.role === "super_admin");
+  const allowed = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
 
   const load = useCallback(async () => {
     if (!allowed) { setLoading(false); return; }
@@ -77,9 +79,10 @@ export default function FeesScreen() {
     return false;
   });
 
-  const canDiscount = user.role === "super_admin";
-  const canCollect = !!user.permissions?.collect_fees || user.role === "super_admin";
-  const canCreateAdhoc = user.role === "super_admin";
+  const canDiscount = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canCollect = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
+  const canCreateAdhoc = userHasPermission(user, Permission.MANAGE_ACCESS);
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

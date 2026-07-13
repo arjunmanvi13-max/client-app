@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { BusinessEntity, Permission } from "../../../src/rbac";
 import { formatDate, formatDateTime } from "../../../src/dateFormat";
 
 const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
@@ -32,9 +33,10 @@ export default function InvoiceDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const canCollect = user?.role === "super_admin" || user?.permissions?.collect_fees
-    || user?.role === "principal" || user?.role === "vice_principal" || user?.role === "admin";
-  const canManage = user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal";
+  const canCollect = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
+  const canManage = userHasPermission(user, Permission.MANAGE_ACCESS)
+    || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS);
 
   const [loading, setLoading] = useState(true);
   const [invoice, setInvoice] = useState<any>(null);

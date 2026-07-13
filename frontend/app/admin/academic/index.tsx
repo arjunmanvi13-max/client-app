@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, parseToISO } from "../../../src/dateFormat";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
@@ -53,8 +54,8 @@ export default function AcademicAdmin() {
   const [assignSectionId, setAssignSectionId] = useState<string | null>(null);
   const [assignSubjectId, setAssignSubjectId] = useState<string | null>(null);
 
-  const canManage = user?.role === "super_admin" || user?.permissions?.manage_academic_structure
-    || user?.role === "principal" || user?.role === "vice_principal";
+  const canManage = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS)
+    || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS);
 
   const selectedYear = years.find((y) => y.id === selectedYearId) || years.find((y) => y.status === "open") || years[0];
   const isReadOnly = selectedYear?.status === "archived";

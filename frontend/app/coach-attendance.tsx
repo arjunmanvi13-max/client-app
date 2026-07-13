@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api, useAuth } from "../src/auth";
+import { api, useAuth, userHasPermission } from "../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { formatDate, toISODate } from "../src/dateFormat";
 
 type Coach = {
@@ -25,9 +26,10 @@ export default function CoachAttendance() {
   const [refreshing, setRefreshing] = useState(false);
   const [date] = useState(toISODate());
 
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-  const isHeadCoach = user?.role === "coach" && user?.coach_type === "head";
-  const isAssistantCoach = user?.role === "coach" && user?.coach_type === "assistant";
+  const isAdmin = userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isHeadCoach = normalizeRole(user?.role || "") === UserRole.ALPHA_COACH && user?.coach_type === "head";
+  const isAssistantCoach = normalizeRole(user?.role || "") === UserRole.ALPHA_COACH && user?.coach_type === "assistant";
   const canMark = isAdmin || isHeadCoach;
   const allowed = canMark || isAssistantCoach;
 

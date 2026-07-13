@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
-import { api, ROLE_COLORS, useAuth } from "../../../src/auth";
+import { api, ROLE_COLORS, useAuth, userHasPermission } from "../../../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
 
 const META: Record<string, { label: string; tint: string; isUser: boolean; subtitle: (x: any) => string }> = {
   admin: { label: "Sports Admins", tint: "#7C3AED", isUser: true, subtitle: (u) => `${u.email || u.mobile || ""} · ${u.organization || "ALPHA"}` },
@@ -29,16 +30,19 @@ export default function ManageList() {
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"];
   const meta = META[kind || ""];
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal";
+  const role = normalizeRole(user?.role || "");
+  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
+    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isPlayer = kind === "player";
   const isStudent = kind === "student";
-  const isTeacher = user?.role === "teacher";
+  const isTeacher = role === UserRole.PWS_TEACHER;
   const canAdd = (() => {
     if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
     if (!meta || meta.isUser) return (user?.can_manage || []).includes(kind || "");
-    if (kind === "student") return !!user?.permissions?.add_students;
-    if (kind === "player") return !!user?.permissions?.add_players;
+    if (kind === "student") return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
+    if (kind === "player") return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
     return (user?.can_manage || []).includes(kind || "");
   })();
 

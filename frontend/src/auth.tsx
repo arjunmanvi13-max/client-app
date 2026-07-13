@@ -2,6 +2,8 @@ import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import React, { createContext, useContext, useEffect, useState } from "react";
+import type { Permission } from "./rbac";
+import { hasPermission, BusinessEntity } from "./rbac";
 
 const API_BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
 const TOKEN_KEY = "pws_alpha_token";
@@ -34,9 +36,12 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  role: "super_admin" | "admin" | "principal" | "vice_principal" | "teacher" | "coach" | "warden" | "student" | "player" | "parent";
+  role: "super_admin" | "admin" | "principal" | "vice_principal" | "pws_accounts" | "alpha_accounts" | "teacher" | "coach" | "warden" | "staff" | "student" | "player" | "parent";
+  role_canonical?: string;
   organization: "PWS" | "ALPHA" | "BOTH";
   department?: string | null;
+  is_active?: boolean;
+  status?: "active" | "deactivated";
   can_manage?: ("student" | "player" | "teacher" | "coach" | "staff")[];
   coach_permissions?: ("view_players" | "add_players" | "edit_players")[];
   coach_type?: "head" | "assistant" | null;
@@ -46,7 +51,18 @@ export type User = {
   assigned_sports?: ("Cricket" | "Football")[];
   linked_person_ids?: string[];
   permissions?: Record<string, boolean>;
+  permissions_rbac?: Partial<Record<Permission, boolean>>;
+  effective_permissions?: (Permission | string)[];
 };
+
+/** Check RBAC permission for the logged-in user */
+export function userHasPermission(
+  user: User | null | undefined,
+  permission: Permission,
+  entity?: BusinessEntity,
+): boolean {
+  return hasPermission(user, permission, entity);
+}
 
 type AuthCtx = {
   user: User | null;
@@ -124,6 +140,8 @@ export const ROLE_COLORS: Record<string, string> = {
   coach: "#EA580C",
   warden: "#7C3AED",
   staff: "#0EA5E9",
+  pws_accounts: "#0369A1",
+  alpha_accounts: "#0D9488",
   student: "#2563EB",
   player: "#16A34A",
   parent: "#0891B2",

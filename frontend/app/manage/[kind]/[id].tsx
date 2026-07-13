@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { BusinessEntity, Permission } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, dateHelpText, toISODate, parseToISO, isValidDisplayDate } from "../../../src/dateFormat";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
@@ -126,22 +127,25 @@ export default function ManageEdit() {
       }
     })();
   }, [kind]);
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal";
+  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
+    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
   const perms = user?.permissions || {};
   const canEdit = (() => {
     if (isNew) {
       if (isTeacher && isStudentKind) return false;
       if (isAdmin) return true;
-      if (isStudentKind) return !!perms.add_students;
-      if (isPlayerKind) return !!perms.add_players;
+      if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
+      if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
       if (isUserKind) return (user?.can_manage || []).includes(kind || "");
       return (user?.can_manage || []).includes(kind || "");
     }
     if (isTeacher && isStudentKind) return false;
     if (isAdmin) return true;
-    if (isStudentKind) return !!perms.edit_students;
-    if (isPlayerKind) return !!perms.edit_players || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
+    if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
+    if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
+      || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
     if (isUserKind) return isAdmin;
     return (user?.can_manage || []).includes(kind || "");
   })();
@@ -211,7 +215,7 @@ export default function ManageEdit() {
   // Optional ad-hoc fee heads to create during admission (Super Admin only)
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
   const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
-  const isSuper = user?.role === "super_admin";
+  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
 
   // Coach centre/sport assignment (admin -> coach)
   const [assignedCentres, setAssignedCentres] = useState<string[]>([]);
@@ -587,7 +591,7 @@ export default function ManageEdit() {
                   </TouchableOpacity>
                 </View>
               )}
-              {!isNew && user?.role === "super_admin" && (
+              {!isNew && isSuper && (
                 <View style={s.resetPwdBox}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <Feather name="key" size={14} color="#B45309" />
@@ -877,7 +881,7 @@ export default function ManageEdit() {
                     </View>
                     <Text style={s.statusHelp}>
                       {status === "active"
-                        ? (user?.role === "super_admin" ? "Direct deactivate (super admin)" : "Submits a request for super-admin approval")
+                        ? (isSuper ? "Direct deactivate (super admin)" : "Submits a request for super-admin approval")
                         : "Hidden from attendance"}
                     </Text>
                   </View>
@@ -885,7 +889,7 @@ export default function ManageEdit() {
                     testID={status === "active" ? "btn-deactivate" : "btn-activate"}
                     style={[s.statusBtn, status === "active" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#DCFCE7" }]}
                     onPress={async () => {
-                      const isSuperAdmin = user?.role === "super_admin";
+                      const isSuperAdmin = isSuper;
                       if (status === "active" && !isSuperAdmin) {
                         // Submit deactivation-request (no reason prompt on web for simplicity)
                         confirmAction("Request deactivation?", "A request will be sent to Super Admin for approval.", async () => {
@@ -909,7 +913,7 @@ export default function ManageEdit() {
                     <Feather name={status === "active" ? "user-x" : "user-check"} size={16} color={status === "active" ? "#EF4444" : "#16A34A"} />
                     <Text style={[s.statusBtnTxt, { color: status === "active" ? "#EF4444" : "#16A34A" }]}>
                       {status === "active"
-                        ? (user?.role === "super_admin" ? "Deactivate" : "Request Deactivation")
+                        ? (isSuper ? "Deactivate" : "Request Deactivation")
                         : "Reactivate"}
                     </Text>
                   </TouchableOpacity>

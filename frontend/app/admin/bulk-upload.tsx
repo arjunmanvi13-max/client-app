@@ -4,7 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import { api, useAuth } from "../../src/auth";
+import { api, useAuth, userHasPermission } from "../../src/auth";
+import { Permission } from "../../src/rbac";
 
 const TOKEN_KEY = "@auth_token";
 
@@ -22,7 +23,7 @@ export default function BulkUpload() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
 
-  const allowed = user && (user.permissions?.bulk_upload || user.role === "super_admin");
+  const allowed = userHasPermission(user, Permission.BULK_UPLOAD_USERS);
 
   const downloadTemplate = async () => {
     try {

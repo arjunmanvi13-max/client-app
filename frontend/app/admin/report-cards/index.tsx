@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
 
 type Tab = "teacher" | "review";
 
@@ -24,9 +25,9 @@ export default function ReportCardsAdmin() {
   const [coachRemark, setCoachRemark] = useState("");
   const [selected, setSelected] = useState<any | null>(null);
 
-  const isAdmin = user?.role === "super_admin" || user?.role === "principal" || user?.role === "vice_principal"
-    || user?.permissions?.manage_academic_structure;
-  const isTeacher = user?.role === "teacher" || isAdmin;
+  const isAdmin = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
+  const isTeacher = normalizeRole(user?.role || "") === UserRole.PWS_TEACHER || isAdmin;
 
   const load = useCallback(async () => {
     setLoading(true);

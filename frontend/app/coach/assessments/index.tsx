@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Platform, Alert, Modal, Pressable, useWindowDimensions,
+  ActivityIndicator, Platform, Alert, Pressable, useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 import { LoadingState, ErrorState, EmptyState, getApiError, confirmAction } from "../../../src/ScreenStates";
 import { formatDate, formatDateTime, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
@@ -28,6 +29,7 @@ import {
   isComplete,
   normalizeScoresFromApi,
   scoreTint,
+  scoreLabel,
 } from "../../../src/assessmentSchema";
 
 type LoadState = "idle" | "loading" | "ready" | "outdated" | "error" | "locked";
@@ -57,6 +59,9 @@ type PlayerRow = {
   name: string;
   age_group?: string;
   role?: string;
+  player_type?: string;
+  date_of_admission?: string | null;
+  program?: string;
   scores: PlayerScores;
   technical_skill_master_average?: number | null;
   overall_score?: number | null;
@@ -70,10 +75,33 @@ type PlayerRow = {
 };
 
 type DraftRow = { scores: PlayerScores; remark: string };
+type SetupDropdown = "centre" | "sport" | "playerType" | "stage" | "filters" | null;
+type ViewTab = "entry" | "preview" | "year";
 
 function stageLabel(id: string, stages: { id: string; label: string }[]): string {
   return stages.find((s) => s.id === id)?.label || id;
 }
+
+function batchLockedForUser(batchStatus: string | null | undefined, role?: string): boolean {
+  if (batchStatus === "published") return true;
+  if (role === "coach" && batchStatus === "final") return true;
+  return false;
+}
+
+function playerFormLocked(
+  batchStatus: string | null | undefined,
+  role?: string,
+  readOnly?: boolean,
+): boolean {
+  return batchLockedForUser(batchStatus, role) || !!readOnly;
+}
+
+const stopWebScrollCapture = Platform.OS === "web"
+  ? {
+      // @ts-expect-error react-native-web mouse event
+      onMouseDown: (e: { stopPropagation: () => void }) => { e.stopPropagation(); },
+    }
+  : {};
 
 export default function CoachAssessmentEntry() {
   const router = useRouter();
@@ -81,8 +109,8 @@ export default function CoachAssessmentEntry() {
   const { isDesktop, isMobile, horizontalPadding, contentMaxWidth } = useBreakpoint();
   const { width } = useWindowDimensions();
 
-  const canEnter = user?.role === "coach" || user?.role === "admin" || user?.role === "super_admin"
-    || user?.permissions?.enter_coach_assessments;
+  const canEnter = userHasPermission(user, Permission.MANAGE_PLAYER_ASSESSMENT)
+    || userHasPermission(user, Permission.MANAGE_COACH_ASSESSMENTS_ADMIN);
 
   const [centre, setCentre] = useState<typeof CENTRES[number]>("Balua");
   const [sport, setSport] = useState<typeof SPORTS[number]>("Cricket");
@@ -94,30 +122,23 @@ export default function CoachAssessmentEntry() {
   const [ageGroup, setAgeGroup] = useState("All");
   const [playerSearch, setPlayerSearch] = useState("");
 
-  const [centrePickerOpen, setCentrePickerOpen] = useState(false);
-  const [sportPickerOpen, setSportPickerOpen] = useState(false);
-  const [playerTypePickerOpen, setPlayerTypePickerOpen] = useState(false);
-  const [stagePickerOpen, setStagePickerOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [setupDropdown, setSetupDropdown] = useState<SetupDropdown>(null);
 
   const [metadata, setMetadata] = useState<any>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [draft, setDraft] = useState<Record<string, DraftRow>>({});
   const [batchStatus, setBatchStatus] = useState<string | null>(null);
-  const [allComplete, setAllComplete] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [checklistOpen, setChecklistOpen] = useState(false);
-  const [viewTab, setViewTab] = useState<"entry" | "year">("entry");
+  const [viewTab, setViewTab] = useState<ViewTab>("entry");
   const [yearSummary, setYearSummary] = useState<any>(null);
   const [yearLoading, setYearLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
 
   const [gridTechMeta, setGridTechMeta] = useState<TechAreaMeta[]>([]);
-  const [exportParams, setExportParams] = useState<Record<string, string> | null>(null);
 
   const techMeta: TechAreaMeta[] = useMemo(() => {
     const fromMeta = sport === "Football" ? metadata?.football_technical : metadata?.cricket_technical;
@@ -152,9 +173,11 @@ export default function CoachAssessmentEntry() {
     return n;
   }, [playerType, sessionType, ageGroup, playerSearch]);
 
-  const isLocked = batchStatus === "final" || batchStatus === "published" || loadState === "locked";
-  const canExport = (batchStatus === "final" || batchStatus === "published") && allComplete
-    && (loadState === "ready" || loadState === "locked") && !saving;
+  const isFormLocked = batchLockedForUser(batchStatus, user?.role);
+  const isPlayerLocked = useCallback((playerId: string) => {
+    const p = players.find((row) => row.player_id === playerId);
+    return playerFormLocked(batchStatus, user?.role, p?.read_only);
+  }, [players, batchStatus, user?.role]);
   const showGrid = setupReady && (loadState === "loading" || loadState === "ready" || loadState === "outdated" || loadState === "error" || loadState === "locked");
 
   const progressCount = useMemo(() => (
@@ -206,6 +229,9 @@ export default function CoachAssessmentEntry() {
         name: p.name,
         age_group: p.age_group,
         role: p.role,
+        player_type: p.player_type,
+        date_of_admission: p.date_of_admission,
+        program: p.program,
         scores: normalizeScoresFromApi(p.scores, effectiveMeta),
         technical_skill_master_average: p.technical_skill_master_average ?? p.scores?.technical_skill_master_average,
         overall_score: p.overall_score ?? p.scores?.overall_score,
@@ -228,22 +254,15 @@ export default function CoachAssessmentEntry() {
       });
       setDraft(d);
       setBatchStatus(data.batch_status);
-      setAllComplete(!!data.all_complete);
-      const exp: Record<string, string> = {
-        centre, sport, player_type: playerType,
-        assessment_stage: assessmentStage, date: isoDate,
-      };
-      if (playerType === "Daily" && sessionType) exp.session = sessionType;
-      setExportParams(exp);
       setLoadState(
-        data.batch_status === "final" || data.batch_status === "published" ? "locked" : rows.length ? "ready" : "ready",
+        batchLockedForUser(data.batch_status, user?.role) ? "locked" : "ready",
       );
     } catch (e: any) {
       setError(getApiError(e, "Failed to load players"));
       setPlayers([]);
       setLoadState("error");
     }
-  }, [setupReady, playerType, centre, sport, assessmentStage, assessmentDate, sessionType, ageGroup, playerSearch, techMeta]);
+  }, [setupReady, playerType, centre, sport, assessmentStage, assessmentDate, sessionType, ageGroup, playerSearch, techMeta, user?.role]);
 
   useEffect(() => {
     if (!setupReady) {
@@ -275,13 +294,6 @@ export default function CoachAssessmentEntry() {
     });
   }, [techMeta, players]);
 
-  useEffect(() => {
-    if (loadState === "ready" && players.length > 0) {
-      const allDone = players.every((p) => isComplete((draft[p.player_id] || { scores: emptyScores(techMeta) }).scores, techMeta));
-      setAllComplete(allDone && progressCount === players.length);
-    }
-  }, [draft, players, loadState, techMeta, progressCount]);
-
   const buildEntryFor = (playerId: string) => {
     const row = draft[playerId] || { scores: emptyScores(techMeta), remark: "" };
     return { player_id: playerId, ...buildEntryPayload(row.scores, row.remark) };
@@ -290,7 +302,7 @@ export default function CoachAssessmentEntry() {
   const buildEntries = () => players.map((p) => buildEntryFor(p.player_id));
 
   const autoSavePlayer = async (playerId: string) => {
-    if (!showGrid || isLocked || !playerType) return;
+    if (!showGrid || isFormLocked || !playerType) return;
     const isoDate = parseToISO(assessmentDate) || assessmentDate;
     setAutoSaving(true);
     try {
@@ -310,7 +322,7 @@ export default function CoachAssessmentEntry() {
 
   const navigateToPlayer = async (index: number) => {
     if (index < 0 || index >= players.length || index === selectedIndex) return;
-    if (!isLocked && selectedPlayer) {
+    if (!isFormLocked && selectedPlayer) {
       await autoSavePlayer(selectedPlayer.player_id);
     }
     setSelectedIndex(index);
@@ -369,36 +381,64 @@ export default function CoachAssessmentEntry() {
     }
   };
 
-  const doExportPdf = async (playerId?: string, completedOnly = false) => {
-    if (!canExport || !exportParams) return;
+  const downloadPdfBlob = (blob: Blob, filename: string) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const doExportPdf = async (playerId?: string) => {
+    const pid = playerId || selectedPlayer?.player_id;
+    if (!pid || !showGrid || !playerType) return;
     try {
       if (Platform.OS !== "web") {
         Alert.alert("Export PDF", "Open Player Assessment on desktop web to download PDF reports.");
         return;
       }
-      const params: Record<string, string> = { ...exportParams };
-      if (playerId) params.player_id = playerId;
-      if (completedOnly) params.completed_only = "true";
-      const r = await api.get("/coach-assessments/export/pdf", { params, responseType: "blob" });
-      const isZip = r.headers["content-type"]?.includes("zip");
-      const ext = isZip ? "zip" : "pdf";
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(r.data);
-      a.download = `player-assessment-${exportParams.date}.${ext}`;
-      if (!isZip) a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setExportMenuOpen(false);
+      const isoDate = parseToISO(assessmentDate) || assessmentDate;
+      const row = draft[pid] || { scores: emptyScores(techMeta), remark: "" };
+      const player = players.find((p) => p.player_id === pid);
+      const safeName = (player?.name || "player").replace(/\s+/g, "_");
+      const filename = `assessment-${safeName}-${isoDate}.pdf`;
+
+      try {
+        const r = await api.post("/coach-assessments/export/pdf/report", {
+          centre, sport, player_type: playerType,
+          session: playerType === "Daily" ? sessionType : undefined,
+          assessment_stage: assessmentStage,
+          date: isoDate,
+          entry: { player_id: pid, ...buildEntryPayload(row.scores, row.remark) },
+        }, { responseType: "blob" });
+        downloadPdfBlob(r.data, filename);
+        return;
+      } catch (postErr: any) {
+        if (postErr?.response?.status !== 404) throw postErr;
+        // Production may not have the new endpoint yet — fall back to finalized export.
+        const params: Record<string, string> = {
+          centre, sport, player_type: playerType,
+          assessment_stage: assessmentStage, date: isoDate,
+          player_id: pid,
+        };
+        if (playerType === "Daily" && sessionType) params.session = sessionType;
+        const r = await api.get("/coach-assessments/export/pdf", { params, responseType: "blob" });
+        downloadPdfBlob(r.data, filename);
+      }
     } catch (e: any) {
-      const msg = getApiError(e, "Could not export PDF");
+      const status = e?.response?.status;
+      const msg = status === 404
+        ? "Export is not available yet — the backend update is still deploying. Try again in a minute, or finalize the assessment first."
+        : getApiError(e, "Could not export PDF");
       if (Platform.OS === "web" && typeof window !== "undefined") window.alert(`Export failed: ${msg}`);
       else Alert.alert("Export failed", msg);
     }
   };
 
   const updateSubScore = (playerId: string, area: string, subKey: string, value: number) => {
-    if (isLocked) return;
+    if (isPlayerLocked(playerId)) return;
     setDraft((d) => {
       const row = d[playerId] || { scores: emptyScores(techMeta), remark: "" };
       const areaMeta = techMeta.find((a) => a.key === area);
@@ -425,7 +465,7 @@ export default function CoachAssessmentEntry() {
   };
 
   const updateCoreScore = (playerId: string, key: CoreKey, value: number) => {
-    if (isLocked) return;
+    if (isPlayerLocked(playerId)) return;
     setDraft((d) => {
       const row = d[playerId] || { scores: emptyScores(techMeta), remark: "" };
       return { ...d, [playerId]: { ...row, scores: { ...row.scores, [key]: value } } };
@@ -433,8 +473,23 @@ export default function CoachAssessmentEntry() {
     if (loadState === "ready") setLoadState("outdated");
   };
 
+  const closeSetupDropdown = () => setSetupDropdown(null);
+  const toggleSetupDropdown = (key: SetupDropdown) => {
+    setSetupDropdown((d) => (d === key ? null : key));
+  };
+
+  const programLabel = useMemo(() => {
+    if (!playerType) return "—";
+    const parts = [sport, playerType];
+    if (playerType === "Daily" && sessionType) parts.push(sessionType);
+    parts.push(centre);
+    return parts.join(" · ");
+  }, [sport, playerType, sessionType, centre]);
+
+  const canExportPlayer = !!selectedPlayer && showGrid && !!playerType;
+
   const updateRemark = (playerId: string, remark: string) => {
-    if (isLocked) return;
+    if (isPlayerLocked(playerId)) return;
     setDraft((d) => ({ ...d, [playerId]: { scores: d[playerId]?.scores || emptyScores(techMeta), remark: remark.slice(0, 300) } }));
     if (loadState === "ready") setLoadState("outdated");
   };
@@ -459,12 +514,12 @@ export default function CoachAssessmentEntry() {
   return (
     <SafeAreaView style={s.wrap} testID="coach-assessment-screen">
       <ScrollView
-        style={{ flex: 1 }}
+        style={Platform.OS === "web" ? { flex: 1, overflow: "auto" } : { flex: 1 }}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
         contentContainerStyle={{
           padding: isDesktop ? spacing.xl : horizontalPadding,
-          paddingBottom: 72,
+          paddingBottom: 120,
           maxWidth: contentMaxWidth,
           alignSelf: contentMaxWidth ? "center" : undefined,
           width: contentMaxWidth ? "100%" : undefined,
@@ -487,75 +542,93 @@ export default function CoachAssessmentEntry() {
                 <Text style={[s.statusBadgeTxt, batchStatus === "final" || batchStatus === "published" ? { color: colors.primary } : {}]}>{statusBadge}</Text>
               </View>
             )}
-            <TouchableOpacity style={[s.secondaryBtn, (saving || isLocked || !showGrid || !players.length) && s.btnDisabled]} onPress={() => save("draft")} disabled={saving || isLocked || !showGrid || !players.length} testID="save-draft">
-              <Text style={s.secondaryBtnTxt}>Save draft</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[s.primaryBtn, (saving || isLocked || !showGrid || !players.length) && s.btnDisabled]} onPress={() => save("final")} disabled={saving || isLocked || !showGrid || !players.length} testID="finalize-assessment">
-              <Text style={s.primaryBtnTxt}>Finalize assessment</Text>
-            </TouchableOpacity>
-            {isMobile ? (
-              <TouchableOpacity style={[s.exportBtn, !canExport && s.btnDisabled]} onPress={() => setExportMenuOpen(true)} disabled={!canExport} testID="export-pdf-menu">
-                <Feather name="file-text" size={16} color="#fff" />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={[s.exportBtn, !canExport && s.btnDisabled]} onPress={() => setExportMenuOpen(true)} disabled={!canExport} testID="export-pdf">
-                <Feather name="file-text" size={14} color="#fff" />
-                <Text style={s.exportBtnTxt}>Export PDF</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
 
         {/* Setup bar */}
-        <View style={[s.setupBar, setupStacked && s.setupBarStacked]}>
-          <SetupField label="Centre" flex={1}>
-            <TouchableOpacity style={s.selectBtn} onPress={() => setCentrePickerOpen(true)} testID="centre-picker">
-              <Feather name="map-pin" size={15} color={colors.primary} />
-              <Text style={s.selectBtnTxt}>{centre}</Text>
-              <Feather name="chevron-down" size={16} color={colors.muted2} />
-            </TouchableOpacity>
-          </SetupField>
-          <SetupField label="Sport" flex={1}>
-            <TouchableOpacity style={s.selectBtn} onPress={() => setSportPickerOpen(true)} testID="sport-picker">
-              <Feather name="target" size={15} color={colors.primary} />
-              <Text style={s.selectBtnTxt}>{sport}</Text>
-              <Feather name="chevron-down" size={16} color={colors.muted2} />
-            </TouchableOpacity>
-          </SetupField>
-          <SetupField label="Player type" flex={1.1}>
-            <TouchableOpacity style={[s.selectBtn, !playerType && s.selectBtnPlaceholder]} onPress={() => setPlayerTypePickerOpen(true)} testID="player-type-picker">
-              <Feather name="users" size={15} color={colors.primary} />
-              <Text style={[s.selectBtnTxt, !playerType && s.placeholderTxt]}>{playerType || "Select Player Type"}</Text>
-              <Feather name="chevron-down" size={16} color={colors.muted2} />
-            </TouchableOpacity>
-          </SetupField>
-          <SetupField label="Assessment stage" flex={1.2}>
-            <TouchableOpacity style={s.selectBtn} onPress={() => setStagePickerOpen(true)} testID="stage-picker">
-              <Feather name="layers" size={15} color={colors.primary} />
-              <Text style={s.selectBtnTxt} numberOfLines={1}>{stageLabel(assessmentStage, stageOptions) || "Select stage"}</Text>
-              <Feather name="chevron-down" size={16} color={colors.muted2} />
-            </TouchableOpacity>
-          </SetupField>
+        <View style={[s.setupBar, setupStacked && s.setupBarStacked, setupDropdown && s.setupBarOpen]}>
+          <InlineSelect
+            label="Centre"
+            flex={1}
+            open={setupDropdown === "centre"}
+            onToggle={() => toggleSetupDropdown("centre")}
+            onClose={closeSetupDropdown}
+            testID="centre-picker"
+            icon="map-pin"
+            value={centre}
+          >
+            {allowedCentres.map((v) => (
+              <PickerRow key={v} label={v} selected={centre === v} onPress={() => { setCentre(v as any); closeSetupDropdown(); }} />
+            ))}
+          </InlineSelect>
+          <InlineSelect
+            label="Sport"
+            flex={1}
+            open={setupDropdown === "sport"}
+            onToggle={() => toggleSetupDropdown("sport")}
+            onClose={closeSetupDropdown}
+            testID="sport-picker"
+            icon="target"
+            value={sport}
+          >
+            {allowedSports.map((v) => (
+              <PickerRow key={v} label={v} selected={sport === v} onPress={() => { setSport(v as any); closeSetupDropdown(); }} />
+            ))}
+          </InlineSelect>
+          <InlineSelect
+            label="Player type"
+            flex={1.1}
+            open={setupDropdown === "playerType"}
+            onToggle={() => toggleSetupDropdown("playerType")}
+            onClose={closeSetupDropdown}
+            testID="player-type-picker"
+            icon="users"
+            value={playerType || "Select Player Type"}
+            placeholder={!playerType}
+          >
+            {PLAYER_TYPES.map((v) => (
+              <PickerRow key={v} label={v} selected={playerType === v} onPress={() => { setPlayerType(v); closeSetupDropdown(); if (v !== "Daily") setSessionType(""); }} testID={`player-type-${v}`} />
+            ))}
+          </InlineSelect>
+          <InlineSelect
+            label="Assessment stage"
+            flex={1.2}
+            open={setupDropdown === "stage"}
+            onToggle={() => toggleSetupDropdown("stage")}
+            onClose={closeSetupDropdown}
+            testID="stage-picker"
+            icon="layers"
+            value={stageLabel(assessmentStage, stageOptions) || "Select stage"}
+          >
+            {stageOptions.map((st) => (
+              <PickerRow key={st.id} label={st.label} selected={assessmentStage === st.id} onPress={() => { setAssessmentStage(st.id); closeSetupDropdown(); }} />
+            ))}
+          </InlineSelect>
           <SetupField label="Assessment date" flex={1}>
             <TextInput testID="assessment-date" value={assessmentDate} onChangeText={setAssessmentDate} placeholder={DATE_PLACEHOLDER} placeholderTextColor={colors.hint} style={s.dateInput} />
           </SetupField>
-          <SetupField label=" " flex={0.9}>
-            <TouchableOpacity style={s.filtersBtn} onPress={() => setFiltersOpen((o) => !o)} testID="more-filters">
-              <Feather name="sliders" size={15} color={colors.primary} />
-              <Text style={s.filtersBtnTxt}>More filters{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}</Text>
-            </TouchableOpacity>
-          </SetupField>
+          <InlineSelect
+            label=" "
+            flex={0.9}
+            open={setupDropdown === "filters"}
+            onToggle={() => toggleSetupDropdown("filters")}
+            onClose={closeSetupDropdown}
+            testID="more-filters"
+            icon="sliders"
+            value={`More filters${advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}`}
+            triggerStyle={s.filtersBtn}
+            triggerTextStyle={s.filtersBtnTxt}
+          >
+            <MoreFiltersPanel
+              playerType={playerType} sessionType={sessionType} setSessionType={setSessionType}
+              ageGroup={ageGroup} setAgeGroup={setAgeGroup}
+              playerSearch={playerSearch} setPlayerSearch={setPlayerSearch}
+              ageGroups={metadata?.age_groups || ["All", "U-10", "U-12", "U-14", "U-16", "U-18", "Open"]}
+              onClose={closeSetupDropdown}
+              embedded
+            />
+          </InlineSelect>
         </View>
-
-        {filtersOpen && !isMobile && (
-          <MoreFiltersPanel
-            playerType={playerType} sessionType={sessionType} setSessionType={setSessionType}
-            ageGroup={ageGroup} setAgeGroup={setAgeGroup}
-            playerSearch={playerSearch} setPlayerSearch={setPlayerSearch}
-            ageGroups={metadata?.age_groups || ["All", "U-10", "U-12", "U-14", "U-16", "U-18", "Open"]}
-            onClose={() => setFiltersOpen(false)}
-          />
-        )}
 
         <View style={s.legendBar}>
           <Text style={s.legendTxt}>Score guide: 0 = N/A · 1–3 Beginner · 4–5 Developing · 6–7 Good · 8–9 Very Good · 10 Elite</Text>
@@ -575,10 +648,14 @@ export default function CoachAssessmentEntry() {
                 <Text style={s.outdatedTxt}>Scores changed — save draft before exporting.</Text>
               </View>
             )}
-            {isLocked && (
+            {isFormLocked && (
               <View style={s.lockedBanner}>
                 <Feather name="lock" size={14} color={colors.primary} />
-                <Text style={s.lockedTxt}>Finalized — read-only for coaches. Contact admin to reopen.</Text>
+                <Text style={s.lockedTxt}>
+                  {batchStatus === "published"
+                    ? "Published — read-only for everyone."
+                    : "Finalized — read-only for coaches. Contact admin to reopen."}
+                </Text>
               </View>
             )}
 
@@ -597,6 +674,9 @@ export default function CoachAssessmentEntry() {
                 <View style={s.tabRow}>
                   <TouchableOpacity style={[s.tabBtn, viewTab === "entry" && s.tabBtnActive]} onPress={() => setViewTab("entry")}>
                     <Text style={[s.tabBtnTxt, viewTab === "entry" && s.tabBtnTxtActive]}>Data entry</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.tabBtn, viewTab === "preview" && s.tabBtnActive]} onPress={() => setViewTab("preview")} testID="preview-tab">
+                    <Text style={[s.tabBtnTxt, viewTab === "preview" && s.tabBtnTxtActive]}>Preview</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[s.tabBtn, viewTab === "year" && s.tabBtnActive]} onPress={() => setViewTab("year")}>
                     <Text style={[s.tabBtnTxt, viewTab === "year" && s.tabBtnTxtActive]}>Year summary</Text>
@@ -662,66 +742,69 @@ export default function CoachAssessmentEntry() {
                     player={selectedPlayer}
                     draft={draft[selectedPlayer.player_id]}
                     techMeta={techMeta}
-                    locked={isLocked || !!selectedPlayer.read_only}
+                    locked={playerFormLocked(batchStatus, user?.role, selectedPlayer.read_only)}
                     onSubScore={updateSubScore}
                     onCoreScore={updateCoreScore}
                     onRemark={updateRemark}
+                  />
+                ) : viewTab === "preview" ? (
+                  <AssessmentPreviewPanel
+                    player={selectedPlayer}
+                    draft={draft[selectedPlayer.player_id]}
+                    techMeta={techMeta}
+                    program={selectedPlayer.program || programLabel}
+                    assessmentDate={isoDate}
+                    stageLabel={stageLabel(assessmentStage, stageOptions)}
                   />
                 ) : (
                   <YearSummaryPanel
                     loading={yearLoading}
                     summary={yearSummary}
                     onExport={() => doExportPdf(selectedPlayer.player_id)}
-                    canExport={canExport}
+                    canExport={canExportPlayer}
                   />
                 )}
+
+                <View style={s.formActionBar}>
+                  <TouchableOpacity
+                    style={[s.secondaryBtn, (saving || isFormLocked || !showGrid || !players.length) && s.btnDisabled]}
+                    onPress={() => save("draft")}
+                    disabled={saving || isFormLocked || !showGrid || !players.length}
+                    testID="save-draft"
+                  >
+                    <Text style={s.secondaryBtnTxt}>Save draft</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.secondaryBtn, s.secondaryBtnRow]}
+                    onPress={() => setViewTab("preview")}
+                    testID="preview-assessment"
+                  >
+                    <Feather name="eye" size={14} color={colors.primary} />
+                    <Text style={s.secondaryBtnTxt}>Preview</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.primaryBtn, (saving || isFormLocked || !showGrid || !players.length) && s.btnDisabled]}
+                    onPress={() => save("final")}
+                    disabled={saving || isFormLocked || !showGrid || !players.length}
+                    testID="finalize-assessment"
+                  >
+                    <Text style={s.primaryBtnTxt}>Finalize</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.exportBtn, !canExportPlayer && s.btnDisabled]}
+                    onPress={() => doExportPdf(selectedPlayer.player_id)}
+                    disabled={!canExportPlayer}
+                    testID="export-pdf"
+                  >
+                    <Feather name="file-text" size={14} color="#fff" />
+                    <Text style={s.exportBtnTxt}>Export PDF</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
           </View>
         )}
       </ScrollView>
-
-      <PickerModal visible={centrePickerOpen} onClose={() => setCentrePickerOpen(false)} title="Select centre">
-        {allowedCentres.map((v) => (
-          <PickerRow key={v} label={v} selected={centre === v} onPress={() => { setCentre(v as any); setCentrePickerOpen(false); }} />
-        ))}
-      </PickerModal>
-      <PickerModal visible={sportPickerOpen} onClose={() => setSportPickerOpen(false)} title="Select sport">
-        {allowedSports.map((v) => (
-          <PickerRow key={v} label={v} selected={sport === v} onPress={() => { setSport(v as any); setSportPickerOpen(false); }} />
-        ))}
-      </PickerModal>
-      <PickerModal visible={playerTypePickerOpen} onClose={() => setPlayerTypePickerOpen(false)} title="Select player type">
-        {PLAYER_TYPES.map((v) => (
-          <PickerRow key={v} label={v} selected={playerType === v} onPress={() => { setPlayerType(v); setPlayerTypePickerOpen(false); if (v !== "Daily") setSessionType(""); }} testID={`player-type-${v}`} />
-        ))}
-      </PickerModal>
-      <PickerModal visible={stagePickerOpen} onClose={() => setStagePickerOpen(false)} title="Assessment stage">
-        {stageOptions.map((st) => (
-          <PickerRow key={st.id} label={st.label} selected={assessmentStage === st.id} onPress={() => { setAssessmentStage(st.id); setStagePickerOpen(false); }} />
-        ))}
-      </PickerModal>
-
-      <PickerModal visible={filtersOpen && isMobile} onClose={() => setFiltersOpen(false)} title="More filters" sheet>
-        <MoreFiltersPanel
-          playerType={playerType} sessionType={sessionType} setSessionType={setSessionType}
-          ageGroup={ageGroup} setAgeGroup={setAgeGroup}
-          playerSearch={playerSearch} setPlayerSearch={setPlayerSearch}
-          ageGroups={metadata?.age_groups || ["All", "U-10", "U-12", "U-14", "U-16", "U-18", "Open"]}
-          embedded
-        />
-      </PickerModal>
-
-      <PickerModal visible={exportMenuOpen} onClose={() => setExportMenuOpen(false)} title="Export PDF" sheet>
-        <TouchableOpacity style={s.pickerRow} onPress={() => doExportPdf(selectedPlayer?.player_id)} disabled={!canExport}>
-          <Feather name="user" size={16} color={colors.primary} />
-          <Text style={s.pickerRowTxt}>Export this player</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={s.pickerRow} onPress={() => doExportPdf(undefined, true)} disabled={!canExport}>
-          <Feather name="users" size={16} color={colors.primary} />
-          <Text style={s.pickerRowTxt}>Export all completed players</Text>
-        </TouchableOpacity>
-      </PickerModal>
     </SafeAreaView>
   );
 }
@@ -735,21 +818,46 @@ function SetupField({ label, flex, children }: { label: string; flex?: number; c
   );
 }
 
-function PickerModal({ visible, onClose, title, children, sheet }: {
-  visible: boolean; onClose: () => void; title: string; children: React.ReactNode; sheet?: boolean;
+function InlineSelect({
+  label, flex, open, onToggle, onClose, testID, icon, value, placeholder, children, triggerStyle, triggerTextStyle,
+}: {
+  label: string;
+  flex?: number;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  testID?: string;
+  icon?: React.ComponentProps<typeof Feather>["name"];
+  value: string;
+  placeholder?: boolean;
+  children: React.ReactNode;
+  triggerStyle?: object;
+  triggerTextStyle?: object;
 }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={s.modalOverlay} onPress={onClose}>
-        <Pressable style={[s.modalCard, sheet && s.modalSheet]} onPress={(e) => e.stopPropagation?.()}>
-          <View style={s.modalHead}>
-            <Text style={s.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={12}><Feather name="x" size={20} color={colors.muted} /></TouchableOpacity>
+    <View style={[s.inlineSelectWrap, { flex: flex ?? 1, minWidth: 120 }, open && s.inlineSelectWrapOpen]}>
+      {label.trim() ? <Text style={s.fieldLabel}>{label}</Text> : null}
+      <TouchableOpacity
+        testID={testID}
+        style={[triggerStyle || s.selectBtn, placeholder && s.selectBtnPlaceholder]}
+        onPress={onToggle}
+        activeOpacity={0.85}
+      >
+        {icon ? <Feather name={icon} size={15} color={colors.primary} /> : null}
+        <Text style={[triggerTextStyle || s.selectBtnTxt, placeholder && s.placeholderTxt]} numberOfLines={1}>{value}</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.muted2} />
+      </TouchableOpacity>
+      {open && (
+        <>
+          <Pressable style={s.dropdownBackdrop} onPress={onClose} />
+          <View style={s.dropdownPanel}>
+            <ScrollView style={s.dropdownScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {children}
+            </ScrollView>
           </View>
-          {children}
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </>
+      )}
+    </View>
   );
 }
 
@@ -808,31 +916,149 @@ function FilterChips({ label, value, options, onChange, testID, required }: {
   );
 }
 
+function ScoreChip({
+  n, active, disabled, tint, onSelect,
+}: {
+  n: number; active: boolean; disabled?: boolean; tint?: string;
+  onSelect: (n: number) => void;
+}) {
+  const label = n === 0 ? "N/A" : String(n);
+  const chipStyle = [
+    s.segmentBtn,
+    active && s.segmentBtnActive,
+    tint && active ? { backgroundColor: tint } : null,
+    disabled && s.scoreDisabled,
+  ];
+
+  const select = () => {
+    if (!disabled) onSelect(n);
+  };
+
+  if (Platform.OS === "web") {
+    return (
+      <View
+        accessibilityRole="button"
+        accessibilityLabel={n === 0 ? "Not applicable" : `Score ${n}`}
+        style={chipStyle}
+        {...stopWebScrollCapture}
+        // react-native-web: native click is reliable inside page ScrollView
+        // @ts-expect-error web mouse event
+        onClick={(e: { preventDefault: () => void; stopPropagation: () => void }) => {
+          e.preventDefault();
+          e.stopPropagation();
+          select();
+        }}
+      >
+        <Text pointerEvents="none" style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{label}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={n === 0 ? "Not applicable" : `Score ${n}`}
+      style={chipStyle}
+      onPress={select}
+      disabled={disabled}
+      activeOpacity={0.75}
+      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+    >
+      <Text pointerEvents="none" style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function SegmentedScore({ value, onChange, disabled }: { value: number | null; onChange: (v: number) => void; disabled?: boolean }) {
   return (
-    <View style={s.segmentRow}>
-      {Array.from({ length: 11 }, (_, i) => i).map((n) => {
-        const active = value === n;
-        const tint = scoreTint(n);
+    <View style={s.segmentRow} {...stopWebScrollCapture}>
+      {Array.from({ length: 11 }, (_, i) => i).map((n) => (
+        <ScoreChip
+          key={n}
+          n={n}
+          active={value === n}
+          disabled={disabled}
+          tint={scoreTint(n)}
+          onSelect={onChange}
+        />
+      ))}
+    </View>
+  );
+}
+
+function AssessmentPreviewPanel({
+  player, draft, techMeta, program, assessmentDate, stageLabel: stageLbl,
+}: {
+  player: PlayerRow;
+  draft?: DraftRow;
+  techMeta: TechAreaMeta[];
+  program: string;
+  assessmentDate: string;
+  stageLabel: string;
+}) {
+  const row = draft || { scores: emptyScores(techMeta), remark: "" };
+  const techMaster = calcTechnicalMaster(row.scores.technical_detail, techMeta);
+  const overall = calcOverall(row.scores, techMeta);
+  const status = completionStatus(row.scores, techMeta);
+
+  const scoreTxt = (v: number | null) => {
+    if (v == null) return "—";
+    if (v === 0) return "N/A";
+    return `${v}/10 — ${scoreLabel(v)}`;
+  };
+
+  return (
+    <View style={s.previewReportCard} testID="assessment-preview-panel">
+      <View style={s.previewReportHead}>
+        <Text style={s.previewReportOverline}>ALPHA SPORTS ACADEMY · PLAYER PERFORMANCE ASSESSMENT</Text>
+        <Text style={s.previewReportName}>{player.name}</Text>
+        <Text style={s.previewReportMeta}>Program: {program}</Text>
+        {player.date_of_admission ? (
+          <Text style={s.previewReportMeta}>Date of joining: {formatDate(player.date_of_admission)}</Text>
+        ) : null}
+        <Text style={s.previewReportMeta}>Assessment: {stageLbl} · {formatDate(assessmentDate)}</Text>
+        <Text style={s.previewReportMeta}>{player.role || player.age_group || "—"} · {completionLabel(status)}</Text>
+      </View>
+
+      {overall != null && (
+        <View style={s.previewOverallBadge}>
+          <Text style={s.previewOverallTxt}>Overall score: {overall} / 10</Text>
+        </View>
+      )}
+
+      <Text style={s.previewSectionTitle}>Technical skill</Text>
+      {techMaster != null && (
+        <Text style={s.previewSummaryLine}>Technical skill master average: {techMaster}/10</Text>
+      )}
+      {techMeta.map((area) => {
+        const areaAvg = calcAreaAvg(row.scores.technical_detail, area.key);
         return (
-          <Pressable
-            key={n}
-            style={({ pressed }) => [
-              s.segmentBtn,
-              active && s.segmentBtnActive,
-              tint && active ? { backgroundColor: tint } : null,
-              disabled && s.scoreDisabled,
-              pressed && !disabled ? s.segmentBtnPressed : null,
-            ]}
-            onPress={() => !disabled && onChange(n)}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityLabel={n === 0 ? "Not applicable" : `Score ${n}`}
-          >
-            <Text style={[s.segmentBtnTxt, active && s.segmentBtnTxtActive]}>{n === 0 ? "N/A" : n}</Text>
-          </Pressable>
+          <View key={area.key} style={s.previewAreaBlock}>
+            <Text style={s.previewAreaTitle}>{area.label}{areaAvg != null ? ` — ${areaAvg}/10` : ""}</Text>
+            {area.sub_params.map((sp) => (
+              <View key={sp.key} style={s.previewScoreRow}>
+                <Text style={s.previewScoreLabel}>{sp.label}</Text>
+                <Text style={s.previewScoreValue}>{scoreTxt(row.scores.technical_detail[area.key]?.[sp.key] ?? null)}</Text>
+              </View>
+            ))}
+          </View>
         );
       })}
+
+      <Text style={[s.previewSectionTitle, { marginTop: spacing.md }]}>Other parameters</Text>
+      {CORE_KEYS.map((k) => (
+        <View key={k} style={s.previewScoreRow}>
+          <Text style={s.previewScoreLabel}>{CORE_LABELS[k]}</Text>
+          <Text style={s.previewScoreValue}>{scoreTxt(row.scores[k])}</Text>
+        </View>
+      ))}
+
+      {row.remark.trim() ? (
+        <>
+          <Text style={[s.previewSectionTitle, { marginTop: spacing.md }]}>Coach remark</Text>
+          <Text style={s.previewRemark}>{row.remark}</Text>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -852,7 +1078,13 @@ function PlayerForm({ player, draft, techMeta, locked, onSubScore, onCoreScore, 
   const status = completionStatus(row.scores, techMeta);
 
   return (
-    <View style={s.playerCard} testID={`coach-asm-${player.player_id}`}>
+    <View style={s.playerCard} testID={`coach-asm-${player.player_id}`} {...stopWebScrollCapture}>
+      {locked && (
+        <View style={[s.lockedBanner, { marginBottom: spacing.sm }]}>
+          <Feather name="lock" size={14} color={colors.primary} />
+          <Text style={s.lockedTxt}>Read-only — scores and remarks cannot be changed.</Text>
+        </View>
+      )}
       <View style={s.playerCardHead}>
         <View style={{ flex: 1 }}>
           <Text style={s.playerName}>{player.name}</Text>
@@ -919,7 +1151,8 @@ function PlayerForm({ player, draft, techMeta, locked, onSubScore, onCoreScore, 
       ))}
 
       <TextInput
-        style={s.cardRemark}
+        testID="coach-remark-input"
+        style={[s.cardRemark, locked && s.cardRemarkLocked]}
         value={row.remark}
         onChangeText={(v) => onRemark(player.player_id, v)}
         placeholder="Coach remark (optional, max 300 characters)"
@@ -927,6 +1160,7 @@ function PlayerForm({ player, draft, techMeta, locked, onSubScore, onCoreScore, 
         editable={!locked}
         multiline
         maxLength={300}
+        {...stopWebScrollCapture}
       />
     </View>
   );
@@ -1031,13 +1265,62 @@ const s = StyleSheet.create({
   statusBadgeTxt: { fontSize: 11, fontWeight: "800", color: "#B45309" },
   primaryBtn: { backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 9, borderRadius: radii.md },
   secondaryBtn: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 9, borderRadius: radii.md },
+  secondaryBtnRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   primaryBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 11 },
   secondaryBtnTxt: { color: colors.primary, fontWeight: "800", fontSize: 11 },
   exportBtn: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.ink, paddingHorizontal: 12, paddingVertical: 9, borderRadius: radii.md },
   exportBtnTxt: { color: "#fff", fontWeight: "800", fontSize: 11 },
+  formActionBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    alignItems: "center",
+    ...Platform.select({ web: { position: "sticky", bottom: 0, backgroundColor: colors.surface, paddingBottom: spacing.sm, zIndex: 4 } as object }),
+  },
+  previewReportCard: { backgroundColor: colors.surface2, borderRadius: radii.lg, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
+  previewReportHead: { marginBottom: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  previewReportOverline: { fontSize: 10, fontWeight: "800", color: colors.primary, letterSpacing: 0.6, marginBottom: 6 },
+  previewReportName: { fontSize: 20, fontWeight: "800", color: colors.ink, marginBottom: 6 },
+  previewReportMeta: { fontSize: 12, color: colors.muted2, lineHeight: 18 },
+  previewOverallBadge: { alignSelf: "flex-start", backgroundColor: colors.primary, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 8, marginBottom: spacing.md },
+  previewOverallTxt: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  previewSectionTitle: { fontSize: 12, fontWeight: "800", color: colors.primary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 },
+  previewSummaryLine: { fontSize: 12, fontWeight: "700", color: colors.ink, marginBottom: 8 },
+  previewAreaBlock: { marginBottom: spacing.sm },
+  previewAreaTitle: { fontSize: 13, fontWeight: "800", color: colors.ink, marginBottom: 4 },
+  previewScoreRow: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  previewScoreLabel: { flex: 1, fontSize: 11, fontWeight: "600", color: colors.ink },
+  previewScoreValue: { fontSize: 11, fontWeight: "700", color: colors.primary, textAlign: "right" },
+  previewRemark: { fontSize: 12, color: colors.ink, lineHeight: 18, backgroundColor: colors.surface, borderRadius: radii.md, padding: 10, borderWidth: 1, borderColor: colors.border },
   btnDisabled: { opacity: 0.45 },
-  setupBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border, ...Platform.select({ web: { boxShadow: "0 1px 3px rgba(15,23,42,0.06)" } as any, default: {} }) },
+  setupBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border, overflow: "visible", ...Platform.select({ web: { boxShadow: "0 1px 3px rgba(15,23,42,0.06)" } as any, default: {} }) },
+  setupBarOpen: { zIndex: 20 },
   setupBarStacked: { flexDirection: "column", alignItems: "stretch" },
+  inlineSelectWrap: { position: "relative", zIndex: 1 },
+  inlineSelectWrapOpen: { zIndex: 1000 },
+  dropdownBackdrop: Platform.select({
+    web: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 } as object,
+    default: { ...StyleSheet.absoluteFillObject, zIndex: 998 },
+  }),
+  dropdownPanel: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    zIndex: 999,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    maxHeight: 280,
+    ...Platform.select({ web: { boxShadow: "0 8px 24px rgba(15,23,42,0.12)" } as object, default: {} }),
+  },
+  dropdownScroll: { maxHeight: 280 },
   fieldLabel: { fontSize: 10, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
   selectBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, minHeight: 42 },
   selectBtnPlaceholder: { borderColor: colors.primary, backgroundColor: colors.primarySofter },
@@ -1072,6 +1355,7 @@ const s = StyleSheet.create({
   paramLabel: { fontSize: 12, fontWeight: "700", color: colors.ink },
   paramHint: { fontSize: 10, color: colors.muted2, marginTop: 2, lineHeight: 14 },
   cardRemark: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 10, fontSize: 13, color: colors.ink, marginTop: 8, minHeight: 60, backgroundColor: colors.surface },
+  cardRemarkLocked: { backgroundColor: colors.surface2, color: colors.muted2 },
   statusComplete: { color: colors.success },
   statusProgress: { color: colors.warning },
   statusPending: { color: colors.muted2 },
@@ -1137,19 +1421,20 @@ const s = StyleSheet.create({
   areaAvg: { fontSize: 12, fontWeight: "800", color: colors.ink },
   areaParent: { fontSize: 10, color: colors.muted2, marginBottom: 8, lineHeight: 14 },
   subParamBlock: { marginBottom: 12 },
-  segmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  segmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, zIndex: 2 },
   segmentBtn: {
-    minWidth: 34,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    minWidth: 40,
+    minHeight: 40,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: "center",
-    ...Platform.select({ web: { cursor: "pointer" as const } }),
+    justifyContent: "center",
+    ...Platform.select({ web: { cursor: "pointer" as const, userSelect: "none" as const } }),
   },
-  segmentBtnPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   segmentBtnActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   segmentBtnTxt: { fontSize: 11, fontWeight: "700", color: colors.muted2 },
   segmentBtnTxtActive: { color: colors.primary, fontWeight: "800" },

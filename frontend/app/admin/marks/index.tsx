@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 
 type Tab = "terms" | "assessments" | "grading" | "publish";
 
@@ -38,8 +39,8 @@ export default function MarksAdmin() {
   const [scaleName, setScaleName] = useState("CBSE-style");
   const [publishAsmId, setPublishAsmId] = useState<string | null>(null);
 
-  const canManage = user?.role === "super_admin" || user?.permissions?.manage_academic_structure
-    || user?.role === "principal" || user?.role === "vice_principal";
+  const canManage = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS)
+    || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS);
 
   const load = useCallback(async () => {
     setLoading(true);

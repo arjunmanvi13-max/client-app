@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, I
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { api, useAuth } from "./auth";
+import { api, useAuth, userHasPermission } from "./auth";
+import { Permission } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { useBreakpoint } from "./useBreakpoint";
 import { colors } from "./theme";
@@ -48,7 +49,8 @@ export default function CoachHome() {
   })();
 
   if (!user) return null;
-  const isAdmin = user.role === "admin" || user.role === "super_admin";
+  const isAdmin = userHasPermission(user, Permission.MANAGE_COACH_ASSESSMENTS_ADMIN)
+    || userHasPermission(user, Permission.MANAGE_PLAYERS);
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

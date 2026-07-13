@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { formatDateTime } from "../../../src/dateFormat";
 
 type User = {
@@ -62,7 +63,7 @@ export default function PermissionsList() {
   );
 
   if (!user) return null;
-  if (user.role !== "super_admin") {
+  if (!userHasPermission(user, Permission.MANAGE_ACCESS)) {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.header}><Text style={s.h1}>Permissions</Text></View>

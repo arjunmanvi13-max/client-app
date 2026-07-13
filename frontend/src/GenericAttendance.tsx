@@ -3,14 +3,15 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { api, useAuth } from "./auth";
+import { api, useAuth, userHasPermission } from "./auth";
+import { Permission } from "./rbac";
 import { formatDate, toISODate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 
 const KIND_OPTIONS = [
-  { key: "student", label: "Students", icon: "book", color: "#2563EB", perm: "mark_student_attendance" },
-  { key: "player", label: "Players", icon: "activity", color: "#16A34A", perm: "mark_player_attendance" },
-  { key: "staff", label: "Staff", icon: "users", color: "#0EA5E9", perm: "mark_staff_attendance" },
+  { key: "student", label: "Students", icon: "book", color: "#2563EB", perm: Permission.MARK_STUDENT_ATTENDANCE },
+  { key: "player", label: "Players", icon: "activity", color: "#16A34A", perm: Permission.MARK_PLAYER_ATTENDANCE },
+  { key: "staff", label: "Staff", icon: "users", color: "#0EA5E9", perm: Permission.MARK_PWS_ATTENDANCE },
 ];
 const STATUSES: { key: "present" | "absent" | "late" | "leave"; label: string; color: string }[] = [
   { key: "present", label: "P", color: "#10B981" },
@@ -42,8 +43,9 @@ export default function Attendance() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const isPrivileged = user?.role === "admin" || user?.role === "super_admin";
-  const kindOptions = KIND_OPTIONS.filter((k) => isPrivileged || !!user?.permissions?.[k.perm]);
+  const isPrivileged = userHasPermission(user, Permission.MARK_PWS_ATTENDANCE)
+    || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE);
+  const kindOptions = KIND_OPTIONS.filter((k) => isPrivileged || userHasPermission(user, k.perm));
 
   useEffect(() => {
     if (user?.role === "coach") setKind("player");

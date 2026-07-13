@@ -2,7 +2,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from "react-nati
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useAuth } from "../../src/auth";
+import { useAuth, userHasPermission } from "../../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../src/rbac";
 
 const KINDS = [
   { key: "admin", label: "Sports Admin", icon: "shield", tint: "#7C3AED", desc: "ALPHA Sports Admin — manages players, coaches & fees" },
@@ -18,16 +19,18 @@ export default function ManageHub() {
   const router = useRouter();
   const { user } = useAuth();
   if (!user) return null;
-  const isSuper = user.role === "super_admin";
-  const isAdmin = user.role === "admin" || user.role === "super_admin";
-  const isSportsAdmin = user.role === "admin";
-  const perms = user.permissions || {};
+  const role = normalizeRole(user.role);
+  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS)
+    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
+    || isSuper;
+  const isSportsAdmin = role === UserRole.ALPHA_ADMIN;
   const canKind = (key: string) => {
     if (isAdmin) return true;
     if ((user.can_manage || []).includes(key as any)) return true;
-    if (key === "student" && (perms.view_students || perms.add_students || perms.edit_students || perms.mark_student_attendance)) return true;
-    if (key === "player" && (perms.view_players || perms.add_players || perms.edit_players || user.role === "coach")) return true;
-    if (key === "staff" && perms.view_staff) return true;
+    if (key === "student" && userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)) return true;
+    if (key === "player" && userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)) return true;
+    if (key === "staff" && userHasPermission(user, Permission.MARK_PWS_ATTENDANCE)) return true;
     if (key === "parent" && isSuper) return true;
     return false;
   };
@@ -35,7 +38,7 @@ export default function ManageHub() {
     .filter((k) => canKind(k.key))
     .filter((k) => !(isSportsAdmin && (k.key === "student" || k.key === "teacher")))
     .filter((k) => !(k.key === "admin" && !isSuper))
-    .filter((k) => !(k.key === "parent" && !isSuper && user.role !== "principal" && user.role !== "vice_principal"));
+    .filter((k) => !(k.key === "parent" && !isSuper && !userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)));
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../src/auth";
+import { api, useAuth, userHasPermission } from "../../src/auth";
+import { Permission } from "../../src/rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
 import { formatDateTime } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
@@ -49,13 +50,8 @@ export default function Approvals() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const canView = user && (
-    user.permissions?.approve_requests ||
-    user.permissions?.approve_deactivation ||
-    user.role === "super_admin" ||
-    user.role === "admin"
-  );
-  const canDecide = !!user && (user.permissions?.approve_requests || user.permissions?.approve_deactivation || user.role === "super_admin");
+  const canView = userHasPermission(user, Permission.APPROVE_REQUESTS);
+  const canDecide = userHasPermission(user, Permission.APPROVE_REQUESTS);
 
   const load = useCallback(async () => {
     if (!canView) { setLoading(false); return; }

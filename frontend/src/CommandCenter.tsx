@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, I
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { api, useAuth } from "./auth";
+import { api, useAuth, userHasPermission } from "./auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
@@ -39,6 +40,9 @@ export default function CommandCenter() {
 
   if (!user) return null;
 
+  const isSportsAdmin = normalizeRole(user.role) === UserRole.ALPHA_ADMIN;
+  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       <ScrollView
@@ -55,9 +59,9 @@ export default function CommandCenter() {
         <View style={s.header}>
           <Image source={require("../assets/alpha-sports-logo.png")} style={s.headerLogo} resizeMode="contain" />
           <View style={{ flex: 1 }}>
-            <Text style={s.overline}>{user.role === "admin" ? "SPORTS ADMIN" : "COMMAND CENTRE"} · {formatDate(data.date)}</Text>
+            <Text style={s.overline}>{isSportsAdmin ? "SPORTS ADMIN" : "COMMAND CENTRE"} · {formatDate(data.date)}</Text>
             <Text style={s.h1}>Hello, {user.name.split(" ")[0]}</Text>
-            <Text style={s.sub}>{user.role === "admin" ? "ALPHA Sports Academy operations" : "Live snapshot across PWS & ALPHA"}</Text>
+            <Text style={s.sub}>{isSportsAdmin ? "ALPHA Sports Academy operations" : "Live snapshot across PWS & ALPHA"}</Text>
           </View>
           <TouchableOpacity testID="cc-notif" style={s.bellBtn} onPress={() => router.push("/notifications")}>
             <Feather name="bell" size={20} color="#0F172A" />
@@ -92,10 +96,10 @@ export default function CommandCenter() {
         {/* Attendance snapshot */}
         <Text style={s.section}>Attendance snapshot</Text>
         <View style={s.entityGrid}>
-          {user.role !== "admin" && <EntityRow label="Teachers" total={data.roster_counts.teachers} att={data.attendance_by_kind.teacher} icon="book-open" tint="#1E40AF" />}
+          {user.role !== "admin" && !isSportsAdmin && <EntityRow label="Teachers" total={data.roster_counts.teachers} att={data.attendance_by_kind.teacher} icon="book-open" tint="#1E40AF" />}
           <EntityRow label="Coaches" total={data.roster_counts.coaches} att={data.attendance_by_kind.coach} icon="award" tint="#EA580C" />
           <EntityRow label="Staff" total={data.roster_counts.staff} att={data.attendance_by_kind.staff} icon="users" tint="#0EA5E9" />
-          {user.role !== "admin" && <EntityRow label="Students" total={data.roster_counts.students} att={data.attendance_by_kind.student} icon="users" tint="#2563EB" />}
+          {user.role !== "admin" && !isSportsAdmin && <EntityRow label="Students" total={data.roster_counts.students} att={data.attendance_by_kind.student} icon="users" tint="#2563EB" />}
           <EntityRow label="Players" total={data.roster_counts.players} att={data.attendance_by_kind.player} icon="activity" tint="#16A34A" />
           <View style={s.entityRow}>
             <View style={[s.entityIcon, { backgroundColor: "#7C3AED1A" }]}><Feather name="home" size={16} color="#7C3AED" /></View>
@@ -129,26 +133,26 @@ export default function CommandCenter() {
         </View>
 
         {/* Drill-down department cards */}
-        <Text style={s.section}>{user.role === "admin" ? "ALPHA dashboards" : "Department dashboards"}</Text>
-        {user.role !== "admin" && (
+        <Text style={s.section}>{isSportsAdmin ? "ALPHA dashboards" : "Department dashboards"}</Text>
+        {!isSportsAdmin && (
           <DeptCard testID="dept-school" icon="book" tint="#1E40AF" title="School (PWS)" subtitle={`${data.roster_counts.students} students · ${data.roster_counts.teachers} teachers`} onPress={() => router.push("/department/school")} />
         )}
         <DeptCard testID="dept-sports" icon="award" tint="#EA580C" title="Sports Academy (ALPHA)" subtitle={`${data.roster_counts.players} players · ${data.roster_counts.coaches} coaches`} onPress={() => router.push("/department/sports")} />
-        {user.role !== "admin" && (
+        {!isSportsAdmin && (
           <DeptCard testID="dept-hostel" icon="home" tint="#7C3AED" title="Hostel" subtitle={`${data.departments.hostel.residents} residents · ${data.departments.hostel.pending_pass} pending passes`} onPress={() => router.push("/(tabs)/hostel")} />
         )}
-        <DeptCard testID="dept-staff" icon="user-check" tint="#BE185D" title={user.role === "admin" ? "ALPHA Staff Attendance" : "Staff Attendance"} subtitle={`${data.roster_counts.staff} staff${user.role === "admin" ? " · ALPHA" : " · PWS & ALPHA"}`} onPress={() => router.push("/staff-attendance")} />
+        <DeptCard testID="dept-staff" icon="user-check" tint="#BE185D" title={isSportsAdmin ? "ALPHA Staff Attendance" : "Staff Attendance"} subtitle={`${data.roster_counts.staff} staff${isSportsAdmin ? " · ALPHA" : " · PWS & ALPHA"}`} onPress={() => router.push("/staff-attendance")} />
         <DeptCard testID="dept-coach-att" icon="award" tint="#EA580C" title="Coach Attendance" subtitle={`${data.roster_counts.coaches} coaches · ALPHA`} onPress={() => router.push("/coach-attendance")} />
-        {(user.permissions?.view_fees || user.role === "super_admin") && (
+        {(userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA) || userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)) && (
           <DeptCard testID="dept-fees" icon="inbox" tint="#16A34A" title="Fees Collection (ALPHA)" subtitle="Branch-wise revenue · collect dues" onPress={() => router.push("/fees")} />
         )}
-        {(user.permissions?.bulk_upload || user.role === "super_admin") && (
+        {userHasPermission(user, Permission.BULK_UPLOAD_USERS) && (
           <DeptCard testID="dept-bulk" icon="upload-cloud" tint="#2563EB" title="Bulk Upload" subtitle="CSV / XLSX players + auto-fees" onPress={() => router.push("/admin/bulk-upload")} />
         )}
-        {(user.permissions?.approve_deactivation || user.role === "super_admin" || user.role === "admin") && (
+        {userHasPermission(user, Permission.APPROVE_REQUESTS) && (
           <DeptCard testID="dept-approvals" icon="check-circle" tint="#D97706" title="Approval Workflow" subtitle="Deactivation, concessions, refunds" onPress={() => router.push("/admin/approvals")} />
         )}
-        {user.role === "super_admin" && (
+        {isSuper && (
           <DeptCard testID="dept-permissions" icon="shield" tint="#0F766E" title="Permissions & Access Control" subtitle="Super Admin · manage user permissions" onPress={() => router.push("/admin/permissions")} />
         )}
 

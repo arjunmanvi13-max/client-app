@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { LoadingState, EmptyState, ErrorState, FormLabel, InlineFieldError, getApiError } from "../../../src/ScreenStates";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 
@@ -33,7 +34,7 @@ export default function FeeCatalogAdmin() {
   const [amount, setAmount] = useState("");
   const [frequency, setFrequency] = useState("monthly");
 
-  const canManage = user?.role === "super_admin" || user?.permissions?.manage_fee_catalog || user?.permissions?.edit_fees;
+  const canManage = userHasPermission(user, Permission.MANAGE_FEES_HEADS);
 
   const load = useCallback(async () => {
     setLoading(true);

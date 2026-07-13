@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { BusinessEntity, Permission } from "../../../src/rbac";
 import { formatDate } from "../../../src/dateFormat";
 
 type EntityConfig = { entity_id: string; use_invoice_engine: boolean };
@@ -22,8 +23,10 @@ function inr(n: number) {
 export default function InvoicesAdmin() {
   const router = useRouter();
   const { user } = useAuth();
-  const isSuper = user?.role === "super_admin";
-  const canView = isSuper || user?.permissions?.view_fees || user?.role === "principal" || user?.role === "vice_principal";
+  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canView = isSuper
+    || userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

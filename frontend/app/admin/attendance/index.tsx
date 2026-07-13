@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 
 const KINDS = ["student", "player", "staff", "coach", "teacher", "hostel"];
@@ -30,10 +31,10 @@ export default function AttendanceAdmin() {
   const [correctStatus, setCorrectStatus] = useState<"present" | "absent" | "late" | "leave">("present");
   const [correctReason, setCorrectReason] = useState("");
 
-  const canView = user?.role === "super_admin" || user?.role === "admin" || user?.role === "principal"
-    || user?.permissions?.view_attendance || user?.permissions?.access_reports;
-  const canCorrect = user?.role === "super_admin" || user?.role === "principal"
-    || user?.permissions?.correct_attendance;
+  const canView = userHasPermission(user, Permission.VIEW_ATTENDANCE)
+    || userHasPermission(user, Permission.RUN_PWS_REPORTS)
+    || userHasPermission(user, Permission.RUN_ALPHA_REPORTS);
+  const canCorrect = userHasPermission(user, Permission.CORRECT_ATTENDANCE);
 
   const load = useCallback(async () => {
     setLoading(true);

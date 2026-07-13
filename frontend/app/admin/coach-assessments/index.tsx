@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 import { colors, radii, spacing } from "../../../src/theme";
 import { getApiError } from "../../../src/ScreenStates";
@@ -32,8 +33,7 @@ export default function CoachAssessmentAdmin() {
   const [publishDate, setPublishDate] = useState(formatDate(toISODate()));
   const [reopenReason, setReopenReason] = useState("");
 
-  const canManage = user?.role === "super_admin" || user?.role === "admin"
-    || user?.permissions?.manage_coach_assessments;
+  const canManage = userHasPermission(user, Permission.MANAGE_COACH_ASSESSMENTS_ADMIN);
 
   const batchPayload = () => {
     const date = parseToISO(publishDate) || publishDate;

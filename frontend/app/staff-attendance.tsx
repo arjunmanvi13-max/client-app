@@ -3,7 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api, useAuth } from "../src/auth";
+import { api, useAuth, userHasPermission } from "../src/auth";
+import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { formatDate, toISODate } from "../src/dateFormat";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
@@ -27,9 +28,10 @@ export default function StaffAttendance() {
   const [centre, setCentre] = useState<"Balua" | "Harding Park" | null>(null);
   const [date] = useState(toISODate());
 
-  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
-  const isHeadCoach = user?.role === "coach" && user?.coach_type === "head";
-  const isPrincipalVP = user?.role === "principal" || user?.role === "vice_principal";
+  const isAdmin = userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isHeadCoach = normalizeRole(user?.role || "") === UserRole.ALPHA_COACH && user?.coach_type === "head";
+  const isPrincipalVP = userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS);
   const allowed = isAdmin || isHeadCoach || isPrincipalVP;
 
   // Head-coach assigned centres restrict the dropdown

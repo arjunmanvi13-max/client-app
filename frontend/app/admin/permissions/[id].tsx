@@ -3,12 +3,16 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission, PERMISSION_LABELS } from "../../../src/rbac";
 
 type Templates = {
   groups: Record<string, string[]>;
   keys: string[];
   templates: Record<string, { label: string; category: string; organization: string; permissions: Record<string, boolean> }>;
+  rbac_groups?: Record<string, string[]>;
+  rbac_keys?: string[];
+  rbac_labels?: Record<string, string>;
 };
 
 const PERM_LABELS: Record<string, string> = {
@@ -48,6 +52,7 @@ export default function PermissionsEdit() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [perms, setPerms] = useState<Record<string, boolean>>({});
+  const [rbacPerms, setRbacPerms] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
 
   const confirm = (title: string, message: string, onOk: () => void) => {
@@ -71,6 +76,7 @@ export default function PermissionsEdit() {
         const u = usersResp.data.find((x: any) => x.id === id);
         setTarget(u);
         setPerms(u?.permissions || {});
+        setRbacPerms(u?.permissions_rbac || {});
         setTmpls(tmplResp.data);
       } catch (e: any) {
         Alert.alert("Error", e?.response?.data?.detail || "Failed to load");
@@ -80,7 +86,7 @@ export default function PermissionsEdit() {
 
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#0F766E" style={{ marginTop: 60 }} /></SafeAreaView>;
   if (!target || !tmpls) return null;
-  if (me?.role !== "super_admin") {
+  if (!userHasPermission(me, Permission.MANAGE_ACCESS)) {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.empty}><Feather name="lock" size={40} color="#94A3B8" /><Text style={s.emptyTitle}>Super Admin only</Text></View>
@@ -89,6 +95,7 @@ export default function PermissionsEdit() {
   }
 
   const toggle = (k: string) => setPerms((prev) => ({ ...prev, [k]: !prev[k] }));
+  const toggleRbac = (k: string) => setRbacPerms((prev) => ({ ...prev, [k]: !prev[k] }));
 
   const applyTemplate = (key: string) => {
     const tpl = tmpls.templates[key];
@@ -109,7 +116,7 @@ export default function PermissionsEdit() {
   const doSave = async () => {
     setSaving(true);
     try {
-      const { data } = await api.patch(`/users/${id}/permissions`, { permissions: perms });
+      const { data } = await api.patch(`/users/${id}/permissions`, { permissions: perms, permissions_rbac: rbacPerms });
       // Refresh self if applicable
       if (data.id === me?.id) await refresh?.();
       setSaved(true);
@@ -212,6 +219,20 @@ export default function PermissionsEdit() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {tmpls.rbac_groups && Object.entries(tmpls.rbac_groups).map(([groupName, keys]) => (
+          <View key={`rbac-${groupName}`} style={s.group}>
+            <Text style={s.groupTitle}>{groupName.toUpperCase()} (RBAC)</Text>
+            <View style={s.card}>
+              {(keys as string[]).map((k, i) => (
+                <View key={k} style={[s.toggleRow, i < (keys as string[]).length - 1 && s.toggleDivider]}>
+                  <Text style={s.toggleLabel}>{tmpls.rbac_labels?.[k] || PERMISSION_LABELS[k as Permission] || k}</Text>
+                  <Switch testID={`toggle-rbac-${k}`} value={!!rbacPerms[k]} onValueChange={() => toggleRbac(k)} trackColor={{ true: "#0F766E", false: "#CBD5E1" }} />
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
 
         {Object.entries(tmpls.groups).map(([groupName, keys]) => (
           <View key={groupName} style={s.group}>

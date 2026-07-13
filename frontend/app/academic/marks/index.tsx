@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { api, useAuth } from "../../../src/auth";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 
 type Combo = {
   academic_year_id: string;
@@ -48,9 +49,7 @@ export default function MarksEntry() {
   const [saveStatus, setSaveStatus] = useState<"draft" | "final">("draft");
   const [gridStatus, setGridStatus] = useState<string | null>(null);
 
-  const canEnter = user?.role === "super_admin" || user?.permissions?.enter_academic_marks
-    || user?.permissions?.manage_academic_structure
-    || user?.role === "principal" || user?.role === "vice_principal" || user?.role === "teacher";
+  const canEnter = userHasPermission(user, Permission.MANAGE_MARKS_ASSESSMENT);
 
   const loadMeta = useCallback(async () => {
     setLoading(true);

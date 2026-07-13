@@ -4,6 +4,8 @@ import { useRouter, usePathname } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "./auth";
 import { colors } from "./theme";
+import { BusinessEntity, Permission, hasPermission } from "./rbac";
+import type { User } from "./auth";
 
 type NavItem = {
   key: string;
@@ -11,11 +13,14 @@ type NavItem = {
   icon: keyof typeof Feather.glyphMap;
   href: string;
   match: (p: string) => boolean;
-  roles?: string[];          // allowed roles. If absent, all.
-  excludeRoles?: string[];   // hidden for these roles
+  roles?: string[];
+  permissions?: Permission[];
+  permissionEntity?: BusinessEntity;
+  excludeRoles?: string[];
   needsManage?: boolean;
   needsCoachAttendance?: boolean;
-  pwsOnly?: boolean;         // hidden when org === ALPHA (Sports Admin / ALPHA-only super admin scope)
+  pwsOnly?: boolean;
+  alphaOnly?: boolean;
 };
 
 type NavGroup = {
@@ -32,9 +37,9 @@ const GRP_MANAGEMENT: NavGroup = {
   icon: "pie-chart",
   items: [
     { key: "dashboard", label: "Dashboard", icon: "home", href: "/(tabs)/dashboard", match: (p) => p.startsWith("/(tabs)/dashboard") || p === "/" || p === "/dashboard" },
-    { key: "reports", label: "Reports", icon: "bar-chart-2", href: "/reports", match: (p) => p.startsWith("/reports"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
+    { key: "reports", label: "Reports", icon: "bar-chart-2", href: "/reports", match: (p) => p.startsWith("/reports"), permissions: [Permission.RUN_PWS_REPORTS, Permission.RUN_ALPHA_REPORTS] },
     { key: "tasks", label: "Task Tracker", icon: "check-square", href: "/(tabs)/tasks", match: (p) => p.startsWith("/(tabs)/tasks") || p.startsWith("/task") || p === "/tasks" },
-    { key: "approvals", label: "Approvals", icon: "shield", href: "/admin/approvals", match: (p) => p.startsWith("/admin/approvals"), roles: ["super_admin", "admin", "principal"] },
+    { key: "approvals", label: "Approvals", icon: "shield", href: "/admin/approvals", match: (p) => p.startsWith("/admin/approvals"), permissions: [Permission.APPROVE_REQUESTS] },
   ],
 };
 
@@ -44,10 +49,10 @@ const GRP_PEOPLE: NavGroup = {
   label: "People & Directory",
   icon: "users",
   items: [
-    { key: "coaches", label: "Coaches", icon: "award", href: "/manage/coach", match: (p) => p.startsWith("/manage/coach"), excludeRoles: ["teacher"] },
-    { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player"), excludeRoles: ["teacher"] },
-    { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), pwsOnly: true, excludeRoles: ["teacher"] },
-    { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), pwsOnly: true, excludeRoles: ["teacher"] },
+    { key: "coaches", label: "Coaches", icon: "award", href: "/manage/coach", match: (p) => p.startsWith("/manage/coach"), permissions: [Permission.MANAGE_COACHES, Permission.CREATE_USERS], excludeRoles: ["teacher"] },
+    { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player"), permissions: [Permission.MANAGE_PLAYERS, Permission.ADD_ALPHA_PLAYERS], excludeRoles: ["teacher"] },
+    { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.CREATE_USERS], pwsOnly: true, excludeRoles: ["teacher"] },
+    { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), permissions: [Permission.ADD_PWS_STUDENTS], pwsOnly: true, excludeRoles: ["teacher"] },
     { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff"), excludeRoles: ["teacher"] },
     { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory"), excludeRoles: ["teacher"] },
   ],
@@ -59,9 +64,9 @@ const GRP_FINANCE: NavGroup = {
   label: "Financials",
   icon: "credit-card",
   items: [
-    { key: "fees", label: "Fees", icon: "credit-card", href: "/fees", match: (p) => p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.includes("overdue"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
-    { key: "collect", label: "Collect Fees", icon: "inbox", href: "/fees/collection", match: (p) => p.startsWith("/fees/collection"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
-    { key: "defaulters", label: "Defaulters", icon: "alert-triangle", href: "/fees?tab=overdue", match: (p) => p.startsWith("/fees") && p.includes("overdue"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
+    { key: "fees", label: "Fees", icon: "credit-card", href: "/fees", match: (p) => p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.includes("overdue"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
+    { key: "collect", label: "Collect Fees", icon: "inbox", href: "/fees/collection", match: (p) => p.startsWith("/fees/collection"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
+    { key: "defaulters", label: "Defaulters", icon: "alert-triangle", href: "/fees?tab=overdue", match: (p) => p.startsWith("/fees") && p.includes("overdue"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
   ],
 };
 
@@ -72,12 +77,12 @@ const GRP_OPERATIONS: NavGroup = {
   icon: "layers",
   items: [
     { key: "attendance", label: "Attendance", icon: "user-check", href: "/(tabs)/attendance", match: (p) => p.startsWith("/(tabs)/attendance") || p === "/attendance" || p === "/staff-attendance" || p === "/coach-attendance" },
-    { key: "coach-assessments", label: "Player Assessments", icon: "clipboard", href: "/coach/assessments", match: (p) => p.startsWith("/coach/assessments"), roles: ["coach", "admin", "super_admin"] },
-    { key: "attendance-reports", label: "Attendance Reports", icon: "bar-chart", href: "/admin/attendance", match: (p) => p.startsWith("/admin/attendance"), roles: ["super_admin", "admin", "principal", "vice_principal"] },
-    { key: "marks", label: "Enter Marks", icon: "edit-3", href: "/academic/marks", match: (p) => p.startsWith("/academic/marks"), roles: ["super_admin", "principal", "vice_principal", "teacher"], pwsOnly: true },
-    { key: "report-cards", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards") || p.startsWith("/report-cards"), roles: ["super_admin", "principal", "vice_principal", "teacher"], pwsOnly: true },
-    { key: "hostel", label: "Hostel", icon: "moon", href: "/(tabs)/hostel", match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel", roles: ["super_admin", "warden"] },
-    { key: "bulk", label: "Bulk Upload", icon: "upload-cloud", href: "/admin/bulk-upload", match: (p) => p.startsWith("/admin/bulk-upload"), roles: ["super_admin", "admin"] },
+    { key: "coach-assessments", label: "Player Assessments", icon: "clipboard", href: "/coach/assessments", match: (p) => p.startsWith("/coach/assessments"), permissions: [Permission.MANAGE_PLAYER_ASSESSMENT, Permission.MANAGE_COACH_ASSESSMENTS_ADMIN] },
+    { key: "attendance-reports", label: "Attendance Reports", icon: "bar-chart", href: "/admin/attendance", match: (p) => p.startsWith("/admin/attendance"), permissions: [Permission.VIEW_ATTENDANCE, Permission.RUN_PWS_REPORTS] },
+    { key: "marks", label: "Enter Marks", icon: "edit-3", href: "/academic/marks", match: (p) => p.startsWith("/academic/marks"), permissions: [Permission.MANAGE_MARKS_ASSESSMENT], pwsOnly: true },
+    { key: "report-cards", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards") || p.startsWith("/report-cards"), permissions: [Permission.MANAGE_MARKS_ASSESSMENT], pwsOnly: true },
+    { key: "hostel", label: "Hostel", icon: "moon", href: "/(tabs)/hostel", match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel", permissions: [Permission.MARK_HOSTEL_ATTENDANCE] },
+    { key: "bulk", label: "Bulk Upload", icon: "upload-cloud", href: "/admin/bulk-upload", match: (p) => p.startsWith("/admin/bulk-upload"), permissions: [Permission.BULK_UPLOAD_USERS] },
   ],
 };
 
@@ -87,13 +92,13 @@ const GRP_SYSTEM: NavGroup = {
   label: "System & Administration",
   icon: "settings",
   items: [
-    { key: "perms", label: "Permissions", icon: "key", href: "/admin/permissions", match: (p) => p.startsWith("/admin/permissions"), roles: ["super_admin"] },
-    { key: "academic", label: "Academic Structure", icon: "book-open", href: "/admin/academic", match: (p) => p.startsWith("/admin/academic"), roles: ["super_admin", "principal", "vice_principal"] },
-    { key: "marks-admin", label: "Marks & Assessment", icon: "edit-3", href: "/admin/marks", match: (p) => p.startsWith("/admin/marks"), roles: ["super_admin", "principal", "vice_principal"], pwsOnly: true },
-    { key: "report-cards-admin", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards"), roles: ["super_admin", "principal", "vice_principal"], pwsOnly: true },
-    { key: "coach-asm-admin", label: "Coach Assessments", icon: "clipboard", href: "/admin/coach-assessments", match: (p) => p.startsWith("/admin/coach-assessments"), roles: ["super_admin", "admin"] },
-    { key: "invoices", label: "Invoice Engine", icon: "file-text", href: "/admin/invoices", match: (p) => p.startsWith("/admin/invoices"), roles: ["super_admin", "principal", "vice_principal"] },
-    { key: "fee-catalog", label: "Fee Catalogue", icon: "layers", href: "/admin/fee-catalog", match: (p) => p.startsWith("/admin/fee-catalog"), roles: ["super_admin", "principal", "vice_principal"] },
+    { key: "perms", label: "Permissions", icon: "key", href: "/admin/permissions", match: (p) => p.startsWith("/admin/permissions"), permissions: [Permission.MANAGE_ACCESS] },
+    { key: "academic", label: "Academic Structure", icon: "book-open", href: "/admin/academic", match: (p) => p.startsWith("/admin/academic"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.MANAGE_TEACHERS_MAP_SECTIONS], pwsOnly: true },
+    { key: "marks-admin", label: "Marks & Assessment", icon: "edit-3", href: "/admin/marks", match: (p) => p.startsWith("/admin/marks"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS], pwsOnly: true },
+    { key: "report-cards-admin", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS], pwsOnly: true },
+    { key: "coach-asm-admin", label: "Coach Assessments", icon: "clipboard", href: "/admin/coach-assessments", match: (p) => p.startsWith("/admin/coach-assessments"), permissions: [Permission.MANAGE_COACH_ASSESSMENTS_ADMIN] },
+    { key: "invoices", label: "Invoice Engine", icon: "file-text", href: "/admin/invoices", match: (p) => p.startsWith("/admin/invoices"), permissions: [Permission.COLLECT_PWS_FEES], pwsOnly: true },
+    { key: "fee-catalog", label: "Fee Catalogue", icon: "layers", href: "/admin/fee-catalog", match: (p) => p.startsWith("/admin/fee-catalog"), permissions: [Permission.MANAGE_FEES_HEADS] },
     { key: "settings", label: "Settings", icon: "settings", href: "/(tabs)/profile", match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") },
     { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications") },
   ],
@@ -107,11 +112,14 @@ const NAV_GROUPS: NavGroup[] = [
   GRP_SYSTEM,
 ];
 
-const isItemAllowed = (n: NavItem, user: any) => {
+const isItemAllowed = (n: NavItem, user: User) => {
   if (n.excludeRoles?.includes(user.role)) return false;
-  if (n.roles && !n.roles.includes(user.role)) return false;
-  // Hide PWS-only items for Sports Admin (ALPHA org) — they shouldn't see Teachers/Students
   if (n.pwsOnly && user.organization === "ALPHA") return false;
+  if (n.alphaOnly && user.organization === "PWS") return false;
+  if (n.permissions?.length) {
+    return n.permissions.some((p) => hasPermission(user, p, n.permissionEntity));
+  }
+  if (n.roles && !n.roles.includes(user.role)) return false;
   return true;
 };
 
