@@ -24,6 +24,7 @@ const SPORTS = ["Cricket", "Football"] as const;
 type PersonRow = {
   id: string; name: string; centre?: string; sport?: string; player_type?: string; group?: string;
   mobile?: string; status?: string; date_of_admission?: string; is_resident?: boolean;
+  pws_class?: string; organization?: string;
 };
 type Fee = {
   id: string; fee_type: string; amount: number; amount_due: number;
@@ -318,12 +319,28 @@ export default function FeesCollection() {
               <View style={{ flex: 1 }}>
                 <Text style={s.sectionLabel}>Selected {institution === "PWS" ? "Student" : "Player"}</Text>
                 <Text style={s.playerName}>{selectedPlayer.name}</Text>
-                <Text style={s.playerMeta}>{selectedPlayer.centre} · {selectedPlayer.sport} · {selectedPlayer.player_type}</Text>
+                <Text style={s.playerMeta}>
+                  {institution === "PWS"
+                    ? [selectedPlayer.pws_class || selectedPlayer.group, selectedPlayer.player_type].filter(Boolean).join(" · ")
+                    : [selectedPlayer.centre, selectedPlayer.sport, selectedPlayer.player_type].filter(Boolean).join(" · ")}
+                </Text>
               </View>
-              <Pressable onPress={() => setSelectedPlayer(null)} testID="change-player" style={s.changeBtn}>
-                <Feather name="repeat" size={14} color={colors.muted} />
-                <Text style={s.changeBtnTxt}>Change</Text>
-              </Pressable>
+              <View style={{ alignItems: "flex-end", gap: 8 }}>
+                {institution === "PWS" && (
+                  <Pressable
+                    onPress={() => router.push(`/fees/pws-student/${selectedPlayer.id}` as any)}
+                    testID="pws-roadmap-link"
+                    style={s.roadmapBtn}
+                  >
+                    <Feather name="calendar" size={14} color={colors.primary} />
+                    <Text style={s.roadmapBtnTxt}>Yearly roadmap</Text>
+                  </Pressable>
+                )}
+                <Pressable onPress={() => setSelectedPlayer(null)} testID="change-player" style={s.changeBtn}>
+                  <Feather name="repeat" size={14} color={colors.muted} />
+                  <Text style={s.changeBtnTxt}>Change</Text>
+                </Pressable>
+              </View>
             </View>
 
             {loadingDues || !dues ? (
@@ -596,6 +613,8 @@ const s = StyleSheet.create({
   playerMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
   duesHeader: { flexDirection: "row", alignItems: "center", padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
   changeBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: colors.surface2, borderRadius: 8 },
+  roadmapBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#EFF6FF", borderRadius: 8, borderWidth: 1, borderColor: "#BFDBFE" },
+  roadmapBtnTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
   changeBtnTxt: { color: colors.muted, fontSize: 12, fontWeight: "700" },
   cubeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
   sumCube: { flex: 1, minWidth: 140, padding: 12, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: colors.border },

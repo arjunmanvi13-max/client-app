@@ -5,6 +5,10 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
+import {
+  PWS_CLASSES, PWS_STUDENT_TYPES, TRANSPORT_DISTANCES,
+  resolveCategoryAmounts, canOverridePwsFees, type PwsStudentType, type TransportDistance,
+} from "../../../src/pwsFeeStructure";
 import { formatDate, DATE_PLACEHOLDER, dateHelpText, toISODate, parseToISO, isValidDisplayDate } from "../../../src/dateFormat";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
@@ -71,7 +75,7 @@ const RATE_CARD: Record<PlayerType, Record<string, { registration: number; month
   "Day Boarding": { Cricket: { registration: 3000, monthly: 7500 }, Football: { registration: 3000, monthly: 7500 } },
   "Boarding": { Cricket: { registration: 20000, monthly: 15000 }, Football: { registration: 20000, monthly: 15000 } },
 };
-// PWS school fee rate card (mirror of backend fees.py PWS_RATE_CARDS)
+// Legacy PWS rate card — kept for players; students use pwsFeeStructure.ts (2026-27)
 const PWS_RATE_CARD: Record<"Day Scholar" | "Hostel", { registration: number; monthly: number; exam: number; hostel_monthly?: number }> = {
   "Day Scholar": { registration: 5000, monthly: 8000, exam: 2500 },
   "Hostel": { registration: 5000, monthly: 8000, hostel_monthly: 12000, exam: 2500 },
@@ -182,6 +186,11 @@ export default function ManageEdit() {
   const [academicSections, setAcademicSections] = useState<{ id: string; label: string }[]>([]);
   const [sport, setSport] = useState("");
   const [isResident, setIsResident] = useState(false);
+  const [pwsStudentType, setPwsStudentType] = useState<PwsStudentType>("Day School");
+  const [pwsClass, setPwsClass] = useState<string>("Class I");
+  const [transportEnabled, setTransportEnabled] = useState(false);
+  const [transportDistance, setTransportDistance] = useState<TransportDistance>("Up to 5 km");
+  const [pwsOverrides, setPwsOverrides] = useState<Record<string, string>>({});
 
   // Player extras
   const [admissionNumber, setAdmissionNumber] = useState("");
@@ -216,6 +225,7 @@ export default function ManageEdit() {
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
   const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
   const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canOverrideFees = canOverridePwsFees(user?.role);
 
   // Coach centre/sport assignment (admin -> coach)
   const [assignedCentres, setAssignedCentres] = useState<string[]>([]);
@@ -297,6 +307,12 @@ export default function ManageEdit() {
           if (p) {
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
+            setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
+            setPwsClass(p.pws_class || "Class I");
+            setTransportEnabled(!!p.transport_enabled || (p.transport_fee_monthly || 0) > 0);
+            setTransportDistance((p.transport_distance as TransportDistance) || "Up to 5 km");
+            const ov = p.pws_fee_overrides || {};
+            setPwsOverrides(Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, String(v)])));
             setSectionId(p.section_id || null);
             setAdmissionNumber(p.admission_number || "");
             setRollNumber(p.roll_number || "");
@@ -457,10 +473,19 @@ export default function ManageEdit() {
         if (isStudentKind && sectionId) body.section_id = sectionId;
         if (isStudentKind) {
           body.date_of_admission = parseToISO(dateOfAdmission) || dateOfAdmission || toISODate();
-          body.transport_fee_monthly = parseInt(transportFeeMonthly || "0", 10) || 0;
-          if (isSuper && registrationFeeOverride) body.registration_fee_override = parseInt(registrationFeeOverride, 10);
-          if (isSuper && monthlyFeeOverride) body.monthly_fee_override = parseInt(monthlyFeeOverride, 10);
-          if (isSuper && hostelFeeOverride && isResident) body.hostel_fee_override = parseInt(hostelFeeOverride, 10);
+          body.pws_student_type = pwsStudentType;
+          body.pws_class = pwsClass;
+          body.transport_enabled = transportEnabled;
+          body.transport_distance = transportEnabled ? transportDistance : null;
+          body.is_resident = pwsStudentType === "Boarding";
+          if (canOverrideFees) {
+            const parsed: Record<string, number> = {};
+            for (const [k, v] of Object.entries(pwsOverrides)) {
+              const n = parseInt(v, 10);
+              if (!Number.isNaN(n) && n >= 0) parsed[k] = n;
+            }
+            if (Object.keys(parsed).length) body.pws_fee_overrides = parsed;
+          }
         }
         if (isStaffKind) {
           body.employee_id = employeeId || null;
@@ -969,62 +994,122 @@ export default function ManageEdit() {
               ) : (
                 <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder={isStudentKind ? "e.g. 9-A" : "Group"} placeholderTextColor="#94A3B8" style={s.input} />
               )}
-              <View style={s.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.switchLabel}>Hostel resident</Text>
-                  <Text style={s.switchHelp}>Include in hostel roll-call</Text>
-                </View>
-                <Switch testID="field-resident" value={isResident} onValueChange={setIsResident} trackColor={{ true: "#1E40AF" }} />
-              </View>
               {isStudentKind && (
                 <>
+                  <Text style={s.label}>Student type *</Text>
+                  <View style={s.chipRow}>
+                    {PWS_STUDENT_TYPES.map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        testID={`field-pws-type-${t.replace(/\s+/g, "-")}`}
+                        disabled={readOnly}
+                        style={[s.chip, pwsStudentType === t && s.chipActive]}
+                        onPress={() => {
+                          setPwsStudentType(t);
+                          setIsResident(t === "Boarding");
+                        }}
+                      >
+                        <Text style={[s.chipText, pwsStudentType === t && { color: "#fff" }]}>{t}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={s.label}>Class *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    {PWS_CLASSES.map((c) => (
+                      <TouchableOpacity
+                        key={c}
+                        testID={`field-pws-class-${c.replace(/\s+/g, "-")}`}
+                        disabled={readOnly}
+                        style={[s.miniChip, pwsClass === c && s.miniChipActive]}
+                        onPress={() => setPwsClass(c)}
+                      >
+                        <Text style={[s.miniChipTxt, pwsClass === c && s.miniChipTxtActive]}>{c}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <View style={s.switchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.switchLabel}>Transportation</Text>
+                      <Text style={s.switchHelp}>Include monthly transport fee</Text>
+                    </View>
+                    <Switch
+                      testID="field-transport-enabled"
+                      value={transportEnabled}
+                      onValueChange={setTransportEnabled}
+                      disabled={readOnly}
+                      trackColor={{ true: "#1E40AF" }}
+                    />
+                  </View>
+                  {transportEnabled && (
+                    <>
+                      <Text style={s.label}>Distance</Text>
+                      <View style={s.chipRow}>
+                        {TRANSPORT_DISTANCES.map((d) => (
+                          <TouchableOpacity
+                            key={d}
+                            disabled={readOnly}
+                            style={[s.chip, transportDistance === d && s.chipActive]}
+                            onPress={() => setTransportDistance(d)}
+                          >
+                            <Text style={[s.chipText, transportDistance === d && { color: "#fff" }]}>{d}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </>
+                  )}
                   <Text style={s.label}>Date of Admission *</Text>
                   <TextInput testID="field-admission-date" value={dateOfAdmission} onChangeText={setDateOfAdmission} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={s.input} />
                   <View style={s.feesBox} testID="fees-config">
                     <View style={s.feesBoxHeader}>
                       <Feather name="credit-card" size={14} color="#1E40AF" />
-                      <Text style={s.feesBoxTitle}>School fees ({isResident ? "Hostel" : "Day Scholar"})</Text>
+                      <Text style={s.feesBoxTitle}>Fee breakdown · AY 2026-27</Text>
                     </View>
                     {(() => {
-                      const cat = isResident ? "Hostel" : "Day Scholar";
-                      const rc = PWS_RATE_CARD[cat];
-                      const regEff = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : rc.registration;
-                      const tuition = monthlyFeeOverride ? parseInt(monthlyFeeOverride, 10) : rc.monthly;
-                      const hostel = hostelFeeOverride ? parseInt(hostelFeeOverride, 10) : (rc.hostel_monthly || 0);
+                      const ovNum: Record<string, number> = {};
+                      for (const [k, v] of Object.entries(pwsOverrides)) {
+                        const n = parseInt(v, 10);
+                        if (!Number.isNaN(n)) ovNum[k] = n;
+                      }
+                      const amounts = resolveCategoryAmounts(pwsClass, transportEnabled, transportDistance, canOverrideFees ? ovNum : undefined);
                       return (
                         <>
                           <View style={s.feesReadonlyBox}>
-                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Registration</Text><Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text></View>
-                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Exam fee</Text><Text style={s.feesReadonlyVal}>₹{rc.exam.toLocaleString("en-IN")}</Text></View>
-                            <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Tuition (monthly)</Text><Text style={s.feesReadonlyVal}>₹{tuition.toLocaleString("en-IN")}</Text></View>
-                            {isResident && hostel > 0 && (
-                              <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Hostel (monthly)</Text><Text style={s.feesReadonlyVal}>₹{hostel.toLocaleString("en-IN")}</Text></View>
-                            )}
-                            {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
-                              <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Transport (monthly)</Text><Text style={s.feesReadonlyVal}>₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}</Text></View>
-                            )}
+                            {Object.entries(amounts).map(([cat, amt]) => (
+                              <View key={cat} style={s.feesReadonlyRow}>
+                                <Text style={s.feesReadonlyKey}>{cat}</Text>
+                                <Text style={s.feesReadonlyVal}>₹{amt.toLocaleString("en-IN")}</Text>
+                              </View>
+                            ))}
                           </View>
                           {isNew && (
-                            <Text style={s.feesBoxNote}>Fees auto-create on save. First-month tuition/hostel: admission on/before 15th = full; from 16th = 50%.</Text>
+                            <Text style={s.feesBoxNote}>Fees auto-create on save. First-month tuition: admission on/before 15th = full; from 16th = 50%.</Text>
                           )}
-                          {(isNew || isSuper) && (
+                          {!isNew && (
+                            <TouchableOpacity
+                              style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}
+                              onPress={() => router.push(`/fees/pws-student/${id}` as any)}
+                            >
+                              <Feather name="calendar" size={14} color="#1E40AF" />
+                              <Text style={{ color: "#1E40AF", fontWeight: "700" }}>Open yearly fee roadmap</Text>
+                            </TouchableOpacity>
+                          )}
+                          {canOverrideFees && (
                             <>
-                              {isSuper && (
-                                <>
-                                  <Text style={s.label}>Registration override (optional)</Text>
-                                  <TextInput testID="field-reg-fee-override" value={registrationFeeOverride} onChangeText={setRegistrationFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.registration}`} placeholderTextColor="#94A3B8" style={s.input} />
-                                  <Text style={s.label}>Tuition override (optional)</Text>
-                                  <TextInput testID="field-monthly-fee-override" value={monthlyFeeOverride} onChangeText={setMonthlyFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.monthly}`} placeholderTextColor="#94A3B8" style={s.input} />
-                                  {isResident && (
-                                    <>
-                                      <Text style={s.label}>Hostel override (optional)</Text>
-                                      <TextInput testID="field-hostel-fee" value={hostelFeeOverride} onChangeText={setHostelFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc.hostel_monthly || 0}`} placeholderTextColor="#94A3B8" style={s.input} />
-                                    </>
-                                  )}
-                                </>
-                              )}
-                              <Text style={s.label}>Transport fee (₹/month — optional)</Text>
-                              <TextInput testID="field-transport-fee" value={transportFeeMonthly} onChangeText={setTransportFeeMonthly} keyboardType="numeric" placeholder="0 = no transport" placeholderTextColor="#94A3B8" style={s.input} />
+                              <Text style={[s.label, { marginTop: 12 }]}>Override / Scholarship</Text>
+                              {Object.keys(amounts).map((cat) => (
+                                <View key={`ov-${cat}`}>
+                                  <Text style={s.help}>{cat} (default ₹{amounts[cat].toLocaleString("en-IN")})</Text>
+                                  <TextInput
+                                    testID={`override-${cat.replace(/\s+/g, "-")}`}
+                                    value={pwsOverrides[cat] || ""}
+                                    onChangeText={(v) => setPwsOverrides((prev) => ({ ...prev, [cat]: v }))}
+                                    keyboardType="numeric"
+                                    placeholder="Leave blank for default"
+                                    placeholderTextColor="#94A3B8"
+                                    style={s.input}
+                                  />
+                                </View>
+                              ))}
                             </>
                           )}
                         </>
@@ -1032,6 +1117,15 @@ export default function ManageEdit() {
                     })()}
                   </View>
                 </>
+              )}
+              {!isStudentKind && (
+              <View style={s.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.switchLabel}>Hostel resident</Text>
+                  <Text style={s.switchHelp}>Include in hostel roll-call</Text>
+                </View>
+                <Switch testID="field-resident" value={isResident} onValueChange={setIsResident} trackColor={{ true: "#1E40AF" }} />
+              </View>
               )}
             </>
           )}
