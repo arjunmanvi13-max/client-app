@@ -1,49 +1,80 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { colors } from "../../theme";
+import { inr } from "./feesUi";
 import type { CollectionKpis } from "../../feesCollectionTypes";
 
-function inr(n: number) {
-  return `₹${(n || 0).toLocaleString("en-IN")}`;
-}
+type Props = {
+  /** Filtered visible rows */
+  visibleCount: number;
+  outstanding: number;
+  overdueCount: number;
+  kpis?: CollectionKpis;
+  loading?: boolean;
+};
 
-function SkeletonCard() {
-  return <View style={[s.card, s.skeleton]} />;
-}
-
-export function FeeSummaryBar({ kpis, loading }: { kpis?: CollectionKpis; loading?: boolean }) {
-  if (loading || !kpis) {
+/** Compact inline financial metadata strip — not dashboard cards. */
+export function FeeSummaryBar({ visibleCount, outstanding, overdueCount, kpis, loading }: Props) {
+  if (loading) {
     return (
-      <View style={s.row} testID="fee-summary-skeleton">
-        <SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard />
+      <View style={s.wrap} testID="fee-summary-skeleton">
+        <View style={[s.skeletonLine, { width: "88%" }]} />
       </View>
     );
   }
+
+  const collected = kpis?.collected_this_month ?? 0;
+  const label = visibleCount === 1 ? "Player" : "Players";
+
   return (
-    <View style={s.row} testID="fee-summary-bar">
-      <KpiCard testID="kpi-total-players" label="Total Players" value={String(kpis.total_players)} tint={colors.primary} />
-      <KpiCard testID="kpi-due-today" label="Due Today" value={inr(kpis.amount_due_today)} tint="#D97706" />
-      <KpiCard testID="kpi-overdue" label="Overdue" value={String(kpis.overdue_count)} tint="#DC2626" />
-      <KpiCard testID="kpi-collected" label="Collected (month)" value={inr(kpis.collected_this_month)} tint="#16A34A" />
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={s.wrap}
+      testID="fee-summary-bar"
+    >
+      <Metric testID="kpi-players" value={String(visibleCount)} label={label} />
+      <Dot />
+      <Metric testID="kpi-outstanding" value={inr(outstanding)} label="Outstanding" strong />
+      <Dot />
+      <Metric testID="kpi-overdue" value={String(overdueCount)} label="Overdue" tint={overdueCount > 0 ? colors.danger : undefined} />
+      <Dot />
+      <Metric testID="kpi-collected" value={inr(collected)} label="Collected This Month" tint="#16A34A" />
+    </ScrollView>
+  );
+}
+
+function Metric({ label, value, strong, tint, testID }: {
+  label: string; value: string; strong?: boolean; tint?: string; testID?: string;
+}) {
+  return (
+    <View style={s.metric} testID={testID}>
+      <Text style={[s.value, strong && s.valueStrong, tint ? { color: tint } : null]}>{value}</Text>
+      <Text style={s.label}>{label}</Text>
     </View>
   );
 }
 
-function KpiCard({ label, value, tint, testID }: { label: string; value: string; tint: string; testID?: string }) {
-  return (
-    <View style={s.card} testID={testID}>
-      <Text style={s.label}>{label}</Text>
-      <Text style={[s.value, { color: tint }]} numberOfLines={1}>{value}</Text>
-    </View>
-  );
+function Dot() {
+  return <Text style={s.dot}>·</Text>;
 }
 
 const s = StyleSheet.create({
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  card: {
-    flex: 1, minWidth: 140, padding: 12, backgroundColor: "#fff",
-    borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+  wrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+    marginBottom: 10,
+    gap: 4,
   },
-  skeleton: { height: 64, backgroundColor: colors.surface2 },
-  label: { fontSize: 10, fontWeight: "800", color: colors.muted, letterSpacing: 0.6, textTransform: "uppercase" },
-  value: { fontSize: 18, fontWeight: "800", marginTop: 4 },
+  skeletonLine: {
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: colors.surface2,
+  },
+  metric: { flexDirection: "row", alignItems: "baseline", gap: 6, paddingHorizontal: 2 },
+  value: { fontSize: 13, fontWeight: "700", color: colors.ink },
+  valueStrong: { fontSize: 14, fontWeight: "800" },
+  label: { fontSize: 12, color: colors.muted, fontWeight: "500" },
+  dot: { fontSize: 14, color: colors.hint, paddingHorizontal: 6 },
 });
