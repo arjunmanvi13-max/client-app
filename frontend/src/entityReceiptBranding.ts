@@ -47,33 +47,36 @@ export const ENTITY_RECEIPT_BRANDING: Record<EntityCode, EntityReceiptBrandingCo
 
 const DEFAULT_ENTITY: EntityCode = "ALPHA";
 
-function entityCodeFromReceipt(receipt: Pick<PaymentReceipt, "entity_id" | "entity_code" | "branding">): EntityCode | null {
-  const code = receipt.branding?.entityCode ?? receipt.entity_code;
-  if (code === "PWS" || code === "ALPHA") return code;
+function entityCodeFromReceipt(
+  receipt: Pick<PaymentReceipt, "entity_id" | "entity_code" | "branding" | "player">,
+): EntityCode | null {
   if (receipt.entity_id === "pws") return "PWS";
   if (receipt.entity_id === "alpha") return "ALPHA";
+  if (receipt.entity_code === "PWS" || receipt.entity_code === "ALPHA") return receipt.entity_code;
+  const brandingCode = receipt.branding?.entityCode;
+  if (brandingCode === "PWS" || brandingCode === "ALPHA") return brandingCode;
+  // Trusted person fields from server payment DTO (not UI tab state)
+  const person = receipt.player;
+  if (person?.kind === "student") return "PWS";
+  if ((person?.organization || "").toUpperCase() === "PWS") return "PWS";
+  if (person?.kind === "player") return "ALPHA";
+  if ((person?.organization || "").toUpperCase() === "ALPHA") return "ALPHA";
   return null;
-}
-
-function entityCodeFromServer(server?: PaymentReceiptBranding, fallback: EntityCode = DEFAULT_ENTITY): EntityCode {
-  if (server?.entityCode === "PWS" || server?.entityCode === "ALPHA") return server.entityCode;
-  if (server?.entityId === "pws") return "PWS";
-  if (server?.entityId === "alpha") return "ALPHA";
-  return fallback;
 }
 
 /** Resolve branding for modal display — server payload overrides text fields. */
 export function resolveReceiptBranding(
-  receipt: Pick<PaymentReceipt, "entity_id" | "entity_code" | "branding" | "receipt_number" | "batch_id">,
+  receipt: Pick<PaymentReceipt, "entity_id" | "entity_code" | "branding" | "receipt_number" | "batch_id" | "player">,
 ): EntityReceiptBrandingConfig & { addressLine: string; receiptNumber: string } {
   const detected = entityCodeFromReceipt(receipt);
   if (!detected) {
-    console.warn("[receipt] Unknown entity on payment receipt — using ALPHA branding fallback");
+    console.warn("[receipt] Unknown entity on payment receipt — cannot determine branding safely");
   }
   const code = detected ?? DEFAULT_ENTITY;
   const base = ENTITY_RECEIPT_BRANDING[code];
   const server = receipt.branding;
-  const entityKey = entityCodeFromServer(server, code);
+  // Logo and entity identity always follow resolved entity code — never cross-entity
+  const entityKey = code;
   const assetBase = ENTITY_RECEIPT_BRANDING[entityKey];
 
   const merged: EntityReceiptBrandingConfig = {
