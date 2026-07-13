@@ -355,6 +355,10 @@ export default function ManageEdit() {
   const save = async () => {
     if (!name.trim()) { Alert.alert("Name required"); return; }
     if (isUserKind && isNew && (!email.trim() || !password.trim())) { Alert.alert("Email and password required"); return; }
+    if (isCoachKind && assignedSports.length === 0) {
+      Alert.alert("Assigned sport required", "Select at least one sport — the coach will only see those players.");
+      return;
+    }
     if (isUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
       Alert.alert("Invalid email", "Email must belong to the @prarambhika.com domain");
       return;
@@ -1212,6 +1216,7 @@ export default function ManageEdit() {
                 ))}
               </View>
               <Text style={s.label}>Assigned Sports</Text>
+              <Text style={s.help}>Coach will only see and manage players for the selected sport(s).</Text>
               <View style={s.chipRow}>
                 {PLAYER_SPORTS.map((sp) => (
                   <TouchableOpacity key={sp} testID={`asport-${sp}`} style={[s.chip, { flex: 1 }, assignedSports.includes(sp) && s.chipActive]} onPress={() => setAssignedSports((p) => p.includes(sp) ? p.filter((x) => x !== sp) : [...p, sp])}>
