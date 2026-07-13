@@ -53,8 +53,8 @@ const GRP_PEOPLE: NavGroup = {
     { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player"), permissions: [Permission.MANAGE_PLAYERS, Permission.ADD_ALPHA_PLAYERS], excludeRoles: ["teacher"] },
     { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.CREATE_USERS], pwsOnly: true, excludeRoles: ["teacher"] },
     { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), permissions: [Permission.ADD_PWS_STUDENTS], pwsOnly: true, excludeRoles: ["teacher"] },
-    { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff"), excludeRoles: ["teacher"] },
-    { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory"), excludeRoles: ["teacher"] },
+    { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff"), excludeRoles: ["teacher", "coach"] },
+    { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory"), excludeRoles: ["teacher", "coach"] },
   ],
 };
 
@@ -100,7 +100,7 @@ const GRP_SYSTEM: NavGroup = {
     { key: "invoices", label: "Invoice Engine", icon: "file-text", href: "/admin/invoices", match: (p) => p.startsWith("/admin/invoices"), permissions: [Permission.COLLECT_PWS_FEES], pwsOnly: true },
     { key: "fee-catalog", label: "Fee Catalogue", icon: "layers", href: "/admin/fee-catalog", match: (p) => p.startsWith("/admin/fee-catalog"), permissions: [Permission.MANAGE_FEES_HEADS] },
     { key: "settings", label: "Settings", icon: "settings", href: "/(tabs)/profile", match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") },
-    { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications") },
+    { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications"), excludeRoles: ["coach"] },
   ],
 };
 
