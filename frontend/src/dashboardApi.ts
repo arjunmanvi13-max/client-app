@@ -1,6 +1,111 @@
 import { api } from "./auth";
 import { toISODate } from "./dateFormat";
 
+export type DashboardEntity = "both" | "pws" | "alpha";
+
+export type AttendanceKindStats = {
+  present: number;
+  absent: number;
+  late: number;
+  leave: number;
+};
+
+export type SuperAdminDashboardBundle = {
+  mvp: any;
+  command?: {
+    roster_counts?: Record<string, number>;
+    attendance_by_kind?: Record<string, AttendanceKindStats>;
+  };
+  fees?: {
+    due_current_month: number;
+    due_past: number;
+    collected_today: number;
+    received_total: number;
+  };
+  openTasks: Array<{
+    id: string;
+    title: string;
+    priority?: string;
+    due_date?: string;
+    status?: string;
+  }>;
+};
+
+const OPEN_TASK_STATUSES = new Set(["open", "assigned", "in_progress", "blocked", "delayed"]);
+
+function entityKinds(entity: DashboardEntity): string[] {
+  if (entity === "pws") return ["teacher", "staff", "student"];
+  if (entity === "alpha") return ["coach", "player", "staff"];
+  return ["teacher", "staff", "coach", "student", "player"];
+}
+
+function filterCommandCenter(cc: any, entity: DashboardEntity) {
+  const kinds = entityKinds(entity);
+  const att: Record<string, AttendanceKindStats> = {};
+  for (const kind of kinds) {
+    if (cc?.attendance_by_kind?.[kind]) att[kind] = cc.attendance_by_kind[kind];
+  }
+  const roster = cc?.roster_counts || {};
+  let roster_counts: Record<string, number> = { ...roster };
+  if (entity === "pws") {
+    roster_counts = {
+      teachers: roster.teachers || 0,
+      staff: roster.staff || 0,
+      students: roster.students || 0,
+      players: 0,
+      coaches: 0,
+    };
+  } else if (entity === "alpha") {
+    roster_counts = {
+      teachers: 0,
+      staff: roster.staff || 0,
+      students: 0,
+      players: roster.players || 0,
+      coaches: roster.coaches || 0,
+    };
+  }
+  return { roster_counts, attendance_by_kind: att };
+}
+
+function aggregateFeesDashboard(raw: any, entity: DashboardEntity) {
+  const buckets: any[] = [];
+  if (entity !== "pws") {
+    Object.values(raw?.by_centre || {}).forEach((b) => buckets.push(b));
+  }
+  if (entity !== "alpha" && raw?.by_entity?.pws) buckets.push(raw.by_entity.pws);
+  const sum = (key: string) => buckets.reduce((n, b) => n + (b?.[key] || 0), 0);
+  return {
+    due_current_month: sum("due_current_month"),
+    due_past: sum("due_past"),
+    collected_today: sum("collected_today"),
+    received_total: sum("received_total"),
+  };
+}
+
+/** Super Admin / ALPHA Admin bento dashboard data bundle. */
+export async function fetchSuperAdminDashboardBundle(entity: DashboardEntity): Promise<SuperAdminDashboardBundle> {
+  const entityParam = entity === "both" ? "both" : entity;
+  const [mvp, ccRes, tasksRes, feesRes] = await Promise.all([
+    fetchDashboardMvp({ entity: entityParam }),
+    api.get("/command-center").catch(() => ({ data: null })),
+    api.get("/tasks").catch(() => ({ data: [] })),
+    api.get("/fees/dashboard", {
+      params: entity === "pws" ? { entity_id: "pws" } : entity === "alpha" ? { entity_id: "alpha" } : {},
+    }).catch(() => ({ data: null })),
+  ]);
+
+  const openTasks = (Array.isArray(tasksRes.data) ? tasksRes.data : [])
+    .filter((t: any) => OPEN_TASK_STATUSES.has(t.status || "open"))
+    .slice(0, 5);
+
+  return {
+    mvp: mvp,
+    command: ccRes.data ? filterCommandCenter(ccRes.data, entity) : undefined,
+    fees: feesRes.data ? aggregateFeesDashboard(feesRes.data, entity) : undefined,
+    openTasks,
+  };
+}
+
 /** Fetch role-based dashboard MVP; falls back when older backends lack GET /dashboard/mvp. */
 export async function fetchDashboardMvp(params?: Record<string, string>) {
   try {
