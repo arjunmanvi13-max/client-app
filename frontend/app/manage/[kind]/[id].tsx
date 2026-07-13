@@ -10,6 +10,14 @@ import {
   resolveCategoryAmounts, canOverridePwsFees, type PwsStudentType, type TransportDistance,
 } from "../../../src/pwsFeeStructure";
 import { isCoachUser, resolveCoachDataScope } from "../../../src/coachAccess";
+import { UserRole } from "../../../src/rbac";
+import {
+  CATALOG_BY_CODE,
+  entityScopeLabel,
+  isApprovedLoginUserType,
+  type LoginUserType,
+  type PwsAdminDesignation,
+} from "../../../src/userClassification";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -113,47 +121,25 @@ export default function ManageEdit() {
   const { user } = useAuth();
   const router = useRouter();
   const isNew = id === "new";
-  const isUserKind = kind === "coach" || kind === "teacher" || kind === "admin";
-  const isCoachKind = kind === "coach";
-  const isAdminKind = kind === "admin"; // Sports Admin
-  const isPlayerKind = kind === "player";
-  const isStaffKind = kind === "staff";
-  const isStudentKind = kind === "student";
+  const userTypeKind = isApprovedLoginUserType(kind || "") ? (kind as LoginUserType) : null;
+  const typeCatalog = userTypeKind ? CATALOG_BY_CODE[userTypeKind] : null;
+  const isUserKind = !!userTypeKind;
+  const isCoachKind = userTypeKind === UserRole.ALPHA_COACH;
+  const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
+  const isPlayerKind = false;
+  const isStaffKind = false;
+  const isStudentKind = false;
+  const displayTitle = typeCatalog?.displayName || kind || "User";
 
   useEffect(() => {
-    if (kind !== "student") return;
-    (async () => {
-      try {
-        const { data } = await api.get("/academic/sections");
-        setAcademicSections(data.map((s: any) => ({ id: s.id, label: s.label })));
-      } catch {
-        setAcademicSections([]);
-      }
-    })();
-  }, [kind]);
-  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
-    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
-    || userHasPermission(user, Permission.MANAGE_ACCESS);
+    if (!userTypeKind) router.replace("/manage");
+  }, [userTypeKind, router]);
+
+  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
   const perms = user?.permissions || {};
-  const canEdit = (() => {
-    if (isNew) {
-      if (isTeacher && isStudentKind) return false;
-      if (isAdmin) return true;
-      if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
-      if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
-      if (isUserKind) return (user?.can_manage || []).includes(kind || "");
-      return (user?.can_manage || []).includes(kind || "");
-    }
-    if (isTeacher && isStudentKind) return false;
-    if (isAdmin) return true;
-    if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
-    if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
-      || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
-    if (isUserKind) return isAdmin;
-    return (user?.can_manage || []).includes(kind || "");
-  })();
-  const canDelete = canEdit && !isNew && (isAdmin || isStudentKind || isPlayerKind || isStaffKind);
+  const canEdit = isSuper && isUserKind;
+  const canDelete = canEdit && !isNew;
   const readOnly = !isNew && !canEdit;
 
   const [loading, setLoading] = useState(!isNew);
@@ -162,7 +148,7 @@ export default function ManageEdit() {
   // Shared
   const [name, setName] = useState("");
   const [organization, setOrganization] = useState<"PWS" | "ALPHA" | "BOTH">(
-    isCoachKind || isPlayerKind || isAdminKind ? "ALPHA" : (kind === "staff" ? "PWS" : "PWS")
+    (typeCatalog?.entityScope as "PWS" | "ALPHA" | "BOTH") || "PWS"
   );
 
   // User-only
@@ -224,14 +210,16 @@ export default function ManageEdit() {
   // Optional ad-hoc fee heads to create during admission (Super Admin only)
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
   const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
-  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
   const coachScope = resolveCoachDataScope(user);
-  const coachCreatingPlayer = isPlayerKind && isCoachUser(user);
-  const coachSportLocked = coachCreatingPlayer && coachScope.sportLocked;
+  const coachSportLocked = false;
+  const coachCreatingPlayer = false;
 
   // Coach centre/sport assignment (admin -> coach)
+  const [designation, setDesignation] = useState<PwsAdminDesignation>("PRINCIPAL");
   const [assignedCentres, setAssignedCentres] = useState<string[]>([]);
   const [assignedSports, setAssignedSports] = useState<string[]>([]);
+  const [loadedUserType, setLoadedUserType] = useState<string | null>(null);
+  const [loadedDesignation, setLoadedDesignation] = useState<PwsAdminDesignation | null>(null);
 
   // User-level status (coach/teacher activate-deactivate)
   const [userStatus, setUserStatus] = useState<"active" | "deactivated">("active");
@@ -241,7 +229,7 @@ export default function ManageEdit() {
   const [coaches, setCoaches] = useState<any[]>([]);
 
   // Linked parents (student/player edit — admin only)
-  const canLinkParents = !isNew && (kind === "student" || isPlayerKind) && isAdmin;
+  const canLinkParents = false;
   const [parentUserIds, setParentUserIds] = useState<string[]>([]);
   const [parentUsers, setParentUsers] = useState<any[]>([]);
   const [showParentPicker, setShowParentPicker] = useState(false);
@@ -300,8 +288,7 @@ export default function ManageEdit() {
       setLoading(true);
       try {
         if (isUserKind) {
-          const { data } = await api.get("/users");
-          const u = data.find((x: any) => x.id === id);
+          const { data: u } = await api.get(`/users/${id}`);
           if (u) {
             setName(u.name); setEmail(u.email); setOrganization(u.organization);
             setDepartment(u.department || ""); setPhone(u.phone || "");
@@ -312,48 +299,11 @@ export default function ManageEdit() {
             setAssignedSports(u.assigned_sports?.length ? [u.assigned_sports[0]] : (u.assigned_sport ? [u.assigned_sport] : []));
             setUserStatus(u.status === "deactivated" ? "deactivated" : "active");
             setCoachType(u.coach_type === "assistant" ? "assistant" : "head");
-          }
-        } else {
-          const { data: p } = await api.get(`/people/${id}`);
-          if (p) {
-            setName(p.name); setOrganization(p.organization);
-            setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
-            setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
-            setPwsClass(p.pws_class || "Class I");
-            setTransportEnabled(!!p.transport_enabled || (p.transport_fee_monthly || 0) > 0);
-            setTransportDistance((p.transport_distance as TransportDistance) || "Up to 5 km");
-            const ov = p.pws_fee_overrides || {};
-            setPwsOverrides(Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, String(v)])));
-            setSectionId(p.section_id || null);
-            setAdmissionNumber(p.admission_number || "");
-            setRollNumber(p.roll_number || "");
-            setPlayerId(p.player_id || "");
-            setEmployeeId(p.employee_id || "");
-            setGender(p.gender || "");
-            setPersonEmail(p.email || "");
-            setAddress(p.address || "");
-            setGuardianName(p.guardian_name || p.father_name || "");
-            setGuardianPhone(p.guardian_phone || "");
-            setStaffDepartment(p.department || "");
-            setFatherName(p.father_name || p.guardian_name || "");
-            setAge(p.age ? String(p.age) : "");
-            setSkillLevel(p.skill_level || "");
-            setMobile(p.mobile || "");
-            setLocality(p.locality || "");
-            setCity(p.city || "");
-            setSlot(p.slot || "");
-            setAssignedCoachId(p.assigned_coach_id || null);
-            setCentre(p.centre || "");
-            // Migrate old "Hostel" value to "Hostel Only" for display
-            setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
-            setDob(formatDate(p.dob || ""));
-            setTransportFeeMonthly(p.transport_fee_monthly ? String(p.transport_fee_monthly) : "");
-            setHostelFeeOverride(p.hostel_fee_override ? String(p.hostel_fee_override) : "");
-            setMonthlyFeeOverride(p.monthly_fee_override ? String(p.monthly_fee_override) : "");
-            setRegistrationFeeOverride(p.registration_fee_override ? String(p.registration_fee_override) : "");
-            setDateOfAdmission(formatDate(p.date_of_admission || ""));
-            setStatus(p.status === "deactivated" ? "deactivated" : "active");
-            setParentUserIds(p.parent_user_ids || []);
+            setLoadedUserType(u.user_type || kind || null);
+            setLoadedDesignation(u.designation || null);
+            if (u.designation) setDesignation(u.designation);
+            if (u.organization) setOrganization(u.organization);
+            else if (typeCatalog) setOrganization(typeCatalog.entityScope);
           }
         }
       } finally { setLoading(false); }
@@ -362,6 +312,23 @@ export default function ManageEdit() {
 
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
+
+  const confirmUserTypeChangeIfNeeded = (): Promise<boolean> => {
+    if (isNew || !loadedUserType) return Promise.resolve(true);
+    if (loadedUserType === userTypeKind && (!isPwsAdminKind || loadedDesignation === designation)) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      Alert.alert(
+        "Change user type?",
+        "Changing the user type will re-evaluate entity scope and module access. Confirm this change.",
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Confirm", style: "destructive", onPress: () => resolve(true) },
+        ],
+      );
+    });
+  };
 
   const confirmSportChangeIfNeeded = (): Promise<boolean> => {
     if (!isCoachKind || isNew || assignedSports.length !== 1) return Promise.resolve(true);
@@ -403,43 +370,46 @@ export default function ManageEdit() {
       return;
     }
     if (isCoachKind && !(await confirmSportChangeIfNeeded())) return;
+    if (!(await confirmUserTypeChangeIfNeeded())) return;
     setSaving(true);
     try {
       if (isUserKind) {
+        const scopeOrg = typeCatalog?.entityScope || organization;
         if (isNew) {
           const body: any = {
-            email: email.trim().toLowerCase(), password, name, role: kind,
-            organization, department: department || null, phone: phone || null,
+            email: email.trim().toLowerCase(),
+            password,
+            name,
+            user_type: userTypeKind,
+            organization: scopeOrg,
+            department: department || null,
+            phone: phone || null,
           };
-          if (isAdmin && customizePerms) body.permissions = permMap;
-          if (isAdmin) {
-            body.can_manage = canManage;
-            if (isCoachKind) {
-              body.coach_permissions = coachPermissions;
-              body.coach_type = coachType;
-              body.assigned_centres = assignedCentres;
-              body.assigned_sport = assignedSports[0] || null;
-              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
-            }
+          if (isPwsAdminKind) body.designation = designation;
+          if (isSuper && customizePerms) body.permissions = permMap;
+          if (isCoachKind) {
+            body.coach_permissions = coachPermissions;
+            body.coach_type = coachType;
+            body.assigned_centres = assignedCentres;
+            body.assigned_sport = assignedSports[0] || null;
+            body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
           }
           await api.post("/users", body);
         } else {
-          const body: any = { name, organization, department: department || null, phone: phone || null };
+          const body: any = { name, department: department || null, phone: phone || null };
           if (password) body.password = password;
-          if (isAdmin && email.trim()) body.email = email.trim().toLowerCase();
-          if (isAdmin) {
-            body.can_manage = canManage;
-            if (isCoachKind) {
-              body.coach_permissions = coachPermissions;
-              body.coach_type = coachType;
-              body.assigned_centres = assignedCentres;
-              body.assigned_sport = assignedSports[0] || null;
-              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
-            }
+          if (isSuper && email.trim()) body.email = email.trim().toLowerCase();
+          if (isPwsAdminKind) body.designation = designation;
+          if (isCoachKind) {
+            body.coach_permissions = coachPermissions;
+            body.coach_type = coachType;
+            body.assigned_centres = assignedCentres;
+            body.assigned_sport = assignedSports[0] || null;
+            body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
           }
           await api.patch(`/users/${id}`, body);
         }
-      } else if (isPlayerKind) {
+      } else if (false && isPlayerKind) {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
         const body: any = {
           name, kind: "player", organization: "ALPHA",
@@ -554,7 +524,7 @@ export default function ManageEdit() {
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
             <Feather name="x" size={22} color="#0F172A" />
           </TouchableOpacity>
-          <Text style={s.h1}>{isNew ? `New ${isAdminKind ? "Sports Admin" : kind}` : readOnly ? `View ${kind}` : `Edit ${kind}`}</Text>
+          <Text style={s.h1}>{isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}</Text>
           {!isNew && canDelete && (
             <TouchableOpacity testID="delete-btn" onPress={onDelete} style={s.delBtn}>
               <Feather name="trash-2" size={18} color="#EF4444" />
@@ -568,12 +538,45 @@ export default function ManageEdit() {
 
           {isUserKind && (
             <>
+              <Text style={s.label}>User Type</Text>
+              <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" }]} testID="field-user-type">
+                <Text style={[s.chipText, { color: "#0F172A" }]}>{displayTitle}</Text>
+              </View>
+              <Text style={s.label}>Business Scope</Text>
+              <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#DBEAFE", borderColor: "#93C5FD" }]} testID="field-entity-scope">
+                <Text style={[s.chipText, { color: "#1E40AF" }]}>{entityScopeLabel(typeCatalog?.entityScope || organization)}</Text>
+              </View>
+              {isPwsAdminKind && (
+                <>
+                  <Text style={s.label}>Designation</Text>
+                  <View style={s.chipRow}>
+                    {(["PRINCIPAL", "VICE_PRINCIPAL"] as const).map((d) => (
+                      <TouchableOpacity
+                        key={d}
+                        testID={`designation-${d}`}
+                        style={[s.chip, { flex: 1 }, designation === d && s.chipActive, readOnly && { opacity: 0.85 }]}
+                        disabled={readOnly}
+                        onPress={() => setDesignation(d)}
+                      >
+                        <Text style={[s.chipText, designation === d && { color: "#fff" }]}>
+                          {d === "PRINCIPAL" ? "Principal" : "Vice Principal"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+            </>
+          )}
+
+          {isUserKind && (
+            <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
-              <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || isAdmin} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !isAdmin && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
+              <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || isSuper} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !isSuper && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
               <Text style={s.label}>{isNew ? "Assigned password *" : "Assign new password (leave blank to keep)"}</Text>
               <TextInput testID="field-password" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" placeholderTextColor="#94A3B8" style={s.input} />
               <Text style={s.fieldHint}>The user signs in with this password and will be prompted to set their own on first login.</Text>
-              {!isCoachKind && !isAdminKind && (
+              {!isCoachKind && userTypeKind !== UserRole.SUPER_ADMIN && (
                 <>
                   <Text style={s.label}>Department / Subject</Text>
                   <TextInput testID="field-department" value={department} onChangeText={setDepartment} placeholder="e.g. Mathematics, Cricket" placeholderTextColor="#94A3B8" style={s.input} />
@@ -582,7 +585,7 @@ export default function ManageEdit() {
               <Text style={s.label}>Phone</Text>
               <TextInput testID="field-phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={s.input} />
 
-              {isNew && isAdmin && (
+              {isNew && isSuper && (
                 <View style={s.permBox}>
                   <View style={s.permHeadRow}>
                     <View style={{ flex: 1 }}>
@@ -610,7 +613,7 @@ export default function ManageEdit() {
                 </View>
               )}
 
-              {!isNew && isAdmin && (
+              {!isNew && isSuper && (
                 <View style={s.statusCard}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.statusLabel}>{isCoachKind ? "Coach Status" : "User Status"}</Text>
@@ -935,7 +938,7 @@ export default function ManageEdit() {
               />
               <Text style={s.help}>{dateHelpText()}</Text>
 
-              {!isNew && isAdmin && (
+              {!isNew && isSuper && (
                 <View style={s.statusCard}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.statusLabel}>Player Status</Text>
@@ -1200,6 +1203,8 @@ export default function ManageEdit() {
             </>
           )}
 
+          {!isUserKind && (
+            <>
           <Text style={s.label}>Organization</Text>
           {isPlayerKind ? (
             <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#DBEAFE", borderColor: "#93C5FD" }]} testID="org-locked-alpha">
@@ -1214,23 +1219,10 @@ export default function ManageEdit() {
               ))}
             </View>
           )}
-          {isCoachKind && isAdmin && (
+            </>
+          )}
+          {isCoachKind && isSuper && (
             <>
-              <Text style={[s.label, { marginTop: 24 }]}>Coach Type *</Text>
-              <View style={s.chipRow}>
-                {(["head", "assistant"] as const).map((ct) => (
-                  <TouchableOpacity
-                    key={ct}
-                    testID={`ctype-${ct}`}
-                    style={[s.chip, { flex: 1 }, coachType === ct && s.chipActive]}
-                    onPress={() => setCoachType(ct)}
-                  >
-                    <Feather name={ct === "head" ? "shield" : "user"} size={14} color={coachType === ct ? "#fff" : "#475569"} />
-                    <Text style={[s.chipText, coachType === ct && { color: "#fff" }]}>{ct === "head" ? "Head Coach" : "Assistant Coach"}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
               <Text style={[s.label, { marginTop: 24 }]}>Coach editing rights</Text>
               <Text style={s.help}>Choose what this coach can do with players.</Text>
               <View style={{ gap: 8, marginTop: 8 }}>
@@ -1272,7 +1264,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {isUserKind && !isCoachKind && isAdmin && (
+          {isUserKind && !isCoachKind && isSuper && (
             <>
               <Text style={[s.label, { marginTop: 24 }]}>Editing rights (Admin only)</Text>
               <View style={{ gap: 8, marginTop: 8 }}>

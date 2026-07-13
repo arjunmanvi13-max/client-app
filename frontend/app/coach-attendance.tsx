@@ -107,7 +107,7 @@ export default function CoachAttendance() {
                </View>
                <View style={{ flex: 1 }}>
                  <Text style={s.name}>{c.name}</Text>
-                 <Text style={s.meta}>{(c.coach_type === "head" ? "Head Coach" : "Assistant Coach")} · {(c.assigned_centres || []).join(", ") || "—"}</Text>
+                 <Text style={s.meta}>ALPHA Coach · {c.assigned_sport || "—"} · {(c.assigned_centres || []).join(", ") || "—"}</Text>
                </View>
                <Text style={[s.statusBadge, { color: isAbs ? "#EF4444" : "#10B981" }]}>{isAbs ? "Absent" : "Present"}</Text>
              </TouchableOpacity>

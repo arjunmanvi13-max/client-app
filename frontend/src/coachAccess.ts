@@ -84,7 +84,7 @@ export function resolveCoachDataScope(user: User | null | undefined): CoachDataS
 export function coachSportAssignmentMessage(scope: CoachDataScope): string {
   if (!scope.requiresSportAssignment) return "";
   if (scope.sportAssignmentStatus === "ambiguous") {
-    return "Your coach account has multiple sport assignments. Please contact the Sports Admin.";
+    return "Your coach account has multiple sport assignments. Please contact the ALPHA Admin.";
   }
   return "Your account must be assigned to Cricket or Football before player data can be shown.";
 }

@@ -115,7 +115,7 @@ export default function StaffAttendance() {
           <Feather name="lock" size={40} color="#94A3B8" />
           <Text style={s.emptyTitle}>Not available</Text>
           <Text style={s.emptyText}>
-            Staff attendance can be marked by Principal / Vice Principal (PWS) or Head Coach (ALPHA, assigned centre).
+            Staff attendance can be marked by PWS Admin (Principal / Vice Principal) or ALPHA Admin (assigned centre).
           </Text>
         </View>
       </SafeAreaView>

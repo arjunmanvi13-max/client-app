@@ -38,6 +38,12 @@ export type User = {
   name: string;
   role: "super_admin" | "admin" | "principal" | "vice_principal" | "pws_accounts" | "alpha_accounts" | "teacher" | "coach" | "warden" | "staff" | "student" | "player" | "parent";
   role_canonical?: string;
+  user_type?: "super_admin" | "pws_admin" | "alpha_admin" | "pws_accounts" | "alpha_accounts" | "pws_teacher" | "alpha_coach";
+  user_type_display?: string;
+  designation?: "PRINCIPAL" | "VICE_PRINCIPAL" | null;
+  entity_scope?: "PWS" | "ALPHA" | "BOTH";
+  legacy_role?: string;
+  requires_user_type_review?: boolean;
   organization: "PWS" | "ALPHA" | "BOTH";
   department?: string | null;
   is_active?: boolean;
@@ -148,10 +154,21 @@ export const ROLE_COLORS: Record<string, string> = {
 };
 
 export function roleLabel(role: string | undefined | null) {
-  return role === "admin" ? "Sports Admin"
-       : role === "super_admin" ? "Super Admin"
-       : role === "vice_principal" ? "Vice Principal"
-       : role ? (role.charAt(0).toUpperCase() + role.slice(1)) : "";
+  const map: Record<string, string> = {
+    super_admin: "Super Admin",
+    admin: "ALPHA Admin",
+    alpha_admin: "ALPHA Admin",
+    pws_admin: "PWS Admin",
+    principal: "PWS Admin",
+    vice_principal: "PWS Admin",
+    pws_accounts: "PWS Accounts",
+    alpha_accounts: "ALPHA Accounts",
+    teacher: "PWS Teacher",
+    pws_teacher: "PWS Teacher",
+    coach: "ALPHA Coach",
+    alpha_coach: "ALPHA Coach",
+  };
+  return map[role || ""] || (role ? role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, " ") : "");
 }
 
 export const PRIORITY_COLORS: Record<string, string> = {

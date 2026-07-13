@@ -82,7 +82,7 @@ export default function CoachAttendance() {
           <Feather name="alert-circle" size={40} color="#DC2626" />
           <Text style={s.blockedTitle}>Sport assignment required</Text>
           <Text style={s.blockedText}>{coachSportAssignmentMessage(scope)}</Text>
-          <Text style={s.blockedHint}>Please contact the Sports Admin.</Text>
+          <Text style={s.blockedHint}>Please contact the ALPHA Admin.</Text>
         </View>
       </SafeAreaView>
     );
