@@ -14,6 +14,7 @@ import { UserRole } from "../../../src/rbac";
 import {
   CATALOG_BY_CODE,
   entityScopeLabel,
+  filterUsersByType,
   isApprovedLoginUserType,
   type LoginUserType,
   type PwsAdminDesignation,
@@ -288,7 +289,30 @@ export default function ManageEdit() {
       setLoading(true);
       try {
         if (isUserKind) {
-          const { data: u } = await api.get(`/users/${id}`);
+          let u: any = null;
+          try {
+            const { data: list } = await api.get("/users", { params: { user_type: userTypeKind } });
+            u = list.find((x: any) => x.id === id);
+          } catch {
+            /* fall through */
+          }
+          if (!u) {
+            try {
+              const { data } = await api.get(`/users/${id}`);
+              u = data;
+            } catch (e: any) {
+              if (e?.response?.status === 405 || e?.response?.status === 404) {
+                const { data: all } = await api.get("/users");
+                u = (Array.isArray(all) ? all : []).find((x: any) => x.id === id);
+              } else {
+                throw e;
+              }
+            }
+          }
+          if (!u && userTypeKind) {
+            const { data: all } = await api.get("/users");
+            u = filterUsersByType(Array.isArray(all) ? all : [], userTypeKind).find((x: any) => x.id === id);
+          }
           if (u) {
             setName(u.name); setEmail(u.email); setOrganization(u.organization);
             setDepartment(u.department || ""); setPhone(u.phone || "");
@@ -306,6 +330,8 @@ export default function ManageEdit() {
             else if (typeCatalog) setOrganization(typeCatalog.entityScope);
           }
         }
+      } catch (e: any) {
+        Alert.alert("Error", e?.response?.data?.detail || "Failed to load user");
       } finally { setLoading(false); }
     })();
   }, [id, kind, isNew, isUserKind, isPlayerKind, user]);

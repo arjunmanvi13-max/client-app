@@ -9,7 +9,9 @@ import {
   CATALOG_BY_CODE,
   designationLabel,
   entityScopeLabel,
+  filterUsersByType,
   isApprovedLoginUserType,
+  type LoginUserType,
 } from "../../../src/userClassification";
 
 export default function ManageList() {
@@ -31,7 +33,7 @@ export default function ManageList() {
     setLoading(true);
     try {
       const { data } = await api.get("/users", { params: { user_type: kind } });
-      let rows = data;
+      let rows = filterUsersByType(Array.isArray(data) ? data : [], kind as LoginUserType);
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         rows = rows.filter((u: any) =>
@@ -41,6 +43,8 @@ export default function ManageList() {
         );
       }
       setItems(rows);
+    } catch {
+      setItems([]);
     } finally { setLoading(false); }
   }, [catalog, kind, isSuper, search]);
 

@@ -136,6 +136,27 @@ export function isApprovedLoginUserType(kind: string): kind is LoginUserType {
   return (APPROVED_LOGIN_USER_TYPES as string[]).includes(kind);
 }
 
+/** Legacy role values that map to each canonical user type (pre-migration fallback). */
+export const LEGACY_ROLES_BY_USER_TYPE: Record<LoginUserType, string[]> = {
+  [UserRole.SUPER_ADMIN]: ["super_admin"],
+  [UserRole.PWS_ADMIN]: ["principal", "vice_principal", "pws_admin"],
+  [UserRole.ALPHA_ADMIN]: ["admin", "alpha_admin"],
+  [UserRole.PWS_ACCOUNTS]: ["pws_accounts"],
+  [UserRole.ALPHA_ACCOUNTS]: ["alpha_accounts"],
+  [UserRole.PWS_TEACHER]: ["teacher", "pws_teacher"],
+  [UserRole.ALPHA_COACH]: ["coach", "alpha_coach"],
+};
+
+export function matchesUserType(user: { user_type?: string; role?: string }, userType: LoginUserType): boolean {
+  if (user.user_type === userType) return true;
+  const legacy = LEGACY_ROLES_BY_USER_TYPE[userType];
+  return legacy.includes(user.role || "");
+}
+
+export function filterUsersByType(users: any[], userType: LoginUserType): any[] {
+  return users.filter((u) => matchesUserType(u, userType));
+}
+
 export function entityScopeLabel(scope: string): string {
   if (scope === "BOTH") return "Both PWS & ALPHA";
   return scope;
