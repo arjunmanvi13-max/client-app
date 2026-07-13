@@ -11,29 +11,35 @@ import {
   entityScopeLabel,
   filterUsersByType,
   isApprovedLoginUserType,
+  legacyRoleForUserType,
+  resolveRouteParam,
   type LoginUserType,
 } from "../../../src/userClassification";
 
 export default function ManageList() {
-  const { kind } = useLocalSearchParams<{ kind: string }>();
+  const { kind: kindRaw } = useLocalSearchParams<{ kind: string | string[] }>();
+  const kindParam = resolveRouteParam(kindRaw);
   const router = useRouter();
   const { user } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const catalog = kind && isApprovedLoginUserType(kind) ? CATALOG_BY_CODE[kind] : null;
-  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const catalog = isApprovedLoginUserType(kindParam) ? CATALOG_BY_CODE[kindParam] : null;
+  const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
 
   useEffect(() => {
     if (!isSuper) router.replace("/manage");
   }, [isSuper, router]);
 
   const load = useCallback(async () => {
-    if (!catalog || !isSuper) return;
+    if (!catalog || !isSuper || !kindParam) return;
     setLoading(true);
+    setLoadError(null);
     try {
-      const { data } = await api.get("/users", { params: { user_type: kind } });
-      let rows = filterUsersByType(Array.isArray(data) ? data : [], kind as LoginUserType);
+      const { data } = await api.get("/users", { params: { user_type: kindParam } });
+      let rows = filterUsersByType(Array.isArray(data) ? data : [], kindParam as LoginUserType);
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         rows = rows.filter((u: any) =>
@@ -43,10 +49,11 @@ export default function ManageList() {
         );
       }
       setItems(rows);
-    } catch {
+    } catch (e: any) {
       setItems([]);
+      setLoadError(e?.response?.data?.detail || "Failed to load accounts");
     } finally { setLoading(false); }
-  }, [catalog, kind, isSuper, search]);
+  }, [catalog, kindParam, isSuper, search]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -73,11 +80,11 @@ export default function ManageList() {
           <Text style={s.h1}>{catalog.displayName}</Text>
           <Text style={s.sub}>{items.length} account{items.length !== 1 ? "s" : ""} · {entityScopeLabel(catalog.entityScope)}</Text>
         </View>
-        {kind !== "super_admin" && (
+        {kindParam !== "super_admin" && (
           <TouchableOpacity
-            testID={`add-${kind}`}
+            testID={`add-${kindParam}`}
             style={[s.addBtn, { backgroundColor: catalog.tint }]}
-            onPress={() => router.push(`/manage/${kind}/new`)}
+            onPress={() => router.push(`/manage/${kindParam}/new`)}
           >
             <Feather name="plus" size={18} color="#fff" />
             <Text style={s.addText}>Add</Text>
@@ -99,7 +106,12 @@ export default function ManageList() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
-        {loading ? <ActivityIndicator color={catalog.tint} style={{ marginTop: 24 }} /> :
+        {loadError ? (
+          <View style={s.empty}>
+            <Feather name="alert-circle" size={36} color="#EF4444" />
+            <Text style={s.emptyText}>{loadError}</Text>
+          </View>
+        ) : loading ? <ActivityIndicator color={catalog.tint} style={{ marginTop: 24 }} /> :
          items.length === 0 ? (
            <View style={s.empty}>
              <Feather name="users" size={36} color="#94A3B8" />
@@ -115,7 +127,7 @@ export default function ManageList() {
             key={it.id}
             testID={`row-${it.id}`}
             style={[s.row, isDeact && s.rowDeact]}
-            onPress={() => router.push(`/manage/${kind}/${it.id}`)}
+            onPress={() => router.push(`/manage/${kindParam}/${it.id}`)}
           >
             <View style={[s.avatar, { backgroundColor: isDeact ? "#94A3B8" : catalog.tint }]}>
               <Text style={s.avatarTxt}>{it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}</Text>

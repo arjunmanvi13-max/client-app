@@ -136,6 +136,30 @@ export function isApprovedLoginUserType(kind: string): kind is LoginUserType {
   return (APPROVED_LOGIN_USER_TYPES as string[]).includes(kind);
 }
 
+/** Normalize expo-router params that may be string | string[]. */
+export function resolveRouteParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
+/** Legacy role stored on user docs — mirrors backend user_classification.py. */
+export function legacyRoleForUserType(
+  userType: LoginUserType,
+  designation?: PwsAdminDesignation | null,
+): string {
+  switch (userType) {
+    case UserRole.SUPER_ADMIN: return "super_admin";
+    case UserRole.PWS_ADMIN:
+      return designation === "VICE_PRINCIPAL" ? "vice_principal" : "principal";
+    case UserRole.ALPHA_ADMIN: return "admin";
+    case UserRole.PWS_ACCOUNTS: return "pws_accounts";
+    case UserRole.ALPHA_ACCOUNTS: return "alpha_accounts";
+    case UserRole.PWS_TEACHER: return "teacher";
+    case UserRole.ALPHA_COACH: return "coach";
+    default: return userType;
+  }
+}
+
 /** Legacy role values that map to each canonical user type (pre-migration fallback). */
 export const LEGACY_ROLES_BY_USER_TYPE: Record<LoginUserType, string[]> = {
   [UserRole.SUPER_ADMIN]: ["super_admin"],

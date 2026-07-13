@@ -16,6 +16,8 @@ import {
   entityScopeLabel,
   filterUsersByType,
   isApprovedLoginUserType,
+  legacyRoleForUserType,
+  resolveRouteParam,
   type LoginUserType,
   type PwsAdminDesignation,
 } from "../../../src/userClassification";
@@ -117,12 +119,23 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   }
 }
 
+function showError(title: string, message: string) {
+  if (Platform.OS === "web") {
+    // eslint-disable-next-line no-undef
+    if (typeof window !== "undefined") window.alert(`${title}\n\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
+
 export default function ManageEdit() {
-  const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
+  const { kind: kindRaw, id: idRaw } = useLocalSearchParams<{ kind: string | string[]; id: string | string[] }>();
+  const kindParam = resolveRouteParam(kindRaw);
+  const id = resolveRouteParam(idRaw);
   const { user } = useAuth();
   const router = useRouter();
   const isNew = id === "new";
-  const userTypeKind = isApprovedLoginUserType(kind || "") ? (kind as LoginUserType) : null;
+  const userTypeKind = isApprovedLoginUserType(kindParam) ? (kindParam as LoginUserType) : null;
   const typeCatalog = userTypeKind ? CATALOG_BY_CODE[userTypeKind] : null;
   const isUserKind = !!userTypeKind;
   const isCoachKind = userTypeKind === UserRole.ALPHA_COACH;
@@ -130,13 +143,15 @@ export default function ManageEdit() {
   const isPlayerKind = false;
   const isStaffKind = false;
   const isStudentKind = false;
-  const displayTitle = typeCatalog?.displayName || kind || "User";
+  const displayTitle = typeCatalog?.displayName || kindParam || "User";
 
   useEffect(() => {
+    if (kindRaw === undefined) return;
     if (!userTypeKind) router.replace("/manage");
-  }, [userTypeKind, router]);
+  }, [kindRaw, userTypeKind, router]);
 
-  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
   const perms = user?.permissions || {};
   const canEdit = isSuper && isUserKind;
@@ -263,7 +278,7 @@ export default function ManageEdit() {
   };
 
   const unlinkParent = (userId: string, parentName: string) => {
-    confirmAction("Unlink parent?", `Remove ${parentName} as a linked parent. They will lose visibility of this ${kind}.`, async () => {
+    confirmAction("Unlink parent?", `Remove ${parentName} as a linked parent. They will lose visibility of this ${displayTitle}.`, async () => {
       try {
         const { data } = await api.delete(`/people/${id}/link-parent/${userId}`);
         setParentUserIds(data?.parent_user_ids || parentUserIds.filter((x) => x !== userId));
@@ -323,7 +338,7 @@ export default function ManageEdit() {
             setAssignedSports(u.assigned_sports?.length ? [u.assigned_sports[0]] : (u.assigned_sport ? [u.assigned_sport] : []));
             setUserStatus(u.status === "deactivated" ? "deactivated" : "active");
             setCoachType(u.coach_type === "assistant" ? "assistant" : "head");
-            setLoadedUserType(u.user_type || kind || null);
+            setLoadedUserType(u.user_type || kindParam || null);
             setLoadedDesignation(u.designation || null);
             if (u.designation) setDesignation(u.designation);
             if (u.organization) setOrganization(u.organization);
@@ -334,7 +349,7 @@ export default function ManageEdit() {
         Alert.alert("Error", e?.response?.data?.detail || "Failed to load user");
       } finally { setLoading(false); }
     })();
-  }, [id, kind, isNew, isUserKind, isPlayerKind, user]);
+  }, [id, kindParam, isNew, isUserKind, isPlayerKind, user, userTypeKind]);
 
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -373,8 +388,9 @@ export default function ManageEdit() {
   };
 
   const save = async () => {
-    if (!name.trim()) { Alert.alert("Name required"); return; }
-    if (isUserKind && isNew && (!email.trim() || !password.trim())) { Alert.alert("Email and password required"); return; }
+    if (!userTypeKind) { showError("Invalid user type", "This form is not for an approved login user type."); return; }
+    if (!name.trim()) { showError("Name required", "Enter the user's full name."); return; }
+    if (isUserKind && isNew && (!email.trim() || !password.trim())) { showError("Required fields", "Email and password are required."); return; }
     if (isCoachKind && assignedSports.length !== 1) {
       Alert.alert("Assigned sport required", "Select exactly one sport — Cricket or Football. A coach can only be assigned to one sport.");
       return;
@@ -407,6 +423,7 @@ export default function ManageEdit() {
             password,
             name,
             user_type: userTypeKind,
+            role: legacyRoleForUserType(userTypeKind, isPwsAdminKind ? designation : null),
             organization: scopeOrg,
             department: department || null,
             phone: phone || null,
@@ -421,6 +438,8 @@ export default function ManageEdit() {
             body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
           }
           await api.post("/users", body);
+          router.replace(`/manage/${kindParam}`);
+          return;
         } else {
           const body: any = { name, department: department || null, phone: phone || null };
           if (password) body.password = password;
@@ -434,6 +453,8 @@ export default function ManageEdit() {
             body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
           }
           await api.patch(`/users/${id}`, body);
+          router.replace(`/manage/${kindParam}`);
+          return;
         }
       } else if (false && isPlayerKind) {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
@@ -526,13 +547,19 @@ export default function ManageEdit() {
       }
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "Failed to save");
+      const detail = e?.response?.data?.detail;
+      const message = typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join("\n")
+          : "Failed to save";
+      showError("Error", message);
     } finally { setSaving(false); }
   };
 
   const onDelete = () => {
     if (isNew) return;
-    confirmAction("Delete?", `This ${kind} will be permanently removed.`, async () => {
+    confirmAction("Delete?", `This ${displayTitle} account will be permanently removed.`, async () => {
       try {
         if (isUserKind) await api.delete(`/users/${id}`);
         else await api.delete(`/people/${id}`);
@@ -661,7 +688,7 @@ export default function ManageEdit() {
                     onPress={() => {
                       const next = userStatus === "active" ? "deactivated" : "active";
                       const verb = next === "active" ? "Reactivate" : "Deactivate";
-                      confirmAction(`${verb} ${kind}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
+                      confirmAction(`${verb} ${displayTitle}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
                         try {
                           await api.post(`/users/${id}/${next === "active" ? "activate" : "deactivate"}`);
                           setUserStatus(next);
