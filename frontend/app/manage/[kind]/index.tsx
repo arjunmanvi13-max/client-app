@@ -5,7 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { api, ROLE_COLORS, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
-import { isCoachUser } from "../../../src/coachAccess";
+import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "../../../src/coachAccess";
 
 const META: Record<string, { label: string; tint: string; isUser: boolean; subtitle: (x: any) => string }> = {
   admin: { label: "Sports Admins", tint: "#7C3AED", isUser: true, subtitle: (u) => `${u.email || u.mobile || ""} · ${u.organization || "ALPHA"}` },
@@ -36,6 +36,8 @@ export default function ManageList() {
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isPlayer = kind === "player";
+  const coachScope = resolveCoachDataScope(user);
+  const coachBlocked = isPlayer && isCoachUser(user) && coachScope.requiresSportAssignment;
   const isStudent = kind === "student";
   const isTeacher = role === UserRole.PWS_TEACHER;
   const canAdd = (() => {
@@ -60,7 +62,7 @@ export default function ManageList() {
   }, [isStudent]);
 
   const load = useCallback(async () => {
-    if (!meta) return;
+    if (!meta || coachBlocked) return;
     setLoading(true);
     try {
       if (meta.isUser) {
@@ -83,10 +85,10 @@ export default function ManageList() {
         if (isPlayer && centreFilter) params.centre = centreFilter;
         if (isStudent && sectionFilter) params.section_id = sectionFilter;
         const { data } = await api.get("/people", { params });
-        setItems(data);
+        setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
       }
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter]);
+  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter, user, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -110,6 +112,12 @@ export default function ManageList() {
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>{meta.label}</Text>
           <Text style={s.sub}>{visibleItems.length} record{visibleItems.length !== 1 ? "s" : ""}</Text>
+          {isPlayer && isCoachUser(user) && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
+            <View style={s.scopeBadge}>
+              <Feather name="lock" size={12} color="#1E40AF" />
+              <Text style={s.scopeText}>Showing {coachScope.assignedSport} players</Text>
+            </View>
+          )}
         </View>
         <TouchableOpacity testID={`add-${kind}`} style={[s.addBtn, { backgroundColor: meta.tint }, !canAdd && { opacity: 0.45 }]} disabled={!canAdd} onPress={() => router.push(`/manage/${kind}/new`)}>
           <Feather name="plus" size={18} color="#fff" />
@@ -118,6 +126,8 @@ export default function ManageList() {
       </View>
 
       <View style={s.searchRow}>
+        {!coachBlocked && (
+        <>
         <Feather name="search" size={16} color="#94A3B8" />
         <TextInput
           testID="people-search"
@@ -133,9 +143,19 @@ export default function ManageList() {
             <Feather name="x" size={16} color="#94A3B8" />
           </TouchableOpacity>
         )}
+        </>
+        )}
       </View>
 
-      {isPlayer && isAdmin && (
+      {coachBlocked && (
+        <View style={s.blockedBox}>
+          <Feather name="alert-circle" size={28} color="#DC2626" />
+          <Text style={s.blockedTitle}>Sport assignment required</Text>
+          <Text style={s.blockedText}>{coachSportAssignmentMessage(coachScope)}</Text>
+        </View>
+      )}
+
+      {isPlayer && isAdmin && !coachBlocked && (
         <View style={s.toggleRow}>
           <TouchableOpacity testID="toggle-active" style={[s.togglePill, !showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(false)}>
             <Text style={[s.toggleTxt, !showDeactivated && s.toggleTxtActive]}>Active</Text>
@@ -146,7 +166,7 @@ export default function ManageList() {
         </View>
       )}
 
-      {isPlayer && (
+      {isPlayer && !coachBlocked && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
           <TouchableOpacity testID="ptype-all" style={[s.togglePill, !typeFilter && s.togglePillActive]} onPress={() => setTypeFilter(null)}>
             <Text style={[s.toggleTxt, !typeFilter && s.toggleTxtActive]}>All Types</Text>
@@ -254,4 +274,9 @@ const s = StyleSheet.create({
   permTxt: { fontSize: 10, fontWeight: "700", color: "#1E40AF" },
   empty: { alignItems: "center", padding: 40, gap: 8 },
   emptyText: { color: "#64748B", textAlign: "center", fontSize: 13 },
+  scopeBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, alignSelf: "flex-start", backgroundColor: "#EFF6FF", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },
+  scopeText: { color: "#1E40AF", fontWeight: "700", fontSize: 11 },
+  blockedBox: { marginHorizontal: 20, marginTop: 16, padding: 20, backgroundColor: "#FEF2F2", borderRadius: 14, borderWidth: 1, borderColor: "#FECACA", alignItems: "center", gap: 8 },
+  blockedTitle: { fontSize: 16, fontWeight: "800", color: "#991B1B" },
+  blockedText: { textAlign: "center", color: "#7F1D1D", lineHeight: 20 },
 });

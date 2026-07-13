@@ -9,7 +9,7 @@ import {
   PWS_CLASSES, PWS_STUDENT_TYPES, TRANSPORT_DISTANCES,
   resolveCategoryAmounts, canOverridePwsFees, type PwsStudentType, type TransportDistance,
 } from "../../../src/pwsFeeStructure";
-import { formatDate, DATE_PLACEHOLDER, dateHelpText, toISODate, parseToISO, isValidDisplayDate } from "../../../src/dateFormat";
+import { isCoachUser, resolveCoachDataScope } from "../../../src/coachAccess";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -225,7 +225,9 @@ export default function ManageEdit() {
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
   const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
   const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
-  const canOverrideFees = canOverridePwsFees(user?.role);
+  const coachScope = resolveCoachDataScope(user);
+  const coachCreatingPlayer = isPlayerKind && isCoachUser(user);
+  const coachSportLocked = coachCreatingPlayer && coachScope.sportLocked;
 
   // Coach centre/sport assignment (admin -> coach)
   const [assignedCentres, setAssignedCentres] = useState<string[]>([]);
@@ -244,6 +246,15 @@ export default function ManageEdit() {
   const [parentUsers, setParentUsers] = useState<any[]>([]);
   const [showParentPicker, setShowParentPicker] = useState(false);
   const [linkingParent, setLinkingParent] = useState(false);
+
+  useEffect(() => {
+    if (coachSportLocked && coachScope.assignedSport) {
+      setSport(coachScope.assignedSport);
+    }
+    if (coachCreatingPlayer && coachScope.assignedCentres.length === 1) {
+      setCentre(coachScope.assignedCentres[0] as any);
+    }
+  }, [coachSportLocked, coachCreatingPlayer, coachScope.assignedSport, coachScope.assignedCentres]);
 
   useEffect(() => {
     if (canLinkParents) {
@@ -298,7 +309,7 @@ export default function ManageEdit() {
             setCoachPermissions(u.coach_permissions || []);
             setAssignedSport(u.assigned_sport || "");
             setAssignedCentres(u.assigned_centres || []);
-            setAssignedSports(u.assigned_sports || []);
+            setAssignedSports(u.assigned_sports?.length ? [u.assigned_sports[0]] : (u.assigned_sport ? [u.assigned_sport] : []));
             setUserStatus(u.status === "deactivated" ? "deactivated" : "active");
             setCoachType(u.coach_type === "assistant" ? "assistant" : "head");
           }
@@ -352,11 +363,27 @@ export default function ManageEdit() {
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
+  const confirmSportChangeIfNeeded = (): Promise<boolean> => {
+    if (!isCoachKind || isNew || assignedSports.length !== 1) return Promise.resolve(true);
+    const next = assignedSports[0];
+    if (!assignedSport || assignedSport === next) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      Alert.alert(
+        "Change assigned sport?",
+        "Changing the assigned sport will immediately change the player data this coach can access.",
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Change sport", style: "destructive", onPress: () => resolve(true) },
+        ],
+      );
+    });
+  };
+
   const save = async () => {
     if (!name.trim()) { Alert.alert("Name required"); return; }
     if (isUserKind && isNew && (!email.trim() || !password.trim())) { Alert.alert("Email and password required"); return; }
-    if (isCoachKind && assignedSports.length === 0) {
-      Alert.alert("Assigned sport required", "Select at least one sport — the coach will only see those players.");
+    if (isCoachKind && assignedSports.length !== 1) {
+      Alert.alert("Assigned sport required", "Select exactly one sport — Cricket or Football. A coach can only be assigned to one sport.");
       return;
     }
     if (isUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
@@ -375,6 +402,7 @@ export default function ManageEdit() {
       Alert.alert("Date of Admission is required");
       return;
     }
+    if (isCoachKind && !(await confirmSportChangeIfNeeded())) return;
     setSaving(true);
     try {
       if (isUserKind) {
@@ -388,10 +416,10 @@ export default function ManageEdit() {
             body.can_manage = canManage;
             if (isCoachKind) {
               body.coach_permissions = coachPermissions;
-              body.assigned_sport = assignedSport || null;
               body.coach_type = coachType;
               body.assigned_centres = assignedCentres;
-              body.assigned_sports = assignedSports;
+              body.assigned_sport = assignedSports[0] || null;
+              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
             }
           }
           await api.post("/users", body);
@@ -403,10 +431,10 @@ export default function ManageEdit() {
             body.can_manage = canManage;
             if (isCoachKind) {
               body.coach_permissions = coachPermissions;
-              body.assigned_sport = assignedSport || null;
               body.coach_type = coachType;
               body.assigned_centres = assignedCentres;
-              body.assigned_sports = assignedSports;
+              body.assigned_sport = assignedSports[0] || null;
+              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
             }
           }
           await api.patch(`/users/${id}`, body);
@@ -702,9 +730,18 @@ export default function ManageEdit() {
                 </Text>
               )}
               <Text style={s.label}>Sport *</Text>
+              {coachSportLocked && (
+                <Text style={s.help}>Assigned sport: {coachScope.assignedSport}</Text>
+              )}
               <View style={s.chipRow}>
-                {PLAYER_SPORTS.map((sp) => (
-                  <TouchableOpacity key={sp} testID={`sport-${sp}`} style={[s.chip, { flex: 1 }, sport === sp && s.chipActive]} onPress={() => setSport(sp)}>
+                {PLAYER_SPORTS.filter((sp) => !coachSportLocked || sp === coachScope.assignedSport).map((sp) => (
+                  <TouchableOpacity
+                    key={sp}
+                    testID={`sport-${sp}`}
+                    disabled={coachSportLocked || readOnly}
+                    style={[s.chip, { flex: 1 }, sport === sp && s.chipActive, (coachSportLocked || readOnly) && { opacity: 0.85 }]}
+                    onPress={() => setSport(sp)}
+                  >
                     <Feather name={sp === "Cricket" ? "target" : "circle"} size={14} color={sport === sp ? "#fff" : "#475569"} />
                     <Text style={[s.chipText, sport === sp && { color: "#fff" }]}>{sp}</Text>
                   </TouchableOpacity>
@@ -1215,12 +1252,20 @@ export default function ManageEdit() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={s.label}>Assigned Sports</Text>
-              <Text style={s.help}>Coach will only see and manage players for the selected sport(s).</Text>
+              <Text style={[s.label, { marginTop: 16 }]}>Assigned Sport *</Text>
+              <Text style={s.help}>A coach can be assigned to one sport only. This controls which players they can access after signing in.</Text>
               <View style={s.chipRow}>
                 {PLAYER_SPORTS.map((sp) => (
-                  <TouchableOpacity key={sp} testID={`asport-${sp}`} style={[s.chip, { flex: 1 }, assignedSports.includes(sp) && s.chipActive]} onPress={() => setAssignedSports((p) => p.includes(sp) ? p.filter((x) => x !== sp) : [...p, sp])}>
-                    <Text style={[s.chipText, assignedSports.includes(sp) && { color: "#fff" }]}>{sp}</Text>
+                  <TouchableOpacity
+                    key={sp}
+                    testID={`asport-${sp}`}
+                    style={[s.chip, { flex: 1 }, assignedSports[0] === sp && s.chipActive]}
+                    onPress={() => {
+                      setAssignedSports([sp]);
+                      setAssignedSport(sp);
+                    }}
+                  >
+                    <Text style={[s.chipText, assignedSports[0] === sp && { color: "#fff" }]}>{sp}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
