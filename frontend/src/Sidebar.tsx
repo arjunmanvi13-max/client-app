@@ -1,151 +1,171 @@
-import { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Pressable } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Pressable, Platform } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "./auth";
 import { colors } from "./theme";
-import { BusinessEntity, Permission, hasPermission } from "./rbac";
-import type { User } from "./auth";
+import {
+  filterNavigationGroups,
+  flattenLeafItems,
+  groupMatchesPath,
+  initialExpandedState,
+  itemMatchesPath,
+  type NavigationGroup,
+  type NavigationItem,
+} from "./navigationConfig";
 
-type NavItem = {
-  key: string;
-  label: string;
-  icon: keyof typeof Feather.glyphMap;
-  href: string;
-  match: (p: string) => boolean;
-  roles?: string[];
-  permissions?: Permission[];
-  permissionEntity?: BusinessEntity;
-  excludeRoles?: string[];
-  needsManage?: boolean;
-  needsCoachAttendance?: boolean;
-  pwsOnly?: boolean;
-  alphaOnly?: boolean;
-};
+const STORAGE_KEY = "pws_alpha_nav_expand_v1";
 
-type NavGroup = {
-  key: string;
-  label: string;
-  icon: keyof typeof Feather.glyphMap;
-  items: NavItem[];
-};
-
-// Section 1: Management & Insights
-const GRP_MANAGEMENT: NavGroup = {
-  key: "management",
-  label: "Management & Insights",
-  icon: "pie-chart",
-  items: [
-    { key: "dashboard", label: "Dashboard", icon: "home", href: "/(tabs)/dashboard", match: (p) => p.startsWith("/(tabs)/dashboard") || p === "/" || p === "/dashboard" },
-    { key: "reports", label: "Reports", icon: "bar-chart-2", href: "/reports", match: (p) => p.startsWith("/reports"), permissions: [Permission.RUN_PWS_REPORTS, Permission.RUN_ALPHA_REPORTS] },
-    { key: "tasks", label: "Task Tracker", icon: "check-square", href: "/(tabs)/tasks", match: (p) => p.startsWith("/(tabs)/tasks") || p.startsWith("/task") || p === "/tasks" },
-    { key: "approvals", label: "Approvals", icon: "shield", href: "/admin/approvals", match: (p) => p.startsWith("/admin/approvals"), permissions: [Permission.APPROVE_REQUESTS] },
-  ],
-};
-
-// Section 2: People & Directory
-const GRP_PEOPLE: NavGroup = {
-  key: "people",
-  label: "People & Directory",
-  icon: "users",
-  items: [
-    { key: "coaches", label: "Coaches", icon: "award", href: "/manage/coach", match: (p) => p.startsWith("/manage/coach"), permissions: [Permission.MANAGE_COACHES, Permission.CREATE_USERS], excludeRoles: ["teacher"] },
-    { key: "players", label: "Players", icon: "user", href: "/manage/player", match: (p) => p.startsWith("/manage/player"), permissions: [Permission.MANAGE_PLAYERS, Permission.ADD_ALPHA_PLAYERS], excludeRoles: ["teacher"] },
-    { key: "teachers", label: "Teachers", icon: "book-open", href: "/manage/teacher", match: (p) => p.startsWith("/manage/teacher"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.CREATE_USERS], pwsOnly: true, excludeRoles: ["teacher"] },
-    { key: "students", label: "Students", icon: "user", href: "/manage/student", match: (p) => p.startsWith("/manage/student"), permissions: [Permission.ADD_PWS_STUDENTS], pwsOnly: true, excludeRoles: ["teacher"] },
-    { key: "staff", label: "Staff", icon: "briefcase", href: "/manage/staff", match: (p) => p.startsWith("/manage/staff"), excludeRoles: ["teacher", "coach"] },
-    { key: "directory", label: "Directory", icon: "book", href: "/directory", match: (p) => p.startsWith("/directory"), excludeRoles: ["teacher", "coach"] },
-  ],
-};
-
-// Section 3: Financials
-const GRP_FINANCE: NavGroup = {
-  key: "finance",
-  label: "Financials",
-  icon: "credit-card",
-  items: [
-    { key: "fees", label: "Fees", icon: "credit-card", href: "/fees", match: (p) => p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.includes("overdue"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
-    { key: "collect", label: "Collect Fees", icon: "inbox", href: "/fees/collection", match: (p) => p.startsWith("/fees/collection"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
-    { key: "defaulters", label: "Defaulters", icon: "alert-triangle", href: "/fees?tab=overdue", match: (p) => p.startsWith("/fees") && p.includes("overdue"), permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES] },
-  ],
-};
-
-// Section 4: Operations & Logistics
-const GRP_OPERATIONS: NavGroup = {
-  key: "operations",
-  label: "Operations & Logistics",
-  icon: "layers",
-  items: [
-    { key: "attendance", label: "Attendance", icon: "user-check", href: "/(tabs)/attendance", match: (p) => p.startsWith("/(tabs)/attendance") || p === "/attendance" || p === "/staff-attendance" || p === "/coach-attendance" },
-    { key: "coach-assessments", label: "Player Assessments", icon: "clipboard", href: "/coach/assessments", match: (p) => p.startsWith("/coach/assessments"), permissions: [Permission.MANAGE_PLAYER_ASSESSMENT, Permission.MANAGE_COACH_ASSESSMENTS_ADMIN] },
-    { key: "attendance-reports", label: "Attendance Reports", icon: "bar-chart", href: "/admin/attendance", match: (p) => p.startsWith("/admin/attendance"), permissions: [Permission.VIEW_ATTENDANCE, Permission.RUN_PWS_REPORTS] },
-    { key: "marks", label: "Enter Marks", icon: "edit-3", href: "/academic/marks", match: (p) => p.startsWith("/academic/marks"), permissions: [Permission.MANAGE_MARKS_ASSESSMENT], pwsOnly: true },
-    { key: "report-cards", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards") || p.startsWith("/report-cards"), permissions: [Permission.MANAGE_MARKS_ASSESSMENT], pwsOnly: true },
-    { key: "hostel", label: "Hostel", icon: "moon", href: "/(tabs)/hostel", match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel", permissions: [Permission.MARK_HOSTEL_ATTENDANCE] },
-    { key: "bulk", label: "Bulk Upload", icon: "upload-cloud", href: "/admin/bulk-upload", match: (p) => p.startsWith("/admin/bulk-upload"), permissions: [Permission.BULK_UPLOAD_USERS] },
-  ],
-};
-
-// Section 5: System & Administration
-const GRP_SYSTEM: NavGroup = {
-  key: "system",
-  label: "System & Administration",
-  icon: "settings",
-  items: [
-    { key: "perms", label: "Permissions", icon: "key", href: "/admin/permissions", match: (p) => p.startsWith("/admin/permissions"), permissions: [Permission.MANAGE_ACCESS] },
-    { key: "academic", label: "Academic Structure", icon: "book-open", href: "/admin/academic", match: (p) => p.startsWith("/admin/academic"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.MANAGE_TEACHERS_MAP_SECTIONS], pwsOnly: true },
-    { key: "marks-admin", label: "Marks & Assessment", icon: "edit-3", href: "/admin/marks", match: (p) => p.startsWith("/admin/marks"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS], pwsOnly: true },
-    { key: "report-cards-admin", label: "Report Cards", icon: "file-text", href: "/admin/report-cards", match: (p) => p.startsWith("/admin/report-cards"), permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS], pwsOnly: true },
-    { key: "coach-asm-admin", label: "Coach Assessments", icon: "clipboard", href: "/admin/coach-assessments", match: (p) => p.startsWith("/admin/coach-assessments"), permissions: [Permission.MANAGE_COACH_ASSESSMENTS_ADMIN] },
-    { key: "invoices", label: "Invoice Engine", icon: "file-text", href: "/admin/invoices", match: (p) => p.startsWith("/admin/invoices"), permissions: [Permission.COLLECT_PWS_FEES], pwsOnly: true },
-    { key: "fee-catalog", label: "Fee Catalogue", icon: "layers", href: "/admin/fee-catalog", match: (p) => p.startsWith("/admin/fee-catalog"), permissions: [Permission.MANAGE_FEES_HEADS] },
-    { key: "settings", label: "Settings", icon: "settings", href: "/(tabs)/profile", match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") },
-    { key: "notifications", label: "Notifications", icon: "bell", href: "/notifications", match: (p) => p.startsWith("/notifications"), excludeRoles: ["coach"] },
-  ],
-};
-
-const NAV_GROUPS: NavGroup[] = [
-  GRP_MANAGEMENT,
-  GRP_PEOPLE,
-  GRP_FINANCE,
-  GRP_OPERATIONS,
-  GRP_SYSTEM,
-];
-
-const isItemAllowed = (n: NavItem, user: User) => {
-  if (n.excludeRoles?.includes(user.role)) return false;
-  if (n.pwsOnly && user.organization === "ALPHA") return false;
-  if (n.alphaOnly && user.organization === "PWS") return false;
-  if (n.permissions?.length) {
-    return n.permissions.some((p) => hasPermission(user, p, n.permissionEntity));
+function loadSavedExpandState(): { groups: Record<string, boolean>; items: Record<string, boolean> } | null {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
   }
-  if (n.roles && !n.roles.includes(user.role)) return false;
-  return true;
+}
+
+function saveExpandState(groups: Record<string, boolean>, items: Record<string, boolean>) {
+  if (Platform.OS !== "web" || typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ groups, items }));
+  } catch {
+    /* ignore */
+  }
+}
+
+type NavRowProps = {
+  item: NavigationItem;
+  depth: number;
+  pathname: string;
+  collapsed: boolean;
+  openItems: Record<string, boolean>;
+  onToggleItem: (id: string) => void;
+  onNavigate: (href: string) => void;
 };
+
+function NavRow({ item, depth, pathname, collapsed, openItems, onToggleItem, onNavigate }: NavRowProps) {
+  const children = item.children || [];
+  const hasChildren = children.length > 0;
+  const active = itemMatchesPath(item, pathname);
+  const isOpen = openItems[item.id] ?? active;
+
+  if (collapsed) return null;
+
+  if (hasChildren) {
+    return (
+      <View>
+        <Pressable
+          testID={`nav-parent-${item.id}`}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: isOpen }}
+          onPress={() => onToggleItem(item.id)}
+          style={({ hovered }: any) => [
+            styles.item,
+            depth > 0 && styles.itemNested,
+            depth > 1 && styles.itemDeep,
+            hovered && styles.itemHover,
+            active && styles.itemParentActive,
+          ]}
+        >
+          <View style={[styles.itemIcon, active && styles.itemIconActive]}>
+            <Feather name={item.icon} size={16} color={active ? "#fff" : colors.muted} />
+          </View>
+          <Text style={[styles.itemTxt, active && styles.itemTxtActive]} numberOfLines={1}>{item.label}</Text>
+          <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.muted} />
+        </Pressable>
+        {isOpen && children.map((child) => (
+          <NavRow
+            key={child.id}
+            item={child}
+            depth={depth + 1}
+            pathname={pathname}
+            collapsed={collapsed}
+            openItems={openItems}
+            onToggleItem={onToggleItem}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </View>
+    );
+  }
+
+  if (!item.href) return null;
+
+  const leafActive = item.match(pathname);
+  return (
+    <Pressable
+      testID={`nav-${item.id}`}
+      accessibilityRole="link"
+      onPress={() => onNavigate(item.href!)}
+      style={({ hovered }: any) => [
+        styles.item,
+        depth > 0 && styles.itemNested,
+        depth > 1 && styles.itemDeep,
+        hovered && styles.itemHover,
+        leafActive && styles.itemActive,
+      ]}
+    >
+      <View style={[styles.itemIcon, leafActive && styles.itemIconActive]}>
+        <Feather name={item.icon} size={16} color={leafActive ? "#fff" : colors.muted} />
+      </View>
+      <Text style={[styles.itemTxt, leafActive && styles.itemTxtActive]} numberOfLines={1}>{item.label}</Text>
+    </Pressable>
+  );
+}
 
 export function Sidebar() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const [collapsed, setCollapsed] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    management: true,
-    people: true,
-    finance: true,
-    operations: true,
-    system: true,
+
+  const visibleGroups = useMemo(
+    () => (user ? filterNavigationGroups({ user }) : []),
+    [user],
+  );
+
+  const activeDefaults = useMemo(
+    () => initialExpandedState(visibleGroups, pathname),
+    [visibleGroups, pathname],
+  );
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const saved = loadSavedExpandState();
+    return saved?.groups || activeDefaults.groups;
   });
+  const [openItems, setOpenItems] = useState<Record<string, boolean>>(() => {
+    const saved = loadSavedExpandState();
+    return saved?.items || activeDefaults.items;
+  });
+
+  useEffect(() => {
+    const next = initialExpandedState(visibleGroups, pathname);
+    setOpenGroups((prev) => {
+      const merged = { ...prev };
+      Object.entries(next.groups).forEach(([k, v]) => { if (v) merged[k] = true; });
+      return merged;
+    });
+    setOpenItems((prev) => {
+      const merged = { ...prev };
+      Object.entries(next.items).forEach(([k, v]) => { if (v) merged[k] = true; });
+      return merged;
+    });
+  }, [pathname, visibleGroups]);
+
+  useEffect(() => {
+    saveExpandState(openGroups, openItems);
+  }, [openGroups, openItems]);
 
   if (!user) return null;
 
   const W = collapsed ? 76 : 256;
+  const flatLeaves = flattenLeafItems(visibleGroups);
 
-  const visibleGroups = NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((n) => isItemAllowed(n, user)),
-  })).filter((g) => g.items.length > 0);
-
-  const toggleGroup = (k: string) => setOpenGroups((prev) => ({ ...prev, [k]: !prev[k] }));
+  const toggleGroup = (id: string) => setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  const toggleItem = (id: string) => setOpenItems((prev) => ({ ...prev, [id]: !prev[id] }));
+  const onNavigate = (href: string) => router.push(href as any);
 
   return (
     <View style={[styles.sidebar, { width: W }]} testID="desktop-sidebar">
@@ -173,14 +193,13 @@ export function Sidebar() {
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 4 }} showsVerticalScrollIndicator={false}>
         {collapsed ? (
-          // Icon-only view — flat list of items (no group headers) for tight sidebar
-          visibleGroups.flatMap((g) => g.items).map((n) => {
-            const active = n.match(pathname || "");
+          flatLeaves.map((n) => {
+            const active = n.match(pathname);
             return (
               <Pressable
-                key={n.key}
-                testID={`nav-${n.key}`}
-                onPress={() => router.push(n.href as any)}
+                key={n.id}
+                testID={`nav-${n.id}`}
+                onPress={() => onNavigate(n.href!)}
                 style={({ hovered }: any) => [
                   styles.item,
                   hovered && styles.itemHover,
@@ -195,46 +214,38 @@ export function Sidebar() {
             );
           })
         ) : (
-          // Grouped/expanded view
-          visibleGroups.map((g) => {
-            const isOpen = !!openGroups[g.key];
-            const groupHasActive = g.items.some((it) => it.match(pathname || ""));
+          visibleGroups.map((g: NavigationGroup) => {
+            const isOpen = !!openGroups[g.id];
+            const groupActive = groupMatchesPath(g, pathname);
             return (
-              <View key={g.key} style={styles.group}>
+              <View key={g.id} style={styles.group}>
                 <Pressable
-                  testID={`group-${g.key}`}
-                  onPress={() => toggleGroup(g.key)}
-                  style={({ hovered }: any) => [styles.groupHeader, hovered && styles.groupHeaderHover]}
+                  testID={`group-${g.id}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: isOpen }}
+                  onPress={() => toggleGroup(g.id)}
+                  style={({ hovered }: any) => [styles.groupHeader, hovered && styles.groupHeaderHover, groupActive && styles.groupHeaderActive]}
                 >
-                  <View style={[styles.groupIcon, groupHasActive && styles.groupIconActive]}>
-                    <Feather name={g.icon} size={14} color={groupHasActive ? colors.primary : colors.muted} />
+                  <View style={[styles.groupIcon, groupActive && styles.groupIconActive]}>
+                    <Feather name={g.icon} size={14} color={groupActive ? colors.primary : colors.muted} />
                   </View>
-                  <Text style={[styles.groupLabel, groupHasActive && { color: colors.primary }]} numberOfLines={1}>{g.label}</Text>
+                  <Text style={[styles.groupLabel, groupActive && { color: colors.primary }]} numberOfLines={2}>{g.label}</Text>
                   <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.muted} />
                 </Pressable>
                 {isOpen && (
                   <View style={styles.groupBody}>
-                    {g.items.map((n) => {
-                      const active = n.match(pathname || "");
-                      return (
-                        <Pressable
-                          key={n.key}
-                          testID={`nav-${n.key}`}
-                          onPress={() => router.push(n.href as any)}
-                          style={({ hovered }: any) => [
-                            styles.item,
-                            styles.itemNested,
-                            hovered && styles.itemHover,
-                            active && styles.itemActive,
-                          ]}
-                        >
-                          <View style={[styles.itemIcon, active && styles.itemIconActive]}>
-                            <Feather name={n.icon} size={16} color={active ? "#fff" : colors.muted} />
-                          </View>
-                          <Text style={[styles.itemTxt, active && styles.itemTxtActive]} numberOfLines={1}>{n.label}</Text>
-                        </Pressable>
-                      );
-                    })}
+                    {g.children.map((item) => (
+                      <NavRow
+                        key={item.id}
+                        item={item}
+                        depth={0}
+                        pathname={pathname}
+                        collapsed={collapsed}
+                        openItems={openItems}
+                        onToggleItem={toggleItem}
+                        onNavigate={onNavigate}
+                      />
+                    ))}
                   </View>
                 )}
               </View>
@@ -302,40 +313,41 @@ const styles = StyleSheet.create({
   avatarTxt: { color: "#fff", fontWeight: "800", fontSize: 13 },
   profileName: { fontWeight: "700", color: colors.ink, fontSize: 13 },
   profileRole: { color: colors.muted, fontSize: 11, marginTop: 2, textTransform: "capitalize" },
-  group: { marginBottom: 4 },
+  group: { marginBottom: 2 },
   groupHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 7,
     marginHorizontal: 6,
-    marginTop: 4,
+    marginTop: 2,
     borderRadius: 8,
   },
   groupHeaderHover: { backgroundColor: colors.borderSoft },
+  groupHeaderActive: { backgroundColor: colors.primarySofter },
   groupIcon: {
     width: 22, height: 22, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: colors.borderSoft,
   },
   groupIconActive: { backgroundColor: colors.primarySoft },
-  groupLabel: { flex: 1, color: colors.muted, fontSize: 11, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase" },
-  groupBody: { paddingLeft: 6, marginTop: 2 },
+  groupLabel: { flex: 1, color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
+  groupBody: { paddingLeft: 4, marginTop: 1, borderLeftWidth: 1, borderLeftColor: colors.borderSoft, marginLeft: 18 },
   item: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginHorizontal: 6,
     marginVertical: 1,
     borderRadius: 8,
   },
-  itemNested: {
-    marginLeft: 14,
-  },
+  itemNested: { marginLeft: 8 },
+  itemDeep: { marginLeft: 14 },
   itemHover: { backgroundColor: colors.primarySofter },
   itemActive: { backgroundColor: colors.primarySoft },
-  itemIcon: { width: 26, height: 26, alignItems: "center", justifyContent: "center", borderRadius: 6 },
+  itemParentActive: { backgroundColor: "#EEF2FF" },
+  itemIcon: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 6 },
   itemIconActive: { backgroundColor: colors.primary },
   itemTxt: { color: colors.ink2, fontWeight: "600", fontSize: 13, flex: 1 },
   itemTxtActive: { color: colors.primary, fontWeight: "800" },

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Modal, TextInput, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../src/auth";
 import { BusinessEntity, Permission } from "../../src/rbac";
 import { formatDate, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO, isValidDisplayDate } from "../../src/dateFormat";
@@ -30,6 +30,7 @@ function inr(n?: number) { return `₹${(n ?? 0).toLocaleString("en-IN")}`; }
 
 export default function FeesScreen() {
   const router = useRouter();
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string | string[] }>();
   const { user } = useAuth();
   const [fees, setFees] = useState<Fee[]>([]);
   const [dash, setDash] = useState<any>(null);
@@ -43,6 +44,11 @@ export default function FeesScreen() {
 
   const allowed = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
     || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
+
+  useEffect(() => {
+    const raw = Array.isArray(tabParam) ? tabParam[0] : tabParam;
+    if (raw === "past-due" || raw === "overdue") setTab("Past Due");
+  }, [tabParam]);
 
   const load = useCallback(async () => {
     if (!allowed) { setLoading(false); return; }
