@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api } from "../src/auth";
+import { api, useAuth } from "../src/auth";
+import { isCoachUser } from "../src/coachAccess";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../src/ScreenStates";
 import { formatDateTime } from "../src/dateFormat";
 import { useBreakpoint } from "../src/useBreakpoint";
@@ -21,6 +22,7 @@ const TYPE_ICONS: Record<string, string> = {
 
 export default function Notifications() {
   const router = useRouter();
+  const { user } = useAuth();
   const { horizontalPadding } = useBreakpoint();
   const [items, setItems] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -28,7 +30,14 @@ export default function Notifications() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (user && isCoachUser(user)) {
+      router.replace("/(tabs)/dashboard");
+    }
+  }, [user, router]);
+
   const load = useCallback(async () => {
+    if (!user || isCoachUser(user)) return;
     setError("");
     try {
       const { data } = await api.get("/notifications");
@@ -42,11 +51,19 @@ export default function Notifications() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
   const onRefresh = () => { setRefreshing(true); load(); };
+
+  if (!user || isCoachUser(user)) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
 
   const markRead = async (id: string) => {
     await api.post(`/notifications/${id}/read`);

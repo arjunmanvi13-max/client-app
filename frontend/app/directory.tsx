@@ -1,14 +1,16 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api, ROLE_COLORS } from "../src/auth";
+import { api, ROLE_COLORS, useAuth } from "../src/auth";
+import { isCoachUser } from "../src/coachAccess";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../src/ScreenStates";
 import { useBreakpoint } from "../src/useBreakpoint";
 
 export default function Directory() {
   const router = useRouter();
+  const { user } = useAuth();
   const { horizontalPadding, contentMaxWidth } = useBreakpoint();
   const [users, setUsers] = useState<any[]>([]);
   const [filter, setFilter] = useState<string>("all");
@@ -17,7 +19,14 @@ export default function Directory() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (user && isCoachUser(user)) {
+      router.replace("/(tabs)/dashboard");
+    }
+  }, [user, router]);
+
   const load = useCallback(async () => {
+    if (!user || isCoachUser(user)) return;
     setError("");
     try {
       const { data } = await api.get("/users/directory");
@@ -29,10 +38,18 @@ export default function Directory() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => { load(); }, [load]);
   const onRefresh = () => { setRefreshing(true); load(); };
+
+  if (!user || isCoachUser(user)) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
 
   const roles = useMemo(() => ["all", ...Array.from(new Set(users.map((u) => u.role)))], [users]);
 

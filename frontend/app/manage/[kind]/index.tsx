@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { api, ROLE_COLORS, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
+import { isCoachUser } from "../../../src/coachAccess";
 
 const META: Record<string, { label: string; tint: string; isUser: boolean; subtitle: (x: any) => string }> = {
   admin: { label: "Sports Admins", tint: "#7C3AED", isUser: true, subtitle: (u) => `${u.email || u.mobile || ""} · ${u.organization || "ALPHA"}` },
@@ -47,6 +48,12 @@ export default function ManageList() {
   })();
 
   useEffect(() => {
+    if (user && isCoachUser(user) && kind === "staff") {
+      router.replace("/(tabs)/dashboard");
+    }
+  }, [user, kind, router]);
+
+  useEffect(() => {
     if (isStudent) {
       api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => setSections([]));
     }
@@ -84,6 +91,13 @@ export default function ManageList() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (!meta) return null;
+  if (user && isCoachUser(user) && kind === "staff") {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
 
   const visibleItems = items;
 

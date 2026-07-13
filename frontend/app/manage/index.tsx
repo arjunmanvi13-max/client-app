@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth, userHasPermission } from "../../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../src/rbac";
+import { isCoachUser } from "../../src/coachAccess";
 
 const KINDS = [
   { key: "admin", label: "Sports Admin", icon: "shield", tint: "#7C3AED", desc: "ALPHA Sports Admin — manages players, coaches & fees" },
@@ -19,6 +20,7 @@ export default function ManageHub() {
   const router = useRouter();
   const { user } = useAuth();
   if (!user) return null;
+  const isCoach = isCoachUser(user);
   const role = normalizeRole(user.role);
   const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS)
@@ -30,6 +32,7 @@ export default function ManageHub() {
     if ((user.can_manage || []).includes(key as any)) return true;
     if (key === "student" && userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)) return true;
     if (key === "player" && userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)) return true;
+    if (key === "staff" && isCoach) return false;
     if (key === "staff" && userHasPermission(user, Permission.MARK_PWS_ATTENDANCE)) return true;
     if (key === "parent" && isSuper) return true;
     return false;

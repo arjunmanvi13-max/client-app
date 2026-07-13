@@ -3,6 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth, ROLE_COLORS } from "../../src/auth";
+import { isCoachUser } from "../../src/coachAccess";
 import { useState } from "react";
 
 export default function Profile() {
@@ -17,7 +18,9 @@ export default function Profile() {
 
   if (!user) return null;
 
-  const canManageRosters = user.role === "admin" || user.role === "super_admin" || (user.role !== "teacher" && (user.can_manage || []).length > 0);
+  const isCoach = isCoachUser(user);
+  const canManageRosters = user.role === "admin" || user.role === "super_admin"
+    || (user.role !== "teacher" && !isCoach && (user.can_manage || []).length > 0);
 
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure?", [
@@ -62,8 +65,10 @@ export default function Profile() {
             <Row icon="user-plus" label="Manage users & rosters" onPress={() => router.push("/manage")} testID="menu-manage" />
           )}
           <Row icon="key" label="Change password" onPress={() => setPwdOpen(true)} testID="menu-change-pwd" />
-          <Row icon="bell" label="Notifications" onPress={() => router.push("/notifications")} testID="menu-notif" />
-          {user.role !== "teacher" && (
+          {!isCoach && (
+            <Row icon="bell" label="Notifications" onPress={() => router.push("/notifications")} testID="menu-notif" />
+          )}
+          {user.role !== "teacher" && !isCoach && (
             <Row icon="users" label="Directory" onPress={() => router.push("/directory")} testID="menu-dir" />
           )}
           <Row icon="info" label="About PWS & ALPHA" onPress={() => Alert.alert("PWS & ALPHA", "Unified task & attendance system v1.0")} testID="menu-about" />
