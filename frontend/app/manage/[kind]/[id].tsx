@@ -22,6 +22,7 @@ import {
   type PwsAdminDesignation,
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
+import { getManageListMeta } from "../../../src/manageKinds";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -137,26 +138,53 @@ export default function ManageEdit() {
   const router = useRouter();
   const isNew = id === "new";
   const userTypeKind = isApprovedLoginUserType(kindParam) ? (kindParam as LoginUserType) : null;
+  const rosterMeta = getManageListMeta(kindParam);
+  const isLoginUserKind = !!userTypeKind;
+  const isLegacyUserKind = rosterMeta?.isUser === true;
+  const isRosterPersonKind = rosterMeta?.isUser === false;
   const typeCatalog = userTypeKind ? CATALOG_BY_CODE[userTypeKind] : null;
-  const isUserKind = !!userTypeKind;
-  const isCoachKind = userTypeKind === UserRole.ALPHA_COACH;
+  const isUserKind = isLoginUserKind || isLegacyUserKind;
+  const isCoachKind = userTypeKind === UserRole.ALPHA_COACH || kindParam === "coach";
   const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
-  const isPlayerKind = false;
-  const isStaffKind = false;
-  const isStudentKind = false;
-  const displayTitle = typeCatalog?.displayName || kindParam || "User";
+  const isPlayerKind = kindParam === "player";
+  const isStaffKind = kindParam === "staff";
+  const isStudentKind = kindParam === "student";
+  const displayTitle = typeCatalog?.displayName || rosterMeta?.label || kindParam || "User";
 
   useEffect(() => {
     if (kindRaw === undefined) return;
-    if (!userTypeKind) router.replace("/manage");
-  }, [kindRaw, userTypeKind, router]);
+    if (!userTypeKind && !rosterMeta) router.replace("/manage");
+  }, [kindRaw, userTypeKind, rosterMeta, router]);
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
+    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
   const perms = user?.permissions || {};
-  const canEdit = isSuper && isUserKind;
-  const canDelete = canEdit && !isNew;
+  const canEdit = (() => {
+    if (isLoginUserKind) return isSuper;
+    if (!rosterMeta) return false;
+    if (isNew) {
+      if (isTeacher && isStudentKind) return false;
+      if (isAdmin) return true;
+      if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
+      if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
+      if (isLegacyUserKind) return (user?.can_manage || []).includes(kindParam);
+      return (user?.can_manage || []).includes(kindParam);
+    }
+    if (isTeacher && isStudentKind) return false;
+    if (isAdmin) return true;
+    if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
+    if (isPlayerKind) {
+      return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
+        || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
+    }
+    if (isLegacyUserKind) return isAdmin;
+    return (user?.can_manage || []).includes(kindParam);
+  })();
+  const canDelete = canEdit && !isNew && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
   const readOnly = !isNew && !canEdit;
 
   const [loading, setLoading] = useState(!isNew);
@@ -246,7 +274,7 @@ export default function ManageEdit() {
   const [coaches, setCoaches] = useState<any[]>([]);
 
   // Linked parents (student/player edit — admin only)
-  const canLinkParents = false;
+  const canLinkParents = !isNew && (isStudentKind || isPlayerKind) && isAdmin;
   const [parentUserIds, setParentUserIds] = useState<string[]>([]);
   const [parentUsers, setParentUsers] = useState<any[]>([]);
   const [showParentPicker, setShowParentPicker] = useState(false);
@@ -307,8 +335,9 @@ export default function ManageEdit() {
         if (isUserKind) {
           let u: any = null;
           try {
-            const { data: list } = await api.get("/users", { params: { user_type: userTypeKind } });
-            u = list.find((x: any) => x.id === id);
+            const params = userTypeKind ? { user_type: userTypeKind } : { role: kindParam };
+            const { data: list } = await api.get("/users", { params });
+            u = (Array.isArray(list) ? list : []).find((x: any) => x.id === id);
           } catch {
             /* fall through */
           }
@@ -345,12 +374,61 @@ export default function ManageEdit() {
             if (u.organization) setOrganization(u.organization);
             else if (typeCatalog) setOrganization(typeCatalog.entityScope);
           }
+        } else if (isRosterPersonKind) {
+          const { data: p } = await api.get(`/people/${id}`);
+          if (p) {
+            setName(p.name); setOrganization(p.organization);
+            setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
+            setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
+            setPwsClass(p.pws_class || "Class I");
+            setTransportEnabled(!!p.transport_enabled || (p.transport_fee_monthly || 0) > 0);
+            setTransportDistance((p.transport_distance as TransportDistance) || "Up to 5 km");
+            const ov = p.pws_fee_overrides || {};
+            setPwsOverrides(Object.fromEntries(Object.entries(ov).map(([k, v]) => [k, String(v)])));
+            setSectionId(p.section_id || null);
+            setAdmissionNumber(p.admission_number || "");
+            setRollNumber(p.roll_number || "");
+            setPlayerId(p.player_id || "");
+            setEmployeeId(p.employee_id || "");
+            setGender(p.gender || "");
+            setPersonEmail(p.email || "");
+            setAddress(p.address || "");
+            setGuardianName(p.guardian_name || p.father_name || "");
+            setGuardianPhone(p.guardian_phone || "");
+            setStaffDepartment(p.department || "");
+            setFatherName(p.father_name || p.guardian_name || "");
+            setAge(p.age ? String(p.age) : "");
+            setSkillLevel(p.skill_level || "");
+            setMobile(p.mobile || "");
+            setLocality(p.locality || "");
+            setCity(p.city || "");
+            setSlot(p.slot || "");
+            setAssignedCoachId(p.assigned_coach_id || null);
+            setCentre(p.centre || "");
+            setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
+            setDob(formatDate(p.dob || ""));
+            setTransportFeeMonthly(p.transport_fee_monthly ? String(p.transport_fee_monthly) : "");
+            setHostelFeeOverride(p.hostel_fee_override ? String(p.hostel_fee_override) : "");
+            setMonthlyFeeOverride(p.monthly_fee_override ? String(p.monthly_fee_override) : "");
+            setRegistrationFeeOverride(p.registration_fee_override ? String(p.registration_fee_override) : "");
+            setDateOfAdmission(formatDate(p.date_of_admission || ""));
+            setStatus(p.status === "deactivated" ? "deactivated" : "active");
+            setParentUserIds(p.parent_user_ids || []);
+          }
         }
       } catch (e: any) {
         Alert.alert("Error", e?.response?.data?.detail || "Failed to load user");
       } finally { setLoading(false); }
     })();
-  }, [id, kindParam, isNew, isUserKind, isPlayerKind, user, userTypeKind]);
+  }, [id, kindParam, isNew, isUserKind, isPlayerKind, isRosterPersonKind, user, userTypeKind, typeCatalog]);
+
+  useEffect(() => {
+    if (isStudentKind) {
+      api.get("/academic/sections").then((r) => {
+        setAcademicSections((r.data || []).map((sec: any) => ({ id: sec.id, label: sec.label })));
+      }).catch(() => setAcademicSections([]));
+    }
+  }, [isStudentKind]);
 
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -389,14 +467,17 @@ export default function ManageEdit() {
   };
 
   const save = async () => {
-    if (!userTypeKind) { showError("Invalid user type", "This form is not for an approved login user type."); return; }
-    if (!name.trim()) { showError("Name required", "Enter the user's full name."); return; }
-    if (isUserKind && isNew && (!email.trim() || !password.trim())) { showError("Required fields", "Email and password are required."); return; }
-    if (isCoachKind && assignedSports.length !== 1) {
+    if (!isLoginUserKind && !isRosterPersonKind && !isLegacyUserKind) {
+      showError("Invalid record type", "This form is not for a supported manage route.");
+      return;
+    }
+    if (!name.trim()) { showError("Name required", "Enter the full name."); return; }
+    if ((isLoginUserKind || isLegacyUserKind) && isNew && (!email.trim() || !password.trim())) { showError("Required fields", "Email and password are required."); return; }
+    if (isLoginUserKind && isCoachKind && assignedSports.length !== 1) {
       Alert.alert("Assigned sport required", "Select exactly one sport — Cricket or Football. A coach can only be assigned to one sport.");
       return;
     }
-    if (isUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
+    if (isLoginUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
       Alert.alert("Invalid email", "Email must belong to the @prarambhika.com domain");
       return;
     }
@@ -412,11 +493,11 @@ export default function ManageEdit() {
       Alert.alert("Date of Admission is required");
       return;
     }
-    if (isCoachKind && !(await confirmSportChangeIfNeeded())) return;
-    if (!(await confirmUserTypeChangeIfNeeded())) return;
+    if (isCoachKind && isLoginUserKind && !(await confirmSportChangeIfNeeded())) return;
+    if (isLoginUserKind && !(await confirmUserTypeChangeIfNeeded())) return;
     setSaving(true);
     try {
-      if (isUserKind) {
+      if (isLoginUserKind && userTypeKind) {
         const scopeOrg = typeCatalog?.entityScope || organization;
         if (isNew) {
           const body: any = {
@@ -457,7 +538,46 @@ export default function ManageEdit() {
           router.replace(`/manage/${kindParam}`);
           return;
         }
-      } else if (false && isPlayerKind) {
+      } else if (isLegacyUserKind) {
+        if (isNew) {
+          const body: any = {
+            email: email.trim().toLowerCase(),
+            password,
+            name,
+            role: kindParam,
+            organization,
+            department: department || null,
+            phone: phone || null,
+          };
+          if (isAdmin && customizePerms) body.permissions = permMap;
+          if (isAdmin) {
+            body.can_manage = canManage;
+            if (kindParam === "coach") {
+              body.coach_permissions = coachPermissions;
+              body.coach_type = coachType;
+              body.assigned_centres = assignedCentres;
+              body.assigned_sport = assignedSports[0] || null;
+              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
+            }
+          }
+          await api.post("/users", body);
+        } else {
+          const body: any = { name, organization, department: department || null, phone: phone || null };
+          if (password) body.password = password;
+          if (isAdmin && email.trim()) body.email = email.trim().toLowerCase();
+          if (isAdmin) {
+            body.can_manage = canManage;
+            if (kindParam === "coach") {
+              body.coach_permissions = coachPermissions;
+              body.coach_type = coachType;
+              body.assigned_centres = assignedCentres;
+              body.assigned_sport = assignedSports[0] || null;
+              body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
+            }
+          }
+          await api.patch(`/users/${id}`, body);
+        }
+      } else if (isPlayerKind) {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
         const body: any = {
           name, kind: "player", organization: "ALPHA",
@@ -590,7 +710,7 @@ export default function ManageEdit() {
           <Text style={s.label}>{isPlayerKind ? "Player Name *" : "Name *"}</Text>
           <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
 
-          {isUserKind && (
+          {isLoginUserKind && (
             <>
               <Text style={s.label}>User Type</Text>
               <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" }]} testID="field-user-type">
@@ -629,7 +749,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {isUserKind && (
+          {(isLoginUserKind || isLegacyUserKind) && (
             <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
               <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || isSuper} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !isSuper && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
