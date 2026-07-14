@@ -32,6 +32,8 @@ import {
 } from "../../../src/dateFormat";
 import { StudentRosterFormFields } from "../../../src/StudentRosterFormFields";
 import { PlayerRosterFormFields, type PlayerType } from "../../../src/PlayerRosterFormFields";
+import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
+import { formColors } from "../../../src/theme";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -224,6 +226,7 @@ export default function ManageEdit() {
   const [guardianPhone, setGuardianPhone] = useState("");
   const [staffDepartment, setStaffDepartment] = useState("");
   const [fatherName, setFatherName] = useState("");
+  const [motherName, setMotherName] = useState("");
   const [age, setAge] = useState("");
   const [skillLevel, setSkillLevel] = useState<"Beginner" | "Intermediate" | "Advanced" | "">("");
   const [mobile, setMobile] = useState("");
@@ -385,6 +388,7 @@ export default function ManageEdit() {
             setGuardianPhone(p.guardian_phone || "");
             setStaffDepartment(p.department || "");
             setFatherName(p.father_name || p.guardian_name || "");
+            setMotherName(p.mother_name || "");
             setAge(p.age ? String(p.age) : "");
             setSkillLevel(p.skill_level || "");
             setMobile(p.mobile || "");
@@ -622,6 +626,8 @@ export default function ManageEdit() {
           address: address || null,
           guardian_name: guardianName || null,
           guardian_phone: guardianPhone || null,
+          father_name: guardianName || fatherName || null,
+          mother_name: motherName || null,
         };
         if (isStudentKind) {
           body.admission_number = admissionNumber || null;
@@ -680,21 +686,35 @@ export default function ManageEdit() {
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
+    <SafeAreaView style={[s.safe, isStudentKind && s.safeStudent]} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
-            <Feather name="x" size={22} color="#0F172A" />
-          </TouchableOpacity>
-          <Text style={s.h1}>{isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}</Text>
-          {!isNew && canDelete && (
-            <TouchableOpacity testID="delete-btn" onPress={onDelete} style={s.delBtn}>
-              <Feather name="trash-2" size={18} color="#EF4444" />
+        {!isStudentKind && (
+          <View style={s.header}>
+            <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
+              <Feather name="x" size={22} color="#0F172A" />
             </TouchableOpacity>
-          )}
-        </View>
+            <Text style={s.h1}>{isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}</Text>
+            {!isNew && canDelete && (
+              <TouchableOpacity testID="delete-btn" onPress={onDelete} style={s.delBtn}>
+                <Feather name="trash-2" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
-        <ScrollView contentContainerStyle={s.scroll}>
+        <ScrollView contentContainerStyle={isStudentKind ? s.scrollStudent : s.scroll}>
+          {isStudentKind && (
+            <FormPageHeader
+              breadcrumb="DIRECTORY · STUDENTS"
+              title={isNew ? "Add New Student" : readOnly ? "View Student" : "Edit Student"}
+              onCancel={() => router.back()}
+              onSave={canEdit ? save : undefined}
+              saving={saving}
+              saveLabel={isNew ? "Save Student" : "Save changes"}
+              readOnly={readOnly}
+            />
+          )}
+
           {!isStudentKind && !isPlayerKind && (
             <>
               <Text style={s.label}>Name *</Text>
@@ -795,6 +815,8 @@ export default function ManageEdit() {
               setTransportDistance={setTransportDistance}
               guardianName={guardianName}
               setGuardianName={setGuardianName}
+              motherName={motherName}
+              setMotherName={setMotherName}
               guardianPhone={guardianPhone}
               setGuardianPhone={setGuardianPhone}
               pwsOverrides={pwsOverrides}
@@ -1141,6 +1163,7 @@ export default function ManageEdit() {
           )}
         </ScrollView>
 
+        {!isStudentKind && (
         <View style={s.bottomBar}>
           {canEdit && (
           <TouchableOpacity testID="save-btn" onPress={save} disabled={saving} style={[s.saveBtn, saving && { opacity: 0.6 }]}>
@@ -1148,6 +1171,7 @@ export default function ManageEdit() {
           </TouchableOpacity>
           )}
         </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1155,6 +1179,8 @@ export default function ManageEdit() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4F5F7" },
+  safeStudent: { backgroundColor: formColors.pageBg },
+  scrollStudent: { padding: 24, paddingBottom: 48, maxWidth: 1200, alignSelf: "center", width: "100%" },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   backBtn: { padding: 8 },
   h1: { fontSize: 18, fontWeight: "700", color: "#0F172A", textTransform: "capitalize", flex: 1 },

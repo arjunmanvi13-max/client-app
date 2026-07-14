@@ -36,8 +36,18 @@ export const colors = {
   infoSoft: "#E0F2FE",
 } as const;
 
-export const radii = { sm: 8, md: 12, lg: 14, xl: 20, pill: 999 } as const;
+export const radii = { sm: 8, md: 12, lg: 14, xl: 16, xxl: 20, pill: 999 } as const;
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
+
+/** Polished form surfaces — aligned with dashboard Add Student spec. */
+export const formColors = {
+  primary: "#002060",
+  primaryHover: "#001A4D",
+  primarySoft: "#E8EEF8",
+  pageBg: "#F5F7FA",
+  danger: "#FF4D4D",
+  dangerSoft: "#FFF0F0",
+} as const;
 export const shadow = {
   sm: { shadowColor: "#0F172A", shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   md: { shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
