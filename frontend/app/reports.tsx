@@ -60,14 +60,31 @@ const SECTION_DROPDOWN_OPTIONS: FormSelectOption[] = [
 const SECTION_ALL_OPTION: FormSelectOption[] = [{ value: "All", label: "All sections" }];
 const CENTRES = ["All", "Balua", "Harding Park"] as const;
 const SPORTS = ["All", "Cricket", "Football"] as const;
+const PLAYER_CATEGORIES = ["All", "Daily", "Hostel Only", "Day Boarding", "Boarding"] as const;
+
+const SPORT_DROPDOWN_OPTIONS: FormSelectOption[] = [
+  { value: "All", label: "All sports" },
+  ...SPORTS.filter((s) => s !== "All").map((s) => ({ value: s, label: s })),
+];
+
+const CENTRE_DROPDOWN_OPTIONS: FormSelectOption[] = [
+  { value: "All", label: "All centres" },
+  ...CENTRES.filter((c) => c !== "All").map((c) => ({ value: c, label: c })),
+];
+
+const PLAYER_CATEGORY_DROPDOWN_OPTIONS: FormSelectOption[] = [
+  { value: "All", label: "All categories" },
+  ...PLAYER_CATEGORIES.filter((c) => c !== "All").map((c) => ({ value: c, label: c })),
+];
+
+const PWS_ONLY_REPORTS = new Set(["students", "marks-summary", "report-card-status"]);
+const ACADEMIC_REPORTS = new Set(["students", "marks-summary", "report-card-status", "attendance-summary", "attendance-detail"]);
+const ALPHA_PLAYER_REPORTS = new Set(["players", "attendance-summary", "attendance-detail", "fee-collection", "payment-receipts", "staff"]);
+const FINANCE_REPORTS = new Set(["fee-collection", "outstanding-invoices", "payment-receipts"]);
+const ATTENDANCE_REPORTS = new Set(["attendance-summary", "attendance-detail"]);
 const ATTENDANCE_STATUSES = ["All", "present", "absent", "late", "leave"] as const;
 const INVOICE_STATUSES = ["All", "issued", "overdue", "partially_paid", "paid", "draft"] as const;
 const PAYMENT_METHODS = ["All", "Cash", "Online", "UPI", "Cheque"] as const;
-
-const ACADEMIC_REPORTS = new Set(["students", "marks-summary", "report-card-status", "attendance-summary", "attendance-detail"]);
-const SPORTS_REPORTS = new Set(["players", "attendance-summary", "attendance-detail", "fee-collection", "payment-receipts"]);
-const FINANCE_REPORTS = new Set(["fee-collection", "outstanding-invoices", "payment-receipts"]);
-const ATTENDANCE_REPORTS = new Set(["attendance-summary", "attendance-detail"]);
 
 function inr(n: number) { return `₹${(n || 0).toLocaleString("en-IN")}`; }
 function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -133,7 +150,7 @@ export default function ReportsScreen() {
   const isPwsAdmin = normalizeRole(user?.role || "") === UserRole.PWS_ADMIN;
   const canPickEntity = userHasPermission(user, Permission.MANAGE_ACCESS) || user?.organization === "BOTH";
 
-  const [mvpReportId, setMvpReportId] = useState<ReportId>("students");
+  const [mvpReportId, setMvpReportId] = useState<ReportId>(isSportsAdmin ? "players" : "students");
   const [periodKind, setPeriodKind] = useState<PeriodKind>("this_month");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -141,6 +158,7 @@ export default function ReportsScreen() {
 
   const [centre, setCentre] = useState("All");
   const [sport, setSport] = useState("All");
+  const [playerCategory, setPlayerCategory] = useState("All");
   const [pwsClass, setPwsClass] = useState("All");
   const [sectionLetter, setSectionLetter] = useState("All");
   const [status, setStatus] = useState("All");
@@ -174,11 +192,12 @@ export default function ReportsScreen() {
     to: range.to,
     centre,
     sport,
+    playerCategory,
     pwsClass,
     sectionLetter,
     status,
     paymentMethod,
-  }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, centre, sport, pwsClass, sectionLetter, status, paymentMethod]);
+  }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, centre, sport, playerCategory, pwsClass, sectionLetter, status, paymentMethod]);
 
   const entityOptions = useMemo(() => {
     if (isSportsAdmin) return ["ALPHA"] as const;
@@ -186,22 +205,27 @@ export default function ReportsScreen() {
     return ["PWS"] as const;
   }, [isSportsAdmin, canPickEntity]);
 
-  const showAcademic = ACADEMIC_REPORTS.has(mvpReportId);
-  const showSports = SPORTS_REPORTS.has(mvpReportId);
+  const isAlphaEntity = institution === "ALPHA";
+  const isPwsEntity = institution === "PWS";
+  const isCombinedEntity = institution === "BOTH";
+
+  const showPwsAcademic = (isPwsEntity || isCombinedEntity) && ACADEMIC_REPORTS.has(mvpReportId);
+  const showAlphaPlayerFilters = (isAlphaEntity || isCombinedEntity) && ALPHA_PLAYER_REPORTS.has(mvpReportId);
   const showFinance = FINANCE_REPORTS.has(mvpReportId);
   const showAttendance = ATTENDANCE_REPORTS.has(mvpReportId);
 
   const advancedFilterCount = useMemo(() => {
     let n = 0;
-    if (centre !== "All") n++;
-    if (sport !== "All") n++;
-    if (pwsClass !== "All") n++;
-    if (sectionLetter !== "All") n++;
+    if (showAlphaPlayerFilters && centre !== "All") n++;
+    if (showAlphaPlayerFilters && sport !== "All") n++;
+    if (showAlphaPlayerFilters && playerCategory !== "All") n++;
+    if (showPwsAcademic && pwsClass !== "All") n++;
+    if (showPwsAcademic && sectionLetter !== "All") n++;
     if (status !== "All") n++;
     if (paymentMethod !== "All") n++;
     if (periodKind === "custom" && (customFrom || customTo)) n++;
     return n;
-  }, [centre, sport, pwsClass, sectionLetter, status, paymentMethod, periodKind, customFrom, customTo]);
+  }, [showAlphaPlayerFilters, showPwsAcademic, centre, sport, playerCategory, pwsClass, sectionLetter, status, paymentMethod, periodKind, customFrom, customTo]);
 
   const activeChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -219,10 +243,13 @@ export default function ReportsScreen() {
       });
     }
 
-    if (centre !== "All") chips.push({ key: "centre", label: `Centre: ${centre}`, onRemove: () => setCentre("All") });
-    if (sport !== "All") chips.push({ key: "sport", label: `Sport: ${sport}`, onRemove: () => setSport("All") });
-    if (pwsClass !== "All") chips.push({ key: "class", label: `Class: ${pwsClass}`, onRemove: () => setPwsClass("All") });
-    if (sectionLetter !== "All") {
+    if (showAlphaPlayerFilters && centre !== "All") chips.push({ key: "centre", label: `Centre: ${centre}`, onRemove: () => setCentre("All") });
+    if (showAlphaPlayerFilters && sport !== "All") chips.push({ key: "sport", label: `Sport: ${sport}`, onRemove: () => setSport("All") });
+    if (showAlphaPlayerFilters && playerCategory !== "All") {
+      chips.push({ key: "playerCategory", label: `Category: ${playerCategory}`, onRemove: () => setPlayerCategory("All") });
+    }
+    if (showPwsAcademic && pwsClass !== "All") chips.push({ key: "class", label: `Class: ${pwsClass}`, onRemove: () => setPwsClass("All") });
+    if (showPwsAcademic && sectionLetter !== "All") {
       chips.push({
         key: "section",
         label: `Section: ${sectionLetter}`,
@@ -232,7 +259,7 @@ export default function ReportsScreen() {
     if (status !== "All") chips.push({ key: "status", label: `Status: ${status}`, onRemove: () => setStatus("All") });
     if (paymentMethod !== "All") chips.push({ key: "payment", label: `Payment: ${paymentMethod}`, onRemove: () => setPaymentMethod("All") });
     return chips;
-  }, [institution, periodKind, customFrom, customTo, centre, sport, pwsClass, sectionLetter, status, paymentMethod]);
+  }, [institution, periodKind, customFrom, customTo, showAlphaPlayerFilters, showPwsAcademic, centre, sport, playerCategory, pwsClass, sectionLetter, status, paymentMethod]);
 
   const canExport = runState === "ready" && !!data && !!exportParams && !loading;
   const showPreview = runState === "loading" || runState === "ready" || runState === "outdated" || runState === "error";
@@ -244,6 +271,7 @@ export default function ReportsScreen() {
     if (range.to) p.date_to = range.to;
     if (centre !== "All") p.centre = centre;
     if (sport !== "All") p.sport = sport;
+    if (playerCategory !== "All") p.player_type = playerCategory;
     if (pwsClass !== "All") {
       if (sectionLetter !== "All") {
         const { id } = resolveSectionMatch(pwsClass, sectionLetter, sections);
@@ -255,7 +283,7 @@ export default function ReportsScreen() {
     }
     if (status !== "All") p.status = status;
     return p;
-  }, [institution, range, centre, sport, pwsClass, sectionLetter, sections, status]);
+  }, [institution, range, centre, sport, playerCategory, pwsClass, sectionLetter, sections, status]);
 
   const runReport = useCallback(async () => {
     if (customRangeIncomplete) {
@@ -294,6 +322,23 @@ export default function ReportsScreen() {
   }, [pwsClass]);
 
   useEffect(() => {
+    if (institution === "ALPHA" && PWS_ONLY_REPORTS.has(mvpReportId)) {
+      setMvpReportId("players");
+    }
+  }, [institution, mvpReportId]);
+
+  useEffect(() => {
+    if (institution === "ALPHA") {
+      setPwsClass("All");
+      setSectionLetter("All");
+    } else if (institution === "PWS") {
+      setCentre("All");
+      setSport("All");
+      setPlayerCategory("All");
+    }
+  }, [institution]);
+
+  useEffect(() => {
     setRunState("idle");
     setData(null);
     setError("");
@@ -311,6 +356,7 @@ export default function ReportsScreen() {
   const clearAllFilters = () => {
     setCentre("All");
     setSport("All");
+    setPlayerCategory("All");
     setPwsClass("All");
     setSectionLetter("All");
     setStatus("All");
@@ -493,8 +539,8 @@ export default function ReportsScreen() {
         {/* Advanced filters — desktop inline panel */}
         {filtersOpen && !isMobile && (
           <AdvancedFiltersPanel
-            showAcademic={showAcademic}
-            showSports={showSports}
+            showPwsAcademic={showPwsAcademic}
+            showAlphaPlayerFilters={showAlphaPlayerFilters}
             showFinance={showFinance}
             showAttendance={showAttendance}
             periodKind={periodKind}
@@ -504,6 +550,7 @@ export default function ReportsScreen() {
             setCustomTo={setCustomTo}
             centre={centre} setCentre={setCentre}
             sport={sport} setSport={setSport}
+            playerCategory={playerCategory} setPlayerCategory={setPlayerCategory}
             pwsClass={pwsClass} setPwsClass={setPwsClass}
             sectionLetter={sectionLetter} setSectionLetter={setSectionLetter}
             status={status} setStatus={setStatus}
@@ -639,8 +686,8 @@ export default function ReportsScreen() {
         sheet
       >
         <AdvancedFiltersPanel
-          showAcademic={showAcademic}
-          showSports={showSports}
+          showPwsAcademic={showPwsAcademic}
+          showAlphaPlayerFilters={showAlphaPlayerFilters}
           showFinance={showFinance}
           showAttendance={showAttendance}
           periodKind={periodKind}
@@ -650,6 +697,7 @@ export default function ReportsScreen() {
           setCustomTo={setCustomTo}
           centre={centre} setCentre={setCentre}
           sport={sport} setSport={setSport}
+          playerCategory={playerCategory} setPlayerCategory={setPlayerCategory}
           pwsClass={pwsClass} setPwsClass={setPwsClass}
           sectionLetter={sectionLetter} setSectionLetter={setSectionLetter}
           status={status} setStatus={setStatus}
@@ -744,6 +792,55 @@ function PickerModal({ visible, onClose, title, children, sheet }: {
   );
 }
 
+function AlphaFilterDropdowns({
+  sport,
+  setSport,
+  playerCategory,
+  setPlayerCategory,
+  centre,
+  setCentre,
+}: {
+  sport: string;
+  setSport: (v: string) => void;
+  playerCategory: string;
+  setPlayerCategory: (v: string) => void;
+  centre: string;
+  setCentre: (v: string) => void;
+}) {
+  const { isMobile } = useBreakpoint();
+
+  return (
+    <View style={s.academicFilterGrid}>
+      <View style={[s.academicFilterGrid, !isMobile && s.academicFilterGridWide]}>
+        <FormSelect
+          label="Sport"
+          compact
+          value={sport}
+          options={SPORT_DROPDOWN_OPTIONS}
+          onChange={setSport}
+          testID="sport"
+        />
+        <FormSelect
+          label="Player category"
+          compact
+          value={playerCategory}
+          options={PLAYER_CATEGORY_DROPDOWN_OPTIONS}
+          onChange={setPlayerCategory}
+          testID="player-category"
+        />
+      </View>
+      <FormSelect
+        label="Centre"
+        compact
+        value={centre}
+        options={CENTRE_DROPDOWN_OPTIONS}
+        onChange={setCentre}
+        testID="centre"
+      />
+    </View>
+  );
+}
+
 function AcademicFilterDropdowns({
   pwsClass,
   setPwsClass,
@@ -809,11 +906,15 @@ function FilterSelect({ label, value, options, onChange, testID, allLabel }: {
 }
 
 function AdvancedFiltersPanel(props: {
-  showAcademic: boolean; showSports: boolean; showFinance: boolean; showAttendance: boolean;
+  showPwsAcademic: boolean;
+  showAlphaPlayerFilters: boolean;
+  showFinance: boolean;
+  showAttendance: boolean;
   periodKind: PeriodKind; customFrom: string; customTo: string;
   setCustomFrom: (v: string) => void; setCustomTo: (v: string) => void;
   centre: string; setCentre: (v: string) => void;
   sport: string; setSport: (v: string) => void;
+  playerCategory: string; setPlayerCategory: (v: string) => void;
   pwsClass: string; setPwsClass: (v: string) => void;
   sectionLetter: string; setSectionLetter: (v: string) => void;
   status: string; setStatus: (v: string) => void;
@@ -822,10 +923,11 @@ function AdvancedFiltersPanel(props: {
   onClose?: () => void; embedded?: boolean;
 }) {
   const {
-    showAcademic, showSports, showFinance, showAttendance,
+    showPwsAcademic, showAlphaPlayerFilters, showFinance, showAttendance,
     periodKind, customFrom, customTo, setCustomFrom, setCustomTo,
-    centre, setCentre, sport, setSport, pwsClass, setPwsClass,
-    sectionLetter, setSectionLetter, status, setStatus, paymentMethod, setPaymentMethod,
+    centre, setCentre, sport, setSport, playerCategory, setPlayerCategory,
+    pwsClass, setPwsClass, sectionLetter, setSectionLetter,
+    status, setStatus, paymentMethod, setPaymentMethod,
     sections, onClose, embedded,
   } = props;
 
@@ -852,7 +954,7 @@ function AdvancedFiltersPanel(props: {
         </View>
       )}
 
-      {showAcademic && (
+      {showPwsAcademic && (
         <View style={s.filterGroup}>
           <Text style={s.filterGroupTitle}>People & Academic</Text>
           <AcademicFilterDropdowns
@@ -864,15 +966,21 @@ function AdvancedFiltersPanel(props: {
         </View>
       )}
 
-      {showSports && (
+      {showAlphaPlayerFilters && (
         <View style={s.filterGroup}>
-          <Text style={s.filterGroupTitle}>Sports</Text>
-          <FilterSelect label="Centre" value={centre} options={CENTRES} onChange={setCentre} testID="centre" />
-          <FilterSelect label="Sport" value={sport} options={SPORTS} onChange={setSport} testID="sport" />
+          <Text style={s.filterGroupTitle}>ALPHA Players</Text>
+          <AlphaFilterDropdowns
+            sport={sport}
+            setSport={setSport}
+            playerCategory={playerCategory}
+            setPlayerCategory={setPlayerCategory}
+            centre={centre}
+            setCentre={setCentre}
+          />
         </View>
       )}
 
-          {showFinance && !showAttendance && (
+      {showFinance && !showAttendance && (
         <View style={s.filterGroup}>
           <Text style={s.filterGroupTitle}>Finance</Text>
           <FilterSelect label="Invoice status" value={status} options={INVOICE_STATUSES} onChange={setStatus} testID="status" />
