@@ -14,6 +14,10 @@ function run() {
 
   const labels = APPROVED_LOGIN_USER_TYPES.map((t) => CATALOG_BY_CODE[t].displayName);
   assert(labels.includes("Super Admin"), "Includes Super Admin");
+  assert(labels.includes("PWS Admin"), "Includes PWS Admin");
+  assert(labels.includes("ALPHA Admin"), "Includes ALPHA Admin");
+  assert(labels.includes("PWS Accounts"), "Includes PWS Accounts");
+  assert(labels.includes("ALPHA Accounts"), "Includes ALPHA Accounts");
   assert(labels.includes("PWS Teachers"), "Includes PWS Teachers");
   assert(labels.includes("ALPHA Coaches"), "Includes ALPHA Coaches");
 

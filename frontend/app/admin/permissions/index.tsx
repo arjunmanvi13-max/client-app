@@ -87,10 +87,24 @@ export default function CategoryPermissionsScreen() {
     setError("");
     try {
       const { data } = await api.get("/permissions/categories");
-      const cats: CategorySummary[] = data.categories || [];
-      setCategories(cats);
-      if (!cats.find((c) => c.user_type === selected) && cats.length) {
-        setSelected(cats.find((c) => !c.locked)?.user_type || cats[0].user_type);
+      const fromApi: CategorySummary[] = data.categories || [];
+      // Ensure all seven canonical types appear even if API omits any
+      const merged: CategorySummary[] = APPROVED_LOGIN_USER_TYPES.map((userType) => {
+        const hit = fromApi.find((c) => c.user_type === userType);
+        const meta = CATALOG_BY_CODE[userType];
+        if (hit) return hit;
+        return {
+          user_type: userType,
+          display_name: meta.displayName,
+          entity_scope: meta.entityScope,
+          locked: userType === "super_admin",
+          enabled_count: 0,
+          total_count: 0,
+        };
+      });
+      setCategories(merged);
+      if (!merged.find((c) => c.user_type === selected)) {
+        setSelected(merged.find((c) => !c.locked)?.user_type || merged[0].user_type);
       }
     } catch (e: any) {
       setError(permissionsApiError(e, "Failed to load categories"));
@@ -227,9 +241,15 @@ export default function CategoryPermissionsScreen() {
       {loading ? (
         <ActivityIndicator color="#0F766E" style={{ marginTop: 40 }} />
       ) : (
-        <View style={[s.body, isWide && s.bodyWide, { paddingHorizontal: horizontalPadding }]}>
-          {/* Category list */}
-          <ScrollView style={[s.catList, isWide && s.catListWide]} contentContainerStyle={{ paddingBottom: 16 }}>
+        <View style={[s.body, isWide && s.bodyWide, { paddingHorizontal: horizontalPadding, flex: 1 }]}>
+          {/* Category list — all seven login user types */}
+          <View style={isWide ? s.catColWide : undefined}>
+            <Text style={s.catColLabel}>User categories ({categories.length || 7})</Text>
+            <ScrollView
+              style={isWide ? s.catListWide : s.catListMobile}
+              contentContainerStyle={s.catListContent}
+              showsVerticalScrollIndicator
+            >
             {categories.map((cat) => {
               const meta = CATALOG_BY_CODE[cat.user_type];
               const active = selected === cat.user_type;
@@ -254,7 +274,8 @@ export default function CategoryPermissionsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+            </ScrollView>
+          </View>
 
           {/* Permissions panel */}
           <View style={[s.panel, isWide && s.panelWide]}>
@@ -377,10 +398,13 @@ const s = StyleSheet.create({
   overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: colors.hint },
   h1: { fontSize: 22, fontWeight: "800", color: colors.ink, marginTop: 2 },
   sub: { fontSize: 12, color: colors.muted2, marginTop: 4, maxWidth: 520 },
-  body: { flex: 1, gap: 12 },
+  body: { flex: 1, gap: 12, minHeight: 0 },
   bodyWide: { flexDirection: "row", alignItems: "stretch" },
-  catList: { maxHeight: 220 },
-  catListWide: { width: 280, maxHeight: undefined, flexShrink: 0 },
+  catColWide: { width: 300, flexShrink: 0, alignSelf: "stretch" },
+  catColLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6, color: colors.muted2, textTransform: "uppercase", marginBottom: 8, paddingHorizontal: 2 },
+  catListMobile: { maxHeight: 320 },
+  catListWide: { flex: 1 },
+  catListContent: { paddingBottom: 24 },
   catItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -397,7 +421,7 @@ const s = StyleSheet.create({
   catName: { fontSize: 14, fontWeight: "700", color: colors.ink2 },
   catNameActive: { color: "#0F766E" },
   catMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
-  panel: { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: 16, ...shadow.sm },
+  panel: { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: 16, ...shadow.sm, minHeight: 0 },
   panelWide: { minHeight: 400 },
   panelHead: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" },
   panelTitle: { fontSize: 18, fontWeight: "800", color: colors.ink },
