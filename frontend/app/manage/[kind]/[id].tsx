@@ -21,6 +21,7 @@ import {
   type LoginUserType,
   type PwsAdminDesignation,
 } from "../../../src/userClassification";
+import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -618,6 +619,12 @@ export default function ManageEdit() {
                     ))}
                   </View>
                 </>
+              )}
+              {userTypeKind && (
+                <CategoryPermissionsPreview
+                  userType={userTypeKind}
+                  displayName={displayTitle}
+                />
               )}
             </>
           )}

@@ -43,6 +43,12 @@ function run() {
   const superGroups = filterNavigationGroups({ user: superAdmin });
   assert(superGroups.length === 6, "Super Admin should see all six groups");
 
+  const systemGroup = superGroups.find((g) => g.id === "system");
+  const accessControl = systemGroup?.children.find((c) => c.id === "access-control");
+  assert(!!accessControl, "System group includes Access Control submenu");
+  assert(accessControl?.children?.some((c) => c.id === "permissions"), "Access Control includes Permissions");
+  assert(accessControl?.children?.some((c) => c.id === "manage-users"), "Access Control includes Manage Users & Rosters");
+
   const hrefs = flattenLeafItems(superGroups).map((i) => i.href).filter(Boolean) as string[];
   assert(new Set(hrefs).size === hrefs.length, "No duplicate hrefs in Super Admin nav tree");
 
@@ -90,6 +96,13 @@ function run() {
   const active = initialExpandedState(superGroups, "/coach/assessments/abc");
   assert(active.groups.academics === true, "Academics group expands for assessment detail");
   assert(active.items.assessments === true, "Assessments parent expands for active child");
+
+  const accessActive = initialExpandedState(superGroups, "/manage/pws_admin");
+  assert(accessActive.items["access-control"] === true, "Access Control expands for manage user list");
+  assert(accessActive.groups.system === true, "System group expands for manage user list");
+
+  const permActive = initialExpandedState(superGroups, "/admin/permissions");
+  assert(permActive.items["access-control"] === true, "Access Control expands for permissions page");
 
   const playersItem = NAVIGATION_GROUPS.flatMap((g) => g.children)
     .flatMap(function walk(i): typeof NAVIGATION_GROUPS[0]["children"] {

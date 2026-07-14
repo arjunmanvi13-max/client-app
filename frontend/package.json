@@ -11,7 +11,7 @@
     "lint": "expo lint",
     "build": "expo export --platform web",
     "test:nav": "npx --yes tsx src/navigationConfig.verify.ts",
-    "test:category-perms": "npx --yes tsx src/categoryPermissions.verify.ts"
+    "test:category-perms": "npx --yes tsx src/categoryPermissions.verify.ts && npx --yes tsx src/categoryPermissionsUtil.verify.ts"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",

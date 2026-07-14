@@ -43,7 +43,7 @@ export default function ManageHub() {
           <Feather name="chevron-left" size={22} color="#0F172A" />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.h1}>Manage</Text>
+          <Text style={s.h1}>Manage Users & Rosters</Text>
           <Text style={s.sub}>Approved login user types only</Text>
         </View>
       </View>

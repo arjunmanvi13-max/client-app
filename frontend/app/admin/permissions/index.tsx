@@ -10,11 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission } from "../../../src/rbac";
 import { getApiError } from "../../../src/ScreenStates";
-import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, type LoginUserType } from "../../../src/userClassification";
+import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, isApprovedLoginUserType, resolveRouteParam, type LoginUserType } from "../../../src/userClassification";
 import { colors, radii, shadow } from "../../../src/theme";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 
@@ -25,6 +25,7 @@ type CategorySummary = {
   locked: boolean;
   enabled_count: number;
   total_count: number;
+  active_user_count: number;
 };
 
 type ModuleNode = {
@@ -70,6 +71,7 @@ function permissionsApiError(e: any, fallback: string): string {
 
 export default function CategoryPermissionsScreen() {
   const router = useRouter();
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string | string[] }>();
   const { user } = useAuth();
   const { isWide, horizontalPadding } = useBreakpoint();
   const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -92,7 +94,7 @@ export default function CategoryPermissionsScreen() {
       const merged: CategorySummary[] = APPROVED_LOGIN_USER_TYPES.map((userType) => {
         const hit = fromApi.find((c) => c.user_type === userType);
         const meta = CATALOG_BY_CODE[userType];
-        if (hit) return hit;
+        if (hit) return { ...hit, active_user_count: hit.active_user_count ?? 0 };
         return {
           user_type: userType,
           display_name: meta.displayName,
@@ -100,6 +102,7 @@ export default function CategoryPermissionsScreen() {
           locked: userType === "super_admin",
           enabled_count: 0,
           total_count: 0,
+          active_user_count: 0,
         };
       });
       setCategories(merged);
@@ -112,6 +115,11 @@ export default function CategoryPermissionsScreen() {
       setLoading(false);
     }
   }, [selected]);
+
+  useEffect(() => {
+    const raw = resolveRouteParam(categoryParam);
+    if (raw && isApprovedLoginUserType(raw)) setSelected(raw);
+  }, [categoryParam]);
 
   const loadDetail = useCallback(async (userType: LoginUserType) => {
     setLoadingDetail(true);
@@ -265,10 +273,24 @@ export default function CategoryPermissionsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.catName, active && s.catNameActive]}>{cat.display_name}</Text>
-                    <Text style={s.catMeta}>
-                      {cat.entity_scope} · {cat.enabled_count}/{cat.total_count} modules
-                      {cat.locked ? " · Locked" : ""}
-                    </Text>
+                    <View style={s.catMetaRow}>
+                      <Text style={s.catMeta}>
+                        {cat.entity_scope} · {cat.enabled_count}/{cat.total_count} modules
+                        {cat.locked ? " · Locked" : ""}
+                      </Text>
+                      <TouchableOpacity
+                        style={s.userBadge}
+                        onPress={() => router.push(`/manage/${cat.user_type}`)}
+                        testID={`cat-users-${cat.user_type}`}
+                        accessibilityRole="link"
+                        accessibilityLabel={`View ${cat.active_user_count} active ${cat.display_name} users`}
+                      >
+                        <Feather name="users" size={10} color="#0F766E" />
+                        <Text style={s.userBadgeTxt}>
+                          {cat.active_user_count} {cat.active_user_count === 1 ? "User" : "Users"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   {active && <Feather name="chevron-right" size={16} color={colors.primary} />}
                 </TouchableOpacity>
@@ -420,7 +442,20 @@ const s = StyleSheet.create({
   catIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   catName: { fontSize: 14, fontWeight: "700", color: colors.ink2 },
   catNameActive: { color: "#0F766E" },
-  catMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
+  catMetaRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 2 },
+  catMeta: { fontSize: 11, color: colors.muted2 },
+  userBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#ECFDF5",
+    borderWidth: 1,
+    borderColor: "#99F6E4",
+  },
+  userBadgeTxt: { fontSize: 10, fontWeight: "700", color: "#0F766E" },
   panel: { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: 16, ...shadow.sm, minHeight: 0 },
   panelWide: { minHeight: 400 },
   panelHead: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" },

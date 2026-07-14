@@ -5,6 +5,13 @@
 import type { User } from "./auth";
 import { isCoachUser } from "./coachAccess";
 import { BusinessEntity, Permission, hasPermission } from "./rbac";
+import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
+
+function matchManageLoginUsers(pathname: string): boolean {
+  if (pathname === "/manage") return true;
+  const seg = pathname.match(/^\/manage\/([^/?]+)/)?.[1];
+  return !!seg && (APPROVED_LOGIN_USER_TYPES as string[]).includes(seg);
+}
 
 export type FeatherIcon = keyof typeof import("@expo/vector-icons").Feather.glyphMap;
 
@@ -327,19 +334,36 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     icon: "settings",
     children: [
       {
-        id: "permissions",
-        label: "Permissions",
-        icon: "key",
-        href: "/admin/permissions",
-        match: matchPrefix(["/admin/permissions"]),
+        id: "access-control",
+        label: "Access Control",
+        icon: "shield",
+        match: (p) => p.startsWith("/admin/permissions") || matchManageLoginUsers(p),
         permissions: [Permission.MANAGE_ACCESS],
+        children: [
+          {
+            id: "permissions",
+            label: "Permissions",
+            icon: "key",
+            href: "/admin/permissions",
+            match: matchPrefix(["/admin/permissions"]),
+            permissions: [Permission.MANAGE_ACCESS],
+          },
+          {
+            id: "manage-users",
+            label: "Manage Users & Rosters",
+            icon: "users",
+            href: "/manage",
+            match: matchManageLoginUsers,
+            permissions: [Permission.MANAGE_ACCESS],
+          },
+        ],
       },
       {
         id: "settings",
         label: "Settings",
         icon: "settings",
         href: "/(tabs)/profile",
-        match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile") || p.startsWith("/manage"),
+        match: (p) => p === "/settings" || p.startsWith("/(tabs)/profile"),
         excludeRoles: ["coach"],
         isVisible: (ctx) => !isCoachUser(ctx.user),
       },
