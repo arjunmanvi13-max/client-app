@@ -63,9 +63,6 @@ export default function Profile() {
           {!isCoach && (
             <Row icon="bell" label="Notifications" onPress={() => router.push("/notifications")} testID="menu-notif" />
           )}
-          {user.role !== "teacher" && !isCoach && (
-            <Row icon="users" label="Directory" onPress={() => router.push("/directory")} testID="menu-dir" />
-          )}
           <Row icon="info" label="About PWS & ALPHA" onPress={() => Alert.alert("PWS & ALPHA", "Unified task & attendance system v1.0")} testID="menu-about" />
         </View>
 
