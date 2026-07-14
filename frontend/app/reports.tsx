@@ -12,6 +12,12 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
+import {
+  PWS_CLASS_OPTIONS,
+  SECTION_LETTERS,
+  classGroupPrefix,
+  resolveSectionMatch,
+} from "../src/StudentRosterFormFields";
 
 type RunState = "idle" | "loading" | "ready" | "outdated" | "error";
 type PeriodKind = "this_month" | "last_month" | "this_quarter" | "this_year" | "custom";
@@ -40,7 +46,8 @@ const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-const GRADES = ["All", "6", "7", "8", "9", "10", "11", "12"];
+const CLASS_FILTER_OPTIONS = ["All", ...PWS_CLASS_OPTIONS] as const;
+const SECTION_FILTER_OPTIONS = ["All", ...SECTION_LETTERS] as const;
 const CENTRES = ["All", "Balua", "Harding Park"] as const;
 const SPORTS = ["All", "Cricket", "Football"] as const;
 const ATTENDANCE_STATUSES = ["All", "present", "absent", "late", "leave"] as const;
@@ -124,8 +131,8 @@ export default function ReportsScreen() {
 
   const [centre, setCentre] = useState("All");
   const [sport, setSport] = useState("All");
-  const [grade, setGrade] = useState("All");
-  const [sectionId, setSectionId] = useState("");
+  const [pwsClass, setPwsClass] = useState("All");
+  const [sectionLetter, setSectionLetter] = useState("All");
   const [status, setStatus] = useState("All");
   const [paymentMethod, setPaymentMethod] = useState("All");
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
@@ -157,11 +164,11 @@ export default function ReportsScreen() {
     to: range.to,
     centre,
     sport,
-    grade,
-    sectionId,
+    pwsClass,
+    sectionLetter,
     status,
     paymentMethod,
-  }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, centre, sport, grade, sectionId, status, paymentMethod]);
+  }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, centre, sport, pwsClass, sectionLetter, status, paymentMethod]);
 
   const entityOptions = useMemo(() => {
     if (isSportsAdmin) return ["ALPHA"] as const;
@@ -178,13 +185,13 @@ export default function ReportsScreen() {
     let n = 0;
     if (centre !== "All") n++;
     if (sport !== "All") n++;
-    if (grade !== "All") n++;
-    if (sectionId) n++;
+    if (pwsClass !== "All") n++;
+    if (sectionLetter !== "All") n++;
     if (status !== "All") n++;
     if (paymentMethod !== "All") n++;
     if (periodKind === "custom" && (customFrom || customTo)) n++;
     return n;
-  }, [centre, sport, grade, sectionId, status, paymentMethod, periodKind, customFrom, customTo]);
+  }, [centre, sport, pwsClass, sectionLetter, status, paymentMethod, periodKind, customFrom, customTo]);
 
   const activeChips = useMemo(() => {
     const chips: { key: string; label: string; onRemove: () => void }[] = [];
@@ -204,15 +211,18 @@ export default function ReportsScreen() {
 
     if (centre !== "All") chips.push({ key: "centre", label: `Centre: ${centre}`, onRemove: () => setCentre("All") });
     if (sport !== "All") chips.push({ key: "sport", label: `Sport: ${sport}`, onRemove: () => setSport("All") });
-    if (grade !== "All") chips.push({ key: "grade", label: `Grade: Class ${grade}`, onRemove: () => setGrade("All") });
-    if (sectionId) {
-      const sec = sections.find((x) => x.id === sectionId);
-      chips.push({ key: "section", label: `Section: ${sec?.label || sectionId}`, onRemove: () => setSectionId("") });
+    if (pwsClass !== "All") chips.push({ key: "class", label: `Class: ${pwsClass}`, onRemove: () => setPwsClass("All") });
+    if (sectionLetter !== "All") {
+      chips.push({
+        key: "section",
+        label: `Section: ${sectionLetter}`,
+        onRemove: () => setSectionLetter("All"),
+      });
     }
     if (status !== "All") chips.push({ key: "status", label: `Status: ${status}`, onRemove: () => setStatus("All") });
     if (paymentMethod !== "All") chips.push({ key: "payment", label: `Payment: ${paymentMethod}`, onRemove: () => setPaymentMethod("All") });
     return chips;
-  }, [institution, periodKind, customFrom, customTo, centre, sport, grade, sectionId, status, paymentMethod, sections]);
+  }, [institution, periodKind, customFrom, customTo, centre, sport, pwsClass, sectionLetter, status, paymentMethod]);
 
   const canExport = runState === "ready" && !!data && !!exportParams && !loading;
   const showPreview = runState === "loading" || runState === "ready" || runState === "outdated" || runState === "error";
@@ -224,11 +234,18 @@ export default function ReportsScreen() {
     if (range.to) p.date_to = range.to;
     if (centre !== "All") p.centre = centre;
     if (sport !== "All") p.sport = sport;
-    if (grade !== "All") p.grade = grade;
-    if (sectionId) p.section_id = sectionId;
+    if (pwsClass !== "All") {
+      if (sectionLetter !== "All") {
+        const { id } = resolveSectionMatch(pwsClass, sectionLetter, sections);
+        if (id) p.section_id = id;
+        else p.grade = classGroupPrefix(pwsClass);
+      } else {
+        p.grade = classGroupPrefix(pwsClass);
+      }
+    }
     if (status !== "All") p.status = status;
     return p;
-  }, [institution, range, centre, sport, grade, sectionId, status]);
+  }, [institution, range, centre, sport, pwsClass, sectionLetter, sections, status]);
 
   const runReport = useCallback(async () => {
     if (customRangeIncomplete) {
@@ -263,6 +280,10 @@ export default function ReportsScreen() {
   }, [canAccess]);
 
   useEffect(() => {
+    if (pwsClass === "All") setSectionLetter("All");
+  }, [pwsClass]);
+
+  useEffect(() => {
     setRunState("idle");
     setData(null);
     setError("");
@@ -280,8 +301,8 @@ export default function ReportsScreen() {
   const clearAllFilters = () => {
     setCentre("All");
     setSport("All");
-    setGrade("All");
-    setSectionId("");
+    setPwsClass("All");
+    setSectionLetter("All");
     setStatus("All");
     setPaymentMethod("All");
     setPeriodKind("this_month");
@@ -473,8 +494,8 @@ export default function ReportsScreen() {
             setCustomTo={setCustomTo}
             centre={centre} setCentre={setCentre}
             sport={sport} setSport={setSport}
-            grade={grade} setGrade={setGrade}
-            sectionId={sectionId} setSectionId={setSectionId}
+            pwsClass={pwsClass} setPwsClass={setPwsClass}
+            sectionLetter={sectionLetter} setSectionLetter={setSectionLetter}
             status={status} setStatus={setStatus}
             paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
             sections={sections}
@@ -619,8 +640,8 @@ export default function ReportsScreen() {
           setCustomTo={setCustomTo}
           centre={centre} setCentre={setCentre}
           sport={sport} setSport={setSport}
-          grade={grade} setGrade={setGrade}
-          sectionId={sectionId} setSectionId={setSectionId}
+          pwsClass={pwsClass} setPwsClass={setPwsClass}
+          sectionLetter={sectionLetter} setSectionLetter={setSectionLetter}
           status={status} setStatus={setStatus}
           paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod}
           sections={sections}
@@ -713,8 +734,8 @@ function PickerModal({ visible, onClose, title, children, sheet }: {
   );
 }
 
-function FilterSelect({ label, value, options, onChange, testID }: {
-  label: string; value: string; options: readonly string[]; onChange: (v: string) => void; testID?: string;
+function FilterSelect({ label, value, options, onChange, testID, allLabel }: {
+  label: string; value: string; options: readonly string[]; onChange: (v: string) => void; testID?: string; allLabel?: string;
 }) {
   return (
     <View style={s.filterField}>
@@ -729,7 +750,7 @@ function FilterSelect({ label, value, options, onChange, testID }: {
               style={[s.miniSelect, value === opt && s.miniSelectActive]}
             >
               <Text style={[s.miniSelectTxt, value === opt && s.miniSelectTxtActive]}>
-                {opt === "All" ? "All" : opt.replace(/_/g, " ")}
+                {opt === "All" ? (allLabel || "All") : opt.replace(/_/g, " ")}
               </Text>
             </TouchableOpacity>
           ))}
@@ -745,8 +766,8 @@ function AdvancedFiltersPanel(props: {
   setCustomFrom: (v: string) => void; setCustomTo: (v: string) => void;
   centre: string; setCentre: (v: string) => void;
   sport: string; setSport: (v: string) => void;
-  grade: string; setGrade: (v: string) => void;
-  sectionId: string; setSectionId: (v: string) => void;
+  pwsClass: string; setPwsClass: (v: string) => void;
+  sectionLetter: string; setSectionLetter: (v: string) => void;
   status: string; setStatus: (v: string) => void;
   paymentMethod: string; setPaymentMethod: (v: string) => void;
   sections: { id: string; label: string }[];
@@ -755,12 +776,10 @@ function AdvancedFiltersPanel(props: {
   const {
     showAcademic, showSports, showFinance, showAttendance,
     periodKind, customFrom, customTo, setCustomFrom, setCustomTo,
-    centre, setCentre, sport, setSport, grade, setGrade,
-    sectionId, setSectionId, status, setStatus, paymentMethod, setPaymentMethod,
+    centre, setCentre, sport, setSport, pwsClass, setPwsClass,
+    sectionLetter, setSectionLetter, status, setStatus, paymentMethod, setPaymentMethod,
     sections, onClose, embedded,
   } = props;
-
-  const sectionOptions = ["All", ...sections.map((x) => x.label)];
 
   return (
     <View style={[s.advPanel, embedded && { borderWidth: 0, marginBottom: 0, padding: 0 }]}>
@@ -788,22 +807,15 @@ function AdvancedFiltersPanel(props: {
       {showAcademic && (
         <View style={s.filterGroup}>
           <Text style={s.filterGroupTitle}>People & Academic</Text>
-          <FilterSelect label="Grade" value={grade} options={GRADES} onChange={setGrade} testID="grade" />
-          {sections.length > 0 && (
-            <FilterSelect
-              label="Section"
-              value={sectionId ? (sections.find((x) => x.id === sectionId)?.label || "All") : "All"}
-              options={sectionOptions}
-              onChange={(v) => {
-                if (v === "All") setSectionId("");
-                else {
-                  const sec = sections.find((x) => x.label === v);
-                  setSectionId(sec?.id || "");
-                }
-              }}
-              testID="section"
-            />
-          )}
+          <FilterSelect label="Class" value={pwsClass} options={CLASS_FILTER_OPTIONS} onChange={setPwsClass} testID="class" allLabel="All classes" />
+          <FilterSelect
+            label="Section"
+            value={pwsClass === "All" ? "All" : sectionLetter}
+            options={pwsClass === "All" ? ["All"] : SECTION_FILTER_OPTIONS}
+            onChange={setSectionLetter}
+            testID="section"
+            allLabel="All sections"
+          />
         </View>
       )}
 

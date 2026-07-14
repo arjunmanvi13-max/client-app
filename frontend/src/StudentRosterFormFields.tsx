@@ -1,9 +1,8 @@
-import type { Dispatch, SetStateAction } from "react";
-import { View, Text, TextInput, TouchableOpacity, Switch, StyleSheet } from "react-native";
+import { useEffect, useState, type Dispatch, SetStateAction } from "react";
+import { View, Text, TouchableOpacity, Switch, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import {
-  PWS_CLASSES,
   PWS_STUDENT_TYPES,
   TRANSPORT_DISTANCES,
   resolveCategoryAmounts,
@@ -12,13 +11,17 @@ import {
 } from "./pwsFeeStructure";
 import { DATE_PLACEHOLDER } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
-import { colors, radii } from "./theme";
+import { colors, formColors, radii, spacing } from "./theme";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
+import { SegmentToggle } from "./components/forms/SegmentToggle";
+import { PillSelect } from "./components/forms/PillSelect";
+import { FormTextField } from "./components/forms/FormTextField";
 
 const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
-const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
+export const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
+const SECTION_FILTER = ["All", ...SECTION_LETTERS] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
 
 /** Full class list for the dropdown (includes LKG per product spec). */
@@ -26,10 +29,19 @@ export const PWS_CLASS_OPTIONS = [
   "Nursery",
   "LKG",
   "UKG",
-  ...PWS_CLASSES.filter((c) => c !== "Nursery" && c !== "UKG"),
+  "Class I",
+  "Class II",
+  "Class III",
+  "Class IV",
+  "Class V",
+  "Class VI",
+  "Class VII",
+  "Class VIII",
+  "Class IX",
+  "Class X",
 ] as const;
 
-const CLASS_PREFIX: Record<string, string> = {
+export const CLASS_PREFIX: Record<string, string> = {
   Nursery: "Nursery",
   LKG: "LKG",
   UKG: "UKG",
@@ -50,7 +62,11 @@ function parseSectionLetter(group: string): string {
   return m ? m[1].toUpperCase() : "";
 }
 
-function resolveSectionMatch(
+export function classGroupPrefix(pwsClass: string): string {
+  return CLASS_PREFIX[pwsClass] || pwsClass;
+}
+
+export function resolveSectionMatch(
   pwsClass: string,
   letter: string,
   sections: { id: string; label: string }[],
@@ -104,6 +120,8 @@ export type StudentRosterFormFieldsProps = {
   setTransportDistance: (v: TransportDistance) => void;
   guardianName: string;
   setGuardianName: (v: string) => void;
+  motherName: string;
+  setMotherName: (v: string) => void;
   guardianPhone: string;
   setGuardianPhone: (v: string) => void;
   pwsOverrides: Record<string, string>;
@@ -111,13 +129,15 @@ export type StudentRosterFormFieldsProps = {
   canOverrideFees: boolean;
 };
 
-function FieldLabel({ children, required }: { children: string; required?: boolean }) {
-  return (
-    <Text style={s.label}>
-      {children}
-      {required ? " *" : ""}
-    </Text>
-  );
+function splitName(full: string) {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: "" };
+  return { first: parts[0], last: parts.slice(1).join(" ") };
+}
+
+function joinName(first: string, last: string) {
+  return `${first.trim()} ${last.trim()}`.trim();
 }
 
 export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
@@ -163,6 +183,8 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
     setTransportDistance,
     guardianName,
     setGuardianName,
+    motherName,
+    setMotherName,
     guardianPhone,
     setGuardianPhone,
     pwsOverrides,
@@ -170,18 +192,47 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
     canOverrideFees,
   } = props;
 
-  const sectionLetter = parseSectionLetter(group);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [nameSynced, setNameSynced] = useState(false);
 
-  const applySectionLetter = (letter: string) => {
-    const { id: nextId, label } = resolveSectionMatch(pwsClass, letter, academicSections);
+  useEffect(() => {
+    if (!nameSynced && name) {
+      const { first, last } = splitName(name);
+      setFirstName(first);
+      setLastName(last);
+      setNameSynced(true);
+    }
+  }, [name, nameSynced]);
+
+  const updateName = (first: string, last: string) => {
+    setFirstName(first);
+    setLastName(last);
+    setNameSynced(true);
+    setName(joinName(first, last));
+  };
+
+  const sectionLetter = parseSectionLetter(group);
+  const sectionValue = sectionLetter || "All";
+
+  const applySection = (value: string) => {
+    if (value === "All") {
+      setSectionId(null);
+      setGroup(classGroupPrefix(pwsClass));
+      return;
+    }
+    const { id: nextId, label } = resolveSectionMatch(pwsClass, value, academicSections);
     setSectionId(nextId);
     setGroup(label);
   };
 
-  const classOptions: FormSelectOption[] = PWS_CLASS_OPTIONS.map((c) => ({ value: c, label: c }));
-  const sectionOptions: FormSelectOption[] = SECTION_LETTERS.map((l) => ({ value: l, label: l }));
+  const onClassChange = (nextClass: string) => {
+    setPwsClass(nextClass);
+    if (sectionValue !== "All") applySection(sectionValue);
+    else setGroup(classGroupPrefix(nextClass));
+  };
+
   const studentTypeOptions: FormSelectOption[] = PWS_STUDENT_TYPES.map((t) => ({ value: t, label: t }));
-  const orgOptions: FormSelectOption[] = ORGS.map((o) => ({ value: o, label: o }));
 
   const ovNum: Record<string, number> = {};
   for (const [k, v] of Object.entries(pwsOverrides)) {
@@ -196,157 +247,39 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
   );
 
   return (
-    <>
-      <FormSectionCard title="Personal Information">
-        <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel required>Name</FieldLabel>
-            <TextInput
-              testID="field-name"
-              editable={!readOnly}
-              value={name}
-              onChangeText={setName}
-              placeholder="Full name"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Gender</FieldLabel>
-            <View style={s.chipRow}>
-              {GENDERS.map((g) => (
-                <TouchableOpacity
-                  key={g}
-                  disabled={readOnly}
-                  testID={`field-gender-${g.toLowerCase()}`}
-                  style={[s.chip, gender === g && s.chipActive]}
-                  onPress={() => setGender(g)}
-                >
-                  <Text style={[s.chipText, gender === g && s.chipTextActive]}>{g}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Date of Birth</FieldLabel>
-            <TextInput
-              testID="field-student-dob"
-              editable={!readOnly}
-              value={dob}
-              onChangeText={setDob}
-              placeholder={DATE_PLACEHOLDER}
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
+    <View style={s.root}>
+      {/* Card 1 — Academic Allocation (full width) */}
+      <FormSectionCard overline="Academic Allocation" testID="student-academic-card">
+        <SegmentToggle
+          label="Entity"
+          value={organization}
+          options={ORGS}
+          onChange={(v) => setOrganization(v)}
+          disabled={readOnly}
+          testID="field-entity"
+          formatLabel={(v) => (v === "BOTH" ? "Both" : v)}
+        />
 
-        <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel>Phone</FieldLabel>
-            <TextInput
-              testID="field-student-phone"
-              editable={!readOnly}
-              value={mobile}
-              onChangeText={setMobile}
-              keyboardType="phone-pad"
-              placeholder="Student phone"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Email</FieldLabel>
-            <TextInput
-              testID="field-student-email"
-              editable={!readOnly}
-              value={personEmail}
-              onChangeText={setPersonEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="student@email.com"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Address</FieldLabel>
-            <TextInput
-              testID="field-address"
-              editable={!readOnly}
-              value={address}
-              onChangeText={setAddress}
-              placeholder="Full address"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
-      </FormSectionCard>
+        <PillSelect
+          label="Class"
+          value={pwsClass}
+          options={PWS_CLASS_OPTIONS}
+          onChange={onClassChange}
+          disabled={readOnly}
+          scrollable
+          testID="field-pws-class"
+        />
 
-      <FormSectionCard title="Academic & Admission Details">
-        <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel>Admission Number</FieldLabel>
-            <TextInput
-              testID="field-admission-number"
-              editable={!readOnly}
-              value={admissionNumber}
-              onChangeText={setAdmissionNumber}
-              placeholder="e.g. PWS-20250001"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Roll Number</FieldLabel>
-            <TextInput
-              testID="field-roll-number"
-              editable={!readOnly}
-              value={rollNumber}
-              onChangeText={setRollNumber}
-              placeholder="e.g. 101"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel required>Date of Admission</FieldLabel>
-            <TextInput
-              testID="field-admission-date"
-              editable={!readOnly}
-              value={dateOfAdmission}
-              onChangeText={setDateOfAdmission}
-              placeholder={DATE_PLACEHOLDER}
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
+        <PillSelect
+          label="Section"
+          value={sectionValue}
+          options={SECTION_FILTER}
+          onChange={applySection}
+          disabled={readOnly}
+          testID="field-section"
+        />
 
-        <FormFieldGrid columns={4} isWide={isWide}>
-          <FormSelect
-            label="Class"
-            required
-            testID="field-pws-class"
-            value={pwsClass}
-            disabled={readOnly}
-            options={classOptions}
-            placeholder="Select class"
-            onChange={(v) => {
-              setPwsClass(v);
-              if (sectionLetter) applySectionLetter(sectionLetter);
-            }}
-          />
-          <FormSelect
-            label="Section"
-            testID="field-section"
-            value={sectionLetter}
-            disabled={readOnly}
-            options={sectionOptions}
-            placeholder="Select section"
-            onChange={applySectionLetter}
-          />
+        <FormFieldGrid columns={2} isWide={isWide}>
           <FormSelect
             label="Student type"
             required
@@ -360,28 +293,163 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
               setIsResident(v === "Boarding");
             }}
           />
-          <FormSelect
-            label="Organization"
-            testID="field-organization"
-            value={organization}
-            disabled={readOnly}
-            options={orgOptions}
-            placeholder="Select organization"
-            onChange={(v) => setOrganization(v as "PWS" | "ALPHA" | "BOTH")}
+          <FormTextField
+            label="Date of Admission"
+            required
+            testID="field-admission-date"
+            value={dateOfAdmission}
+            onChangeText={setDateOfAdmission}
+            placeholder={DATE_PLACEHOLDER}
+            trailingIcon="calendar"
+            readOnly={readOnly}
           />
         </FormFieldGrid>
+      </FormSectionCard>
 
+      {/* Cards 2 & 3 — two-column personal + contact */}
+      <View style={[s.splitRow, isWide && s.splitRowWide]}>
+        <FormSectionCard title="Personal Details" style={isWide ? s.splitCol : undefined} testID="student-personal-card">
+          <FormFieldGrid columns={2} isWide={isWide}>
+            <FormTextField
+              label="First Name"
+              required
+              testID="field-first-name"
+              value={firstName}
+              onChangeText={(v) => updateName(v, lastName)}
+              placeholder="First name"
+              readOnly={readOnly}
+            />
+            <FormTextField
+              label="Last Name"
+              testID="field-last-name"
+              value={lastName}
+              onChangeText={(v) => updateName(firstName, v)}
+              placeholder="Last name"
+              readOnly={readOnly}
+            />
+          </FormFieldGrid>
+
+          <FormFieldGrid columns={2} isWide={isWide}>
+            <FormTextField
+              label="Date of Birth"
+              testID="field-student-dob"
+              value={dob}
+              onChangeText={setDob}
+              placeholder={DATE_PLACEHOLDER}
+              trailingIcon="calendar"
+              readOnly={readOnly}
+            />
+            <FormTextField
+              label="Roll Number"
+              testID="field-roll-number"
+              value={rollNumber}
+              onChangeText={setRollNumber}
+              placeholder="e.g. 101"
+              readOnly={readOnly}
+            />
+          </FormFieldGrid>
+
+          <View style={s.fieldBlock}>
+            <Text style={s.fieldLabel}>Gender</Text>
+            <View style={s.chipRow}>
+              {GENDERS.map((g) => (
+                <TouchableOpacity
+                  key={g}
+                  disabled={readOnly}
+                  testID={`field-gender-${g.toLowerCase()}`}
+                  style={[s.genderPill, gender === g && s.genderPillActive]}
+                  onPress={() => setGender(g)}
+                >
+                  <Text style={[s.genderPillTxt, gender === g && s.genderPillTxtActive]}>{g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <FormFieldGrid columns={2} isWide={isWide}>
+            <FormTextField
+              label="Admission Number"
+              testID="field-admission-number"
+              value={admissionNumber}
+              onChangeText={setAdmissionNumber}
+              placeholder="e.g. PWS-20250001"
+              readOnly={readOnly}
+            />
+            <FormTextField
+              label="Email"
+              testID="field-student-email"
+              value={personEmail}
+              onChangeText={setPersonEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="student@email.com"
+              readOnly={readOnly}
+            />
+          </FormFieldGrid>
+        </FormSectionCard>
+
+        <FormSectionCard title="Contact & Parent Details" style={isWide ? s.splitCol : undefined} testID="student-contact-card">
+          <FormTextField
+            label="Father's Name"
+            testID="field-father-name"
+            value={guardianName}
+            onChangeText={setGuardianName}
+            placeholder="Father's full name"
+            readOnly={readOnly}
+          />
+          <FormTextField
+            label="Mother's Name"
+            testID="field-mother-name"
+            value={motherName}
+            onChangeText={setMotherName}
+            placeholder="Mother's full name"
+            readOnly={readOnly}
+          />
+          <FormTextField
+            label="Primary Mobile"
+            testID="field-guardian-phone"
+            value={guardianPhone}
+            onChangeText={setGuardianPhone}
+            keyboardType="phone-pad"
+            placeholder="+91 98765 43210"
+            leadingIcon="phone"
+            readOnly={readOnly}
+          />
+          <FormTextField
+            label="Emergency Contact"
+            testID="field-student-phone"
+            value={mobile}
+            onChangeText={setMobile}
+            keyboardType="phone-pad"
+            placeholder="+91 alternate number"
+            leadingIcon="phone-call"
+            readOnly={readOnly}
+          />
+          <FormTextField
+            label="Address"
+            testID="field-address"
+            value={address}
+            onChangeText={setAddress}
+            placeholder="House no., street, city, pin code"
+            multiline
+            readOnly={readOnly}
+          />
+        </FormSectionCard>
+      </View>
+
+      {/* Fees & transport */}
+      <FormSectionCard overline="Fees & Transport" testID="student-fees-card">
         <View style={s.switchRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.switchLabel}>Transportation</Text>
-            <Text style={s.switchHelp}>Include monthly transport fee</Text>
+            <Text style={s.switchHelp}>Include monthly transport fee in the fee breakdown</Text>
           </View>
           <Switch
             testID="field-transport-enabled"
             value={transportEnabled}
             onValueChange={setTransportEnabled}
             disabled={readOnly}
-            trackColor={{ true: colors.primary }}
+            trackColor={{ true: formColors.primary }}
           />
         </View>
 
@@ -401,7 +469,7 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
         <View style={[s.feeGrid, isWide && s.feeGridWide]} testID="fees-config">
           <View style={[s.feesBox, isWide && s.feesBoxCol]}>
             <View style={s.feesBoxHeader}>
-              <Feather name="credit-card" size={14} color={colors.primary} />
+              <Feather name="credit-card" size={14} color={formColors.primary} />
               <Text style={s.feesBoxTitle}>Fee breakdown · AY 2026-27</Text>
             </View>
             <View style={s.feesReadonlyBox}>
@@ -422,7 +490,7 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
                 style={s.feeLink}
                 onPress={() => router.push(`/fees/pws-student/${id}` as any)}
               >
-                <Feather name="calendar" size={14} color={colors.primary} />
+                <Feather name="calendar" size={14} color={formColors.primary} />
                 <Text style={s.feeLinkText}>Open yearly fee roadmap</Text>
               </TouchableOpacity>
             )}
@@ -439,14 +507,13 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
                   <Text style={s.overrideHint}>
                     {cat} (default ₹{amounts[cat].toLocaleString("en-IN")})
                   </Text>
-                  <TextInput
+                  <FormTextField
                     testID={`override-${cat.replace(/\s+/g, "-")}`}
+                    label=""
                     value={pwsOverrides[cat] || ""}
                     onChangeText={(v) => setPwsOverrides((prev) => ({ ...prev, [cat]: v }))}
                     keyboardType="numeric"
                     placeholder="Leave blank for default"
-                    placeholderTextColor={colors.hint}
-                    style={s.input}
                   />
                 </View>
               ))}
@@ -454,70 +521,33 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
           )}
         </View>
       </FormSectionCard>
-
-      <FormSectionCard title="Guardian Information">
-        <FormFieldGrid columns={2} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel>Guardian Name</FieldLabel>
-            <TextInput
-              testID="field-guardian-name"
-              editable={!readOnly}
-              value={guardianName}
-              onChangeText={setGuardianName}
-              placeholder="Parent / guardian"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Guardian Phone</FieldLabel>
-            <TextInput
-              testID="field-guardian-phone"
-              editable={!readOnly}
-              value={guardianPhone}
-              onChangeText={setGuardianPhone}
-              keyboardType="phone-pad"
-              placeholder="+91 …"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
-      </FormSectionCard>
-    </>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  field: { flex: 1, minWidth: 0 },
-  label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
-  input: {
-    backgroundColor: colors.surface,
+  root: { gap: 0 },
+  splitRow: { gap: spacing.xl },
+  splitRowWide: { flexDirection: "row", alignItems: "flex-start" },
+  splitCol: { flex: 1, minWidth: 0, marginBottom: spacing.xl },
+  fieldBlock: { gap: 10 },
+  fieldLabel: { fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 0.2 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  genderPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: colors.ink,
-  },
-  inputReadonly: { backgroundColor: colors.surface2, color: colors.muted2 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radii.md,
-    borderWidth: 1.5,
-    borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  chipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
-  chipText: { fontWeight: "700", fontSize: 13, color: colors.muted },
-  chipTextActive: { color: "#fff" },
+  genderPillActive: { backgroundColor: formColors.primary, borderColor: formColors.primary },
+  genderPillTxt: { fontSize: 13, fontWeight: "700", color: colors.muted },
+  genderPillTxtActive: { color: "#fff" },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    padding: spacing.lg,
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
@@ -525,32 +555,32 @@ const s = StyleSheet.create({
   },
   switchLabel: { fontSize: 14, fontWeight: "700", color: colors.ink },
   switchHelp: { fontSize: 12, color: colors.muted2, marginTop: 2 },
-  feeGrid: { gap: 12 },
+  feeGrid: { gap: spacing.md },
   feeGridWide: { flexDirection: "row", alignItems: "flex-start" },
   feesBox: {
-    backgroundColor: colors.primarySofter,
+    backgroundColor: formColors.primarySoft,
     borderWidth: 1,
-    borderColor: "#BFDBFE",
+    borderColor: "#C7D7F5",
     borderRadius: radii.md,
-    padding: 12,
+    padding: spacing.md,
   },
   feesBoxCol: { flex: 1, minWidth: 0 },
   overrideBox: { backgroundColor: "#F0FDFA", borderColor: "#A7F3D0" },
   feesBoxHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   feesBoxTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
-    color: colors.primary,
-    letterSpacing: 0.4,
+    color: formColors.primary,
+    letterSpacing: 0.5,
     textTransform: "uppercase",
   },
   feesReadonlyBox: { backgroundColor: colors.surface, padding: 10, borderRadius: radii.sm, marginTop: 8 },
   feesReadonlyRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
   feesReadonlyKey: { fontSize: 12, color: colors.muted2, fontWeight: "600" },
   feesReadonlyVal: { fontSize: 12, color: colors.ink, fontWeight: "800" },
-  feesBoxNote: { fontSize: 11, color: colors.primary, marginTop: 8, fontStyle: "italic" },
+  feesBoxNote: { fontSize: 11, color: formColors.primary, marginTop: 8, fontStyle: "italic" },
   feeLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
-  feeLinkText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
+  feeLinkText: { color: formColors.primary, fontWeight: "700", fontSize: 13 },
   overrideField: { marginTop: 10 },
   overrideHint: { fontSize: 12, color: colors.muted2, marginBottom: 6 },
 });
