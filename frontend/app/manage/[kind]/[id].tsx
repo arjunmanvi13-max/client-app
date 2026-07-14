@@ -31,6 +31,7 @@ import {
   toISODate,
 } from "../../../src/dateFormat";
 import { StudentRosterFormFields } from "../../../src/StudentRosterFormFields";
+import { PlayerRosterFormFields, type PlayerType } from "../../../src/PlayerRosterFormFields";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -77,30 +78,8 @@ const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] 
     { key: "approve_deactivation", label: "Approve deactivation" },
   ]},
 ];
-const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
-const SLOTS = ["Morning", "Evening"] as const;
 const CENTRES = ["Balua", "Harding Park"] as const;
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
-const PLAYER_TYPES = ["Daily", "Hostel Only", "Day Boarding", "Boarding"] as const;
-type PlayerType = typeof PLAYER_TYPES[number];
-const CENTRE_TYPES: Record<string, PlayerType[]> = {
-  "Balua": ["Daily", "Hostel Only", "Day Boarding", "Boarding"],
-  "Harding Park": ["Daily"],
-};
-// Slot rules — Hostel Only & Boarding attend BOTH sessions.
-const requiresBothSlots = (pt: PlayerType | ""): boolean => pt === "Hostel Only" || pt === "Boarding";
-// Rate card (mirror of backend fees.py RATE_CARDS)
-const RATE_CARD: Record<PlayerType, Record<string, { registration: number; monthly: number }>> = {
-  "Daily": { Cricket: { registration: 3000, monthly: 2500 }, Football: { registration: 3000, monthly: 2000 } },
-  "Hostel Only": { Cricket: { registration: 3000, monthly: 12000 }, Football: { registration: 3000, monthly: 15000 } },
-  "Day Boarding": { Cricket: { registration: 3000, monthly: 7500 }, Football: { registration: 3000, monthly: 7500 } },
-  "Boarding": { Cricket: { registration: 20000, monthly: 15000 }, Football: { registration: 20000, monthly: 15000 } },
-};
-// Legacy PWS rate card — kept for players; students use pwsFeeStructure.ts (2026-27)
-const PWS_RATE_CARD: Record<"Day Scholar" | "Hostel", { registration: number; monthly: number; exam: number; hostel_monthly?: number }> = {
-  "Day Scholar": { registration: 5000, monthly: 8000, exam: 2500 },
-  "Hostel": { registration: 5000, monthly: 8000, hostel_monthly: 12000, exam: 2500 },
-};
 
 function calcAge(dob: string): number | null {
   const iso = parseToISO(dob) || dob;
@@ -264,7 +243,6 @@ export default function ManageEdit() {
 
   // Optional ad-hoc fee heads to create during admission (Super Admin only)
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
-  const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
   const coachScope = resolveCoachDataScope(user);
   const coachSportLocked = false;
   const coachCreatingPlayer = false;
@@ -717,11 +695,63 @@ export default function ManageEdit() {
         </View>
 
         <ScrollView contentContainerStyle={s.scroll}>
-          {!isStudentKind && (
+          {!isStudentKind && !isPlayerKind && (
             <>
-              <Text style={s.label}>{isPlayerKind ? "Player Name *" : "Name *"}</Text>
+              <Text style={s.label}>Name *</Text>
               <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
             </>
+          )}
+
+          {isPlayerKind && (
+            <PlayerRosterFormFields
+              readOnly={readOnly}
+              isNew={isNew}
+              isSuper={isSuper}
+              id={id}
+              name={name}
+              setName={setName}
+              playerId={playerId}
+              setPlayerId={setPlayerId}
+              dob={dob}
+              setDob={setDob}
+              mobile={mobile}
+              setMobile={setMobile}
+              locality={locality}
+              setLocality={setLocality}
+              city={city}
+              setCity={setCity}
+              centre={centre}
+              setCentre={setCentre}
+              playerType={playerType}
+              setPlayerType={setPlayerType}
+              sport={sport}
+              setSport={setSport}
+              skillLevel={skillLevel}
+              setSkillLevel={setSkillLevel}
+              slot={slot}
+              setSlot={setSlot}
+              dateOfAdmission={dateOfAdmission}
+              setDateOfAdmission={setDateOfAdmission}
+              guardianName={guardianName}
+              setGuardianName={setGuardianName}
+              setFatherName={setFatherName}
+              guardianPhone={guardianPhone}
+              setGuardianPhone={setGuardianPhone}
+              transportFeeMonthly={transportFeeMonthly}
+              setTransportFeeMonthly={setTransportFeeMonthly}
+              registrationFeeOverride={registrationFeeOverride}
+              setRegistrationFeeOverride={setRegistrationFeeOverride}
+              monthlyFeeOverride={monthlyFeeOverride}
+              setMonthlyFeeOverride={setMonthlyFeeOverride}
+              hostelFeeOverride={hostelFeeOverride}
+              setHostelFeeOverride={setHostelFeeOverride}
+              adhocFees={adhocFees}
+              setAdhocFees={setAdhocFees}
+              coachSportLocked={coachSportLocked}
+              coachAssignedSport={coachScope.assignedSport}
+              status={status}
+              setStatus={setStatus}
+            />
           )}
 
           {isStudentKind && (
@@ -935,304 +965,6 @@ export default function ManageEdit() {
             </>
           )}
 
-          {isPlayerKind && (
-            <>
-              <Text style={s.label}>Player ID</Text>
-              <TextInput testID="field-player-id" editable={!readOnly} value={playerId} onChangeText={setPlayerId} placeholder="e.g. APL-0001" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-              <Text style={s.label}>Centre *</Text>
-              <View style={s.chipRow}>
-                {CENTRES.map((c) => (
-                  <TouchableOpacity key={c} testID={`centre-${c}`} style={[s.chip, { flex: 1 }, centre === c && s.chipActive]} onPress={() => {
-                    setCentre(c);
-                    if (c === "Harding Park" && playerType !== "Daily") { setPlayerType("Daily"); setSlot(""); }
-                  }}>
-                    <Feather name="map-pin" size={14} color={centre === c ? "#fff" : "#475569"} />
-                    <Text style={[s.chipText, centre === c && { color: "#fff" }]}>{c}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={s.label}>Player Type *</Text>
-              <View style={s.chipRow}>
-                {(centre ? CENTRE_TYPES[centre] : PLAYER_TYPES).map((pt) => (
-                  <TouchableOpacity key={pt} testID={`ptype-${pt}`} style={[s.chip, { flex: 1 }, playerType === pt && s.chipActive]} onPress={() => {
-                    setPlayerType(pt as any);
-                    // Auto-set slot to Both for Hostel Only / Boarding, clear for others
-                    if (requiresBothSlots(pt as PlayerType)) setSlot("Both");
-                    else if (slot === "Both") setSlot("");
-                  }}>
-                    <Text style={[s.chipText, playerType === pt && { color: "#fff" }]}>{pt}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {centre === "Harding Park" && (
-                <Text style={s.help}>Harding Park allows Daily players only.</Text>
-              )}
-              {playerType && (
-                <Text style={s.help}>
-                  {playerType === "Daily" && "Attends training only — no hostel or boarding."}
-                  {playerType === "Hostel Only" && "Resides in hostel · attends training · uses hostel facilities."}
-                  {playerType === "Day Boarding" && "Stays during the day with meals · returns home evening."}
-                  {playerType === "Boarding" && "Full residential · hostel + Morning & Evening training + full boarding."}
-                </Text>
-              )}
-              <Text style={s.label}>Sport *</Text>
-              {coachSportLocked && (
-                <Text style={s.help}>Assigned sport: {coachScope.assignedSport}</Text>
-              )}
-              <View style={s.chipRow}>
-                {PLAYER_SPORTS.filter((sp) => !coachSportLocked || sp === coachScope.assignedSport).map((sp) => (
-                  <TouchableOpacity
-                    key={sp}
-                    testID={`sport-${sp}`}
-                    disabled={coachSportLocked || readOnly}
-                    style={[s.chip, { flex: 1 }, sport === sp && s.chipActive, (coachSportLocked || readOnly) && { opacity: 0.85 }]}
-                    onPress={() => setSport(sp)}
-                  >
-                    <Feather name={sp === "Cricket" ? "target" : "circle"} size={14} color={sport === sp ? "#fff" : "#475569"} />
-                    <Text style={[s.chipText, sport === sp && { color: "#fff" }]}>{sp}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={s.label}>Guardian Name</Text>
-              <TextInput testID="field-father" editable={!readOnly} value={guardianName || fatherName} onChangeText={(v) => { setGuardianName(v); setFatherName(v); }} placeholder="Guardian name" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-              <Text style={s.label}>Guardian Phone</Text>
-              <TextInput testID="field-guardian-phone-player" editable={!readOnly} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-              <Text style={s.label}>Date of Birth</Text>
-              <TextInput testID="field-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-              {dob && calcAge(dob) !== null && (
-                <Text style={s.dobHelp}>
-                  {formatDate(dob)} · Age {calcAge(dob)} years
-                </Text>
-              )}
-              <Text style={s.label}>Skill Level *</Text>
-              <View style={s.chipRow}>
-                {SKILL_LEVELS.map((sk) => (
-                  <TouchableOpacity key={sk} testID={`skill-${sk}`} style={[s.chip, skillLevel === sk && s.chipActive]} onPress={() => setSkillLevel(sk)}>
-                    <Text style={[s.chipText, skillLevel === sk && { color: "#fff" }]}>{sk}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={s.label}>Slot *</Text>
-              <View style={s.chipRow}>
-                {(playerType && requiresBothSlots(playerType as PlayerType)) ? (
-                  <View style={[s.chip, s.chipActive, { flex: 1 }]}>
-                    <Feather name="sunrise" size={14} color="#fff" />
-                    <Text style={[s.chipText, { color: "#fff" }]}>Both (Morning & Evening)</Text>
-                  </View>
-                ) : (
-                  SLOTS.map((sl) => (
-                    <TouchableOpacity key={sl} testID={`slot-${sl}`} style={[s.chip, { flex: 1 }, slot === sl && s.chipActive]} onPress={() => setSlot(sl)}>
-                      <Feather name={sl === "Morning" ? "sun" : "moon"} size={14} color={slot === sl ? "#fff" : "#475569"} />
-                      <Text style={[s.chipText, slot === sl && { color: "#fff" }]}>{sl}</Text>
-                    </TouchableOpacity>
-                  ))
-                )}
-              </View>
-              {playerType && requiresBothSlots(playerType as PlayerType) && (
-                <Text style={s.help}>{playerType} players attend Morning & Evening sessions.</Text>
-              )}
-              <Text style={s.label}>Mobile Number</Text>
-              <TextInput testID="field-mobile" value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="9876543210" placeholderTextColor="#94A3B8" style={s.input} />
-
-              <View style={s.feesBox} testID="fees-config">
-                <View style={s.feesBoxHeader}>
-                  <Feather name="credit-card" size={14} color="#1E40AF" />
-                  <Text style={s.feesBoxTitle}>Fee structure ({playerType || "Select player type"})</Text>
-                </View>
-                {(() => {
-                  const rc = (playerType && sport) ? RATE_CARD[playerType as PlayerType]?.[sport] : null;
-                  const regEff = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : (rc?.registration ?? 0);
-                  const monEff = monthlyFeeOverride ? parseInt(monthlyFeeOverride, 10) : (hostelFeeOverride && (playerType === "Hostel Only" || playerType === "Boarding") ? parseInt(hostelFeeOverride, 10) : (rc?.monthly ?? 0));
-                  if (!playerType || !sport) {
-                    return <Text style={s.feesBoxSub}>Pick a Player Type and Sport to see the applicable fee heads.</Text>;
-                  }
-                  return (
-                    <>
-                      <View style={s.feesReadonlyBox}>
-                        <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Registration (one-time)</Text><Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text></View>
-                        {playerType === "Daily" && (
-                          <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Monthly Coaching</Text><Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text></View>
-                        )}
-                        {playerType === "Hostel Only" && (
-                          <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Hostel (Monthly · includes coaching)</Text><Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text></View>
-                        )}
-                        {playerType === "Day Boarding" && (
-                          <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Day Boarding (Monthly · includes coaching)</Text><Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text></View>
-                        )}
-                        {playerType === "Boarding" && (
-                          <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Boarding (Monthly · hostel + coaching)</Text><Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text></View>
-                        )}
-                        {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
-                          <View style={s.feesReadonlyRow}><Text style={s.feesReadonlyKey}>Transport (Monthly)</Text><Text style={s.feesReadonlyVal}>₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}</Text></View>
-                        )}
-                      </View>
-                      {isNew && (
-                        <Text style={s.feesBoxNote}>
-                          These invoices will be auto-created after the player is saved. First-month rule: admission on/before 15th = full; from 16th onward = 50%.
-                        </Text>
-                      )}
-                      {(isNew || isSuper) ? (
-                        <>
-                          {isSuper && (
-                            <>
-                              <Text style={s.label}>Registration Fee Override (Super Admin — optional)</Text>
-                              <TextInput testID="field-reg-fee-override" value={registrationFeeOverride} onChangeText={setRegistrationFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc?.registration ?? 0}`} placeholderTextColor="#94A3B8" style={s.input} />
-                              <Text style={s.label}>Monthly Fee Override (Super Admin — optional)</Text>
-                              <TextInput testID="field-monthly-fee-override" value={monthlyFeeOverride} onChangeText={setMonthlyFeeOverride} keyboardType="numeric" placeholder={`Default ₹${rc?.monthly ?? 0}`} placeholderTextColor="#94A3B8" style={s.input} />
-                            </>
-                          )}
-                          {(playerType === "Hostel Only" || playerType === "Boarding") && !isSuper && (
-                            <>
-                              <Text style={s.label}>Hostel Fee Override (₹/month — optional)</Text>
-                              <TextInput testID="field-hostel-fee" value={hostelFeeOverride} onChangeText={setHostelFeeOverride} keyboardType="numeric" placeholder="Leave blank for rate-card default" placeholderTextColor="#94A3B8" style={s.input} />
-                            </>
-                          )}
-                          <Text style={s.label}>Transport Fee (₹/month — optional)</Text>
-                          <TextInput testID="field-transport-fee" value={transportFeeMonthly} onChangeText={setTransportFeeMonthly} keyboardType="numeric" placeholder="0 = no transport" placeholderTextColor="#94A3B8" style={s.input} />
-                          {parseInt(transportFeeMonthly || "0", 10) > 0 && (
-                            <Text style={s.feesBoxNote}>Transport fee recurs monthly with the same due-date as the sports fee.</Text>
-                          )}
-                        </>
-                      ) : (
-                        <TouchableOpacity onPress={() => router.push("/fees")} style={s.feesReadonlyLink} testID="goto-fees-module">
-                          <Feather name="external-link" size={12} color="#1E40AF" />
-                          <Text style={s.feesReadonlyLinkTxt}>Edit fees in Fees Module (Super Admin only)</Text>
-                        </TouchableOpacity>
-                      )}
-                    </>
-                  );
-                })()}
-              </View>
-
-              {isNew && isSuper && (
-                <View style={s.adhocBox} testID="adhoc-fees-section">
-                  <View style={s.feesBoxHeader}>
-                    <Feather name="plus-circle" size={14} color="#0F766E" />
-                    <Text style={[s.feesBoxTitle, { color: "#0F766E" }]}>Optional fee heads (during admission)</Text>
-                  </View>
-                  <Text style={s.feesBoxSub}>
-                    Add one-off charges (Uniform, Kit, Tournament, Books, Event, Other). These will be created in the Fees Module after the player is saved.
-                  </Text>
-                  {adhocFees.map((f, idx) => (
-                    <View key={idx} style={s.adhocRow} testID={`adhoc-row-${idx}`}>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-                        {ADHOC_FEE_TYPES.map((t) => (
-                          <TouchableOpacity
-                            key={t}
-                            testID={`adhoc-${idx}-type-${t}`}
-                            onPress={() => setAdhocFees((prev) => prev.map((x, i) => i === idx ? { ...x, fee_type: t } : x))}
-                            style={[s.adhocChip, f.fee_type === t && s.adhocChipActive]}
-                          >
-                            <Text style={[s.adhocChipTxt, f.fee_type === t && { color: "#fff" }]}>{t}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                      <View style={{ flexDirection: "row", gap: 6, marginTop: 8 }}>
-                        <TextInput
-                          testID={`adhoc-${idx}-amount`}
-                          keyboardType="numeric"
-                          placeholder="Amount ₹"
-                          placeholderTextColor="#94A3B8"
-                          value={f.amount}
-                          onChangeText={(v) => setAdhocFees((prev) => prev.map((x, i) => i === idx ? { ...x, amount: v.replace(/[^0-9]/g, "") } : x))}
-                          style={[s.input, { flex: 1, marginTop: 0 }]}
-                        />
-                        <TextInput
-                          testID={`adhoc-${idx}-due`}
-                          placeholder={`Due ${DATE_PLACEHOLDER}`}
-                          placeholderTextColor="#94A3B8"
-                          value={f.due_date}
-                          onChangeText={(v) => setAdhocFees((prev) => prev.map((x, i) => i === idx ? { ...x, due_date: v } : x))}
-                          style={[s.input, { flex: 1.2, marginTop: 0 }]}
-                        />
-                        <TouchableOpacity
-                          testID={`adhoc-${idx}-remove`}
-                          onPress={() => setAdhocFees((prev) => prev.filter((_, i) => i !== idx))}
-                          style={s.adhocRemoveBtn}
-                        >
-                          <Feather name="trash-2" size={14} color="#EF4444" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                  <TouchableOpacity
-                    testID="adhoc-add-row"
-                    onPress={() => setAdhocFees((prev) => [...prev, { fee_type: "Uniform", amount: "", due_date: dateOfAdmission || formatDate(toISODate()) }])}
-                    style={s.adhocAddBtn}
-                  >
-                    <Feather name="plus" size={14} color="#0F766E" />
-                    <Text style={s.adhocAddBtnTxt}>Add fee head</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              <Text style={s.label}>Locality</Text>
-              <TextInput testID="field-locality" value={locality} onChangeText={setLocality} placeholder="e.g. Boring Road" placeholderTextColor="#94A3B8" style={s.input} />
-              <Text style={s.label}>City</Text>
-              <TextInput testID="field-city" value={city} onChangeText={setCity} placeholder="e.g. Patna" placeholderTextColor="#94A3B8" style={s.input} />
-
-              <Text style={s.label}>Date of Admission *</Text>
-              <TextInput
-                testID="field-doa"
-                value={dateOfAdmission}
-                onChangeText={setDateOfAdmission}
-                placeholder={DATE_PLACEHOLDER}
-                placeholderTextColor="#94A3B8"
-                style={s.input}
-              />
-              <Text style={s.help}>{dateHelpText()}</Text>
-
-              {!isNew && isSuper && (
-                <View style={s.statusCard}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.statusLabel}>Player Status</Text>
-                    <View style={[s.statusPill, status === "active" ? s.statusPillActive : s.statusPillDeact]}>
-                      <Feather name={status === "active" ? "check-circle" : "slash"} size={12} color={status === "active" ? "#16A34A" : "#64748B"} />
-                      <Text style={[s.statusPillTxt, { color: status === "active" ? "#16A34A" : "#64748B" }]}>
-                        {status === "active" ? "Active" : "Deactivated"}
-                      </Text>
-                    </View>
-                    <Text style={s.statusHelp}>
-                      {status === "active"
-                        ? (isSuper ? "Direct deactivate (super admin)" : "Submits a request for super-admin approval")
-                        : "Hidden from attendance"}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    testID={status === "active" ? "btn-deactivate" : "btn-activate"}
-                    style={[s.statusBtn, status === "active" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#DCFCE7" }]}
-                    onPress={async () => {
-                      const isSuperAdmin = isSuper;
-                      if (status === "active" && !isSuperAdmin) {
-                        // Submit deactivation-request (no reason prompt on web for simplicity)
-                        confirmAction("Request deactivation?", "A request will be sent to Super Admin for approval.", async () => {
-                          try {
-                            await api.post("/deactivation-requests", { player_id: id });
-                            Alert.alert("Request submitted", "Super Admin will review the request.");
-                          } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
-                        });
-                        return;
-                      }
-                      const next = status === "active" ? "deactivated" : "active";
-                      const verb = next === "active" ? "Reactivate" : "Deactivate";
-                      confirmAction(`${verb} player?`, `${verb} this player. ${next === "deactivated" ? "They will be removed from attendance." : "They return to active lists."}`, async () => {
-                        try {
-                          await api.post(`/people/${id}/${next === "active" ? "activate" : "deactivate"}`);
-                          setStatus(next);
-                        } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
-                      });
-                    }}
-                  >
-                    <Feather name={status === "active" ? "user-x" : "user-check"} size={16} color={status === "active" ? "#EF4444" : "#16A34A"} />
-                    <Text style={[s.statusBtnTxt, { color: status === "active" ? "#EF4444" : "#16A34A" }]}>
-                      {status === "active"
-                        ? (isSuper ? "Deactivate" : "Request Deactivation")
-                        : "Reactivate"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </>
-          )}
 
           {!isUserKind && !isPlayerKind && !isStaffKind && !isStudentKind && (
             <>
@@ -1277,7 +1009,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {!isUserKind && !isStudentKind && (
+          {!isUserKind && !isStudentKind && !isPlayerKind && (
             <>
           <Text style={s.label}>Organization</Text>
           {isPlayerKind ? (
