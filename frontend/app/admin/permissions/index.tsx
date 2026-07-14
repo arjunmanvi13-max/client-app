@@ -13,6 +13,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission } from "../../../src/rbac";
+import { getApiError } from "../../../src/ScreenStates";
 import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, type LoginUserType } from "../../../src/userClassification";
 import { colors, radii, shadow } from "../../../src/theme";
 import { useBreakpoint } from "../../../src/useBreakpoint";
@@ -59,6 +60,14 @@ function allLeafIds(catalog: CategoryDetail["catalog"]): string[] {
   return catalog.flatMap((g) => g.modules.flatMap((m) => leafModuleIds([m])));
 }
 
+function permissionsApiError(e: any, fallback: string): string {
+  const status = e?.response?.status;
+  if (status === 404) {
+    return "Category permissions API is unavailable. Ensure the backend is deployed with the latest release, then click Retry.";
+  }
+  return getApiError(e, fallback);
+}
+
 export default function CategoryPermissionsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -84,7 +93,7 @@ export default function CategoryPermissionsScreen() {
         setSelected(cats.find((c) => !c.locked)?.user_type || cats[0].user_type);
       }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || "Failed to load categories");
+      setError(permissionsApiError(e, "Failed to load categories"));
     } finally {
       setLoading(false);
     }
@@ -99,7 +108,7 @@ export default function CategoryPermissionsScreen() {
       setDraft({ ...data.modules });
       setSavedSnapshot({ ...data.modules });
     } catch (e: any) {
-      setError(e?.response?.data?.detail || "Failed to load category");
+      setError(permissionsApiError(e, "Failed to load category"));
       setDetail(null);
     } finally {
       setLoadingDetail(false);
@@ -159,8 +168,7 @@ export default function CategoryPermissionsScreen() {
       setSaveMsg(`Saved — ${count} account${count === 1 ? "" : "s"} updated.`);
       loadCategories();
     } catch (e: any) {
-      setSaveMsg("");
-      setError(e?.response?.data?.detail || "Save failed");
+      setError(permissionsApiError(e, "Save failed"));
     } finally {
       setSaving(false);
     }
