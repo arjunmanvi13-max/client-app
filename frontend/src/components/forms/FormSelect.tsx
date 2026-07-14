@@ -22,6 +22,8 @@ type FormSelectProps = {
   required?: boolean;
   disabled?: boolean;
   testID?: string;
+  /** Compact label styling for filter panels. */
+  compact?: boolean;
 };
 
 const webSelectStyle: Record<string, string | number> = {
@@ -41,6 +43,9 @@ const webSelectStyle: Record<string, string | number> = {
   fontWeight: "500",
   outline: "none",
   cursor: "pointer",
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
 };
 
 function WebNativeSelect({
@@ -52,27 +57,32 @@ function WebNativeSelect({
   testID,
 }: Omit<FormSelectProps, "label" | "required">) {
   return (
-    <select
-      data-testid={testID}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        ...webSelectStyle,
-        opacity: disabled ? 0.85 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-        backgroundColor: disabled ? colors.surface2 : colors.surface,
-      }}
-    >
-      <option value="" disabled hidden>
-        {placeholder || "Select…"}
-      </option>
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
+    <View style={s.webSelectWrap}>
+      <select
+        data-testid={testID}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          ...webSelectStyle,
+          opacity: disabled ? 0.85 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+          backgroundColor: disabled ? colors.surface2 : colors.surface,
+        }}
+      >
+        <option value="" disabled hidden>
+          {placeholder || "Select…"}
         </option>
-      ))}
-    </select>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <View style={s.webChevron} pointerEvents="none">
+        <Feather name="chevron-down" size={16} color={colors.hint} />
+      </View>
+    </View>
   );
 }
 
@@ -149,12 +159,13 @@ export function FormSelect({
   required,
   disabled,
   testID,
+  compact,
 }: FormSelectProps) {
   const controlProps = { value, options, onChange, placeholder, disabled, testID };
 
   return (
     <View style={s.field}>
-      <Text style={s.label}>
+      <Text style={[s.label, compact && s.labelCompact]}>
         {label}
         {required ? " *" : ""}
       </Text>
@@ -170,6 +181,15 @@ export function FormSelect({
 const s = StyleSheet.create({
   field: { flex: 1, minWidth: 0, zIndex: 1 },
   label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
+  labelCompact: { fontSize: 11, marginBottom: 6 },
+  webSelectWrap: { position: "relative" },
+  webChevron: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
   controlWrap: { position: "relative", zIndex: 10 },
   trigger: {
     flexDirection: "row",

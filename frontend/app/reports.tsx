@@ -12,6 +12,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
+import { FormSelect, type FormSelectOption } from "../src/components/forms/FormSelect";
 import {
   PWS_CLASS_OPTIONS,
   SECTION_LETTERS,
@@ -46,8 +47,17 @@ const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
-const CLASS_FILTER_OPTIONS = ["All", ...PWS_CLASS_OPTIONS] as const;
-const SECTION_FILTER_OPTIONS = ["All", ...SECTION_LETTERS] as const;
+const CLASS_DROPDOWN_OPTIONS: FormSelectOption[] = [
+  { value: "All", label: "All classes" },
+  ...PWS_CLASS_OPTIONS.map((c) => ({ value: c, label: c })),
+];
+
+const SECTION_DROPDOWN_OPTIONS: FormSelectOption[] = [
+  { value: "All", label: "All sections" },
+  ...SECTION_LETTERS.map((l) => ({ value: l, label: l })),
+];
+
+const SECTION_ALL_OPTION: FormSelectOption[] = [{ value: "All", label: "All sections" }];
 const CENTRES = ["All", "Balua", "Harding Park"] as const;
 const SPORTS = ["All", "Cricket", "Football"] as const;
 const ATTENDANCE_STATUSES = ["All", "present", "absent", "late", "leave"] as const;
@@ -734,6 +744,44 @@ function PickerModal({ visible, onClose, title, children, sheet }: {
   );
 }
 
+function AcademicFilterDropdowns({
+  pwsClass,
+  setPwsClass,
+  sectionLetter,
+  setSectionLetter,
+}: {
+  pwsClass: string;
+  setPwsClass: (v: string) => void;
+  sectionLetter: string;
+  setSectionLetter: (v: string) => void;
+}) {
+  const { isMobile } = useBreakpoint();
+  const sectionLocked = pwsClass === "All";
+  const sectionValue = sectionLocked ? "All" : sectionLetter;
+
+  return (
+    <View style={[s.academicFilterGrid, !isMobile && s.academicFilterGridWide]}>
+      <FormSelect
+        label="Class"
+        compact
+        value={pwsClass}
+        options={CLASS_DROPDOWN_OPTIONS}
+        onChange={setPwsClass}
+        testID="class"
+      />
+      <FormSelect
+        label="Section"
+        compact
+        value={sectionValue}
+        options={sectionLocked ? SECTION_ALL_OPTION : SECTION_DROPDOWN_OPTIONS}
+        onChange={setSectionLetter}
+        disabled={sectionLocked}
+        testID="section"
+      />
+    </View>
+  );
+}
+
 function FilterSelect({ label, value, options, onChange, testID, allLabel }: {
   label: string; value: string; options: readonly string[]; onChange: (v: string) => void; testID?: string; allLabel?: string;
 }) {
@@ -807,14 +855,11 @@ function AdvancedFiltersPanel(props: {
       {showAcademic && (
         <View style={s.filterGroup}>
           <Text style={s.filterGroupTitle}>People & Academic</Text>
-          <FilterSelect label="Class" value={pwsClass} options={CLASS_FILTER_OPTIONS} onChange={setPwsClass} testID="class" allLabel="All classes" />
-          <FilterSelect
-            label="Section"
-            value={pwsClass === "All" ? "All" : sectionLetter}
-            options={pwsClass === "All" ? ["All"] : SECTION_FILTER_OPTIONS}
-            onChange={setSectionLetter}
-            testID="section"
-            allLabel="All sections"
+          <AcademicFilterDropdowns
+            pwsClass={pwsClass}
+            setPwsClass={setPwsClass}
+            sectionLetter={sectionLetter}
+            setSectionLetter={setSectionLetter}
           />
         </View>
       )}
@@ -993,6 +1038,8 @@ const s = StyleSheet.create({
   filterGroupTitle: { fontSize: 11, fontWeight: "800", color: colors.primary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: spacing.sm },
   filterField: { marginBottom: spacing.sm },
   filterFieldLabel: { fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 6 },
+  academicFilterGrid: { gap: spacing.md },
+  academicFilterGridWide: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   miniSelectRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
   miniSelect: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
   miniSelectActive: { backgroundColor: colors.primary, borderColor: colors.primary },
