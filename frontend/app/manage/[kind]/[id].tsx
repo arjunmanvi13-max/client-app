@@ -6,8 +6,7 @@ import { useLocalSearchParams, useRouter, usePathname } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
 import {
-  PWS_CLASSES, PWS_STUDENT_TYPES, TRANSPORT_DISTANCES,
-  resolveCategoryAmounts, canOverridePwsFees, type PwsStudentType, type TransportDistance,
+  canOverridePwsFees, type PwsStudentType, type TransportDistance,
 } from "../../../src/pwsFeeStructure";
 import { isCoachUser, resolveCoachDataScope } from "../../../src/coachAccess";
 import { UserRole } from "../../../src/rbac";
@@ -23,6 +22,15 @@ import {
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
 import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
+import {
+  DATE_PLACEHOLDER,
+  dateHelpText,
+  formatDate,
+  isValidDisplayDate,
+  parseToISO,
+  toISODate,
+} from "../../../src/dateFormat";
+import { StudentRosterFormFields } from "../../../src/StudentRosterFormFields";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -163,6 +171,7 @@ export default function ManageEdit() {
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
+  const canOverrideFees = canOverridePwsFees(user?.role);
   const perms = user?.permissions || {};
   const canEdit = (() => {
     if (isLoginUserKind) return isSuper;
@@ -708,8 +717,61 @@ export default function ManageEdit() {
         </View>
 
         <ScrollView contentContainerStyle={s.scroll}>
-          <Text style={s.label}>{isPlayerKind ? "Player Name *" : "Name *"}</Text>
-          <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
+          {!isStudentKind && (
+            <>
+              <Text style={s.label}>{isPlayerKind ? "Player Name *" : "Name *"}</Text>
+              <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
+            </>
+          )}
+
+          {isStudentKind && (
+            <StudentRosterFormFields
+              readOnly={readOnly}
+              isNew={isNew}
+              id={id}
+              name={name}
+              setName={setName}
+              gender={gender}
+              setGender={setGender}
+              dob={dob}
+              setDob={setDob}
+              mobile={mobile}
+              setMobile={setMobile}
+              personEmail={personEmail}
+              setPersonEmail={setPersonEmail}
+              address={address}
+              setAddress={setAddress}
+              admissionNumber={admissionNumber}
+              setAdmissionNumber={setAdmissionNumber}
+              rollNumber={rollNumber}
+              setRollNumber={setRollNumber}
+              dateOfAdmission={dateOfAdmission}
+              setDateOfAdmission={setDateOfAdmission}
+              pwsClass={pwsClass}
+              setPwsClass={setPwsClass}
+              sectionId={sectionId}
+              setSectionId={setSectionId}
+              group={group}
+              setGroup={setGroup}
+              academicSections={academicSections}
+              pwsStudentType={pwsStudentType}
+              setPwsStudentType={setPwsStudentType}
+              setIsResident={setIsResident}
+              organization={organization}
+              setOrganization={setOrganization}
+              transportEnabled={transportEnabled}
+              setTransportEnabled={setTransportEnabled}
+              transportDistance={transportDistance}
+              setTransportDistance={setTransportDistance}
+              guardianName={guardianName}
+              setGuardianName={setGuardianName}
+              guardianPhone={guardianPhone}
+              setGuardianPhone={setGuardianPhone}
+              pwsOverrides={pwsOverrides}
+              setPwsOverrides={setPwsOverrides}
+              canOverrideFees={canOverrideFees}
+            />
+          )}
 
           {isLoginUserKind && (
             <>
@@ -820,7 +882,7 @@ export default function ManageEdit() {
                         try {
                           await api.post(`/users/${id}/${next === "active" ? "activate" : "deactivate"}`);
                           setUserStatus(next);
-                          Alert.alert("Done", `${kind === "coach" ? "Coach" : "User"} ${next === "active" ? "reactivated" : "deactivated"}.`);
+                          Alert.alert("Done", `${kindParam === "coach" ? "Coach" : "User"} ${next === "active" ? "reactivated" : "deactivated"}.`);
                         } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
                       });
                     }}
@@ -1172,178 +1234,10 @@ export default function ManageEdit() {
             </>
           )}
 
-          {!isUserKind && !isPlayerKind && !isStaffKind && (
+          {!isUserKind && !isPlayerKind && !isStaffKind && !isStudentKind && (
             <>
-              {isStudentKind && (
-                <>
-                  <Text style={s.label}>Admission Number</Text>
-                  <TextInput testID="field-admission-number" editable={!readOnly} value={admissionNumber} onChangeText={setAdmissionNumber} placeholder="e.g. PWS-20250001" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Roll Number</Text>
-                  <TextInput testID="field-roll-number" editable={!readOnly} value={rollNumber} onChangeText={setRollNumber} placeholder="e.g. 101" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Gender</Text>
-                  <View style={s.chipRow}>
-                    {(["Male", "Female", "Other"] as const).map((g) => (
-                      <TouchableOpacity key={g} disabled={readOnly} style={[s.chip, gender === g && s.chipActive]} onPress={() => setGender(g)}>
-                        <Text style={[s.chipText, gender === g && { color: "#fff" }]}>{g}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={s.label}>Date of Birth</Text>
-                  <TextInput testID="field-student-dob" editable={!readOnly} value={dob} onChangeText={setDob} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Phone</Text>
-                  <TextInput testID="field-student-phone" editable={!readOnly} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" placeholder="Student phone" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Email</Text>
-                  <TextInput testID="field-student-email" editable={!readOnly} value={personEmail} onChangeText={setPersonEmail} autoCapitalize="none" keyboardType="email-address" placeholder="student@email.com" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Address</Text>
-                  <TextInput testID="field-address" editable={!readOnly} value={address} onChangeText={setAddress} placeholder="Full address" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Guardian Name</Text>
-                  <TextInput testID="field-guardian-name" editable={!readOnly} value={guardianName} onChangeText={setGuardianName} placeholder="Parent / guardian" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                  <Text style={s.label}>Guardian Phone</Text>
-                  <TextInput testID="field-guardian-phone" editable={!readOnly} value={guardianPhone} onChangeText={setGuardianPhone} keyboardType="phone-pad" placeholder="+91 …" placeholderTextColor="#94A3B8" style={[s.input, readOnly && s.readonly]} />
-                </>
-              )}
-              <Text style={s.label}>{isStudentKind ? "Grade / Section" : "Group"}</Text>
-              {isStudentKind && academicSections.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                  {academicSections.map((sec) => (
-                    <TouchableOpacity
-                      key={sec.id}
-                      testID={`field-section-${sec.label}`}
-                      style={[s.miniChip, sectionId === sec.id && s.miniChipActive]}
-                      onPress={() => { setSectionId(sec.id); setGroup(sec.label); }}
-                    >
-                      <Text style={[s.miniChipTxt, sectionId === sec.id && s.miniChipTxtActive]}>{sec.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : (
-                <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder={isStudentKind ? "e.g. 9-A" : "Group"} placeholderTextColor="#94A3B8" style={s.input} />
-              )}
-              {isStudentKind && (
-                <>
-                  <Text style={s.label}>Student type *</Text>
-                  <View style={s.chipRow}>
-                    {PWS_STUDENT_TYPES.map((t) => (
-                      <TouchableOpacity
-                        key={t}
-                        testID={`field-pws-type-${t.replace(/\s+/g, "-")}`}
-                        disabled={readOnly}
-                        style={[s.chip, pwsStudentType === t && s.chipActive]}
-                        onPress={() => {
-                          setPwsStudentType(t);
-                          setIsResident(t === "Boarding");
-                        }}
-                      >
-                        <Text style={[s.chipText, pwsStudentType === t && { color: "#fff" }]}>{t}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={s.label}>Class *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                    {PWS_CLASSES.map((c) => (
-                      <TouchableOpacity
-                        key={c}
-                        testID={`field-pws-class-${c.replace(/\s+/g, "-")}`}
-                        disabled={readOnly}
-                        style={[s.miniChip, pwsClass === c && s.miniChipActive]}
-                        onPress={() => setPwsClass(c)}
-                      >
-                        <Text style={[s.miniChipTxt, pwsClass === c && s.miniChipTxtActive]}>{c}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <View style={s.switchRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.switchLabel}>Transportation</Text>
-                      <Text style={s.switchHelp}>Include monthly transport fee</Text>
-                    </View>
-                    <Switch
-                      testID="field-transport-enabled"
-                      value={transportEnabled}
-                      onValueChange={setTransportEnabled}
-                      disabled={readOnly}
-                      trackColor={{ true: "#1E40AF" }}
-                    />
-                  </View>
-                  {transportEnabled && (
-                    <>
-                      <Text style={s.label}>Distance</Text>
-                      <View style={s.chipRow}>
-                        {TRANSPORT_DISTANCES.map((d) => (
-                          <TouchableOpacity
-                            key={d}
-                            disabled={readOnly}
-                            style={[s.chip, transportDistance === d && s.chipActive]}
-                            onPress={() => setTransportDistance(d)}
-                          >
-                            <Text style={[s.chipText, transportDistance === d && { color: "#fff" }]}>{d}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </>
-                  )}
-                  <Text style={s.label}>Date of Admission *</Text>
-                  <TextInput testID="field-admission-date" value={dateOfAdmission} onChangeText={setDateOfAdmission} placeholder={DATE_PLACEHOLDER} placeholderTextColor="#94A3B8" style={s.input} />
-                  <View style={s.feesBox} testID="fees-config">
-                    <View style={s.feesBoxHeader}>
-                      <Feather name="credit-card" size={14} color="#1E40AF" />
-                      <Text style={s.feesBoxTitle}>Fee breakdown · AY 2026-27</Text>
-                    </View>
-                    {(() => {
-                      const ovNum: Record<string, number> = {};
-                      for (const [k, v] of Object.entries(pwsOverrides)) {
-                        const n = parseInt(v, 10);
-                        if (!Number.isNaN(n)) ovNum[k] = n;
-                      }
-                      const amounts = resolveCategoryAmounts(pwsClass, transportEnabled, transportDistance, canOverrideFees ? ovNum : undefined);
-                      return (
-                        <>
-                          <View style={s.feesReadonlyBox}>
-                            {Object.entries(amounts).map(([cat, amt]) => (
-                              <View key={cat} style={s.feesReadonlyRow}>
-                                <Text style={s.feesReadonlyKey}>{cat}</Text>
-                                <Text style={s.feesReadonlyVal}>₹{amt.toLocaleString("en-IN")}</Text>
-                              </View>
-                            ))}
-                          </View>
-                          {isNew && (
-                            <Text style={s.feesBoxNote}>Fees auto-create on save. First-month tuition: admission on/before 15th = full; from 16th = 50%.</Text>
-                          )}
-                          {!isNew && (
-                            <TouchableOpacity
-                              style={{ marginTop: 8, flexDirection: "row", alignItems: "center", gap: 6 }}
-                              onPress={() => router.push(`/fees/pws-student/${id}` as any)}
-                            >
-                              <Feather name="calendar" size={14} color="#1E40AF" />
-                              <Text style={{ color: "#1E40AF", fontWeight: "700" }}>Open yearly fee roadmap</Text>
-                            </TouchableOpacity>
-                          )}
-                          {canOverrideFees && (
-                            <>
-                              <Text style={[s.label, { marginTop: 12 }]}>Override / Scholarship</Text>
-                              {Object.keys(amounts).map((cat) => (
-                                <View key={`ov-${cat}`}>
-                                  <Text style={s.help}>{cat} (default ₹{amounts[cat].toLocaleString("en-IN")})</Text>
-                                  <TextInput
-                                    testID={`override-${cat.replace(/\s+/g, "-")}`}
-                                    value={pwsOverrides[cat] || ""}
-                                    onChangeText={(v) => setPwsOverrides((prev) => ({ ...prev, [cat]: v }))}
-                                    keyboardType="numeric"
-                                    placeholder="Leave blank for default"
-                                    placeholderTextColor="#94A3B8"
-                                    style={s.input}
-                                  />
-                                </View>
-                              ))}
-                            </>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </View>
-                </>
-              )}
-              {!isStudentKind && (
+              <Text style={s.label}>Group</Text>
+              <TextInput testID="field-group" value={group} onChangeText={setGroup} placeholder="Group" placeholderTextColor="#94A3B8" style={s.input} />
               <View style={s.switchRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.switchLabel}>Hostel resident</Text>
@@ -1351,7 +1245,6 @@ export default function ManageEdit() {
                 </View>
                 <Switch testID="field-resident" value={isResident} onValueChange={setIsResident} trackColor={{ true: "#1E40AF" }} />
               </View>
-              )}
             </>
           )}
 
@@ -1384,7 +1277,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {!isUserKind && (
+          {!isUserKind && !isStudentKind && (
             <>
           <Text style={s.label}>Organization</Text>
           {isPlayerKind ? (
@@ -1467,7 +1360,7 @@ export default function ManageEdit() {
                 <Feather name="users" size={14} color="#7C3AED" />
                 <Text style={s.parentBoxTitle}>Linked Parents</Text>
               </View>
-              <Text style={s.feesBoxSub}>Parents linked here can see this {kind}'s attendance and fees from their parent portal.</Text>
+              <Text style={s.feesBoxSub}>Parents linked here can see this {kindParam}'s attendance and fees from their parent portal.</Text>
 
               {parentUserIds.length === 0 && (
                 <Text style={s.parentEmpty} testID="no-linked-parents">No parents linked yet.</Text>
