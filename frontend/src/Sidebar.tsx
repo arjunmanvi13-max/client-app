@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Pressable, Platform } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Pressable, Platform } from "react-native";
 import { useRouter, usePathname } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "./auth";
 import { colors } from "./theme";
+import { BrandLogoPair } from "./components/BrandLogoPair";
 import {
   filterNavigationGroups,
   flattenLeafItems,
@@ -170,7 +171,7 @@ export function Sidebar() {
   return (
     <View style={[styles.sidebar, { width: W }]} testID="desktop-sidebar">
       <View style={styles.brand}>
-        <Image source={require("../assets/alpha-sports-logo.png")} style={styles.logoImg} resizeMode="contain" />
+        <BrandLogoPair size={collapsed ? 28 : 40} gap={collapsed ? 4 : 6} wrapStyle={styles.brandLogos} />
         {!collapsed && (
           <View style={{ flex: 1 }}>
             <Text style={styles.brandTitle}>PWS & ALPHA</Text>
@@ -297,7 +298,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
   },
-  logoImg: { width: 44, height: 44, borderRadius: 10 },
+  brandLogos: { flexShrink: 0 },
   brandTitle: { color: colors.ink, fontWeight: "800", fontSize: 14, letterSpacing: -0.2 },
   brandSub: { color: colors.muted, fontSize: 11, marginTop: 1 },
   profileCard: {

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image, Pressable } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../src/auth";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { colors } from "../src/theme";
+import { BrandLogoPair } from "../src/components/BrandLogoPair";
 
 type Step = "login" | "force_change";
 
@@ -149,17 +150,10 @@ export default function Login() {
   const Hero = (
     <View style={isWide ? s.heroWide : s.heroMobile}>
       <View style={s.logoWrap}>
-        <View style={s.logoCircle}>
-          <Image source={require("../assets/alpha-sports-logo.png")} style={s.logoImg} resizeMode="contain" testID="alpha-logo" />
-        </View>
-      </View>
-      <View style={s.heroRow}>
-        <View style={[s.brandBadge, { backgroundColor: isWide ? "rgba(255,255,255,0.18)" : colors.primary }]}>
-          <Text style={s.brandBadgeText}>PWS</Text>
-        </View>
-        <Text style={[s.brandPlus, !isWide && { color: colors.muted }]}>×</Text>
-        <View style={[s.brandBadge, { backgroundColor: isWide ? "rgba(255,255,255,0.18)" : "#EA580C" }]}>
-          <Text style={s.brandBadgeText}>ALPHA</Text>
+        <View style={s.logoRow}>
+          <View style={s.logoCircle}>
+            <BrandLogoPair size={isWide ? 56 : 48} gap={10} showSeparator separatorColor={isWide ? "rgba(255,255,255,0.65)" : colors.muted} />
+          </View>
         </View>
       </View>
       <Text style={isWide ? s.h1Wide : s.h1Mobile}>Sign in with your work email.</Text>
@@ -217,12 +211,17 @@ const s = StyleSheet.create({
   formColInner: { padding: 40, paddingBottom: 60, alignItems: "center" },
   cardWide: { width: "100%", maxWidth: 480, backgroundColor: colors.surface, borderRadius: 20, padding: 28, borderWidth: 1, borderColor: colors.border },
   logoWrap: { marginBottom: 24 },
-  logoCircle: { width: 88, height: 88, borderRadius: 22, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-  logoImg: { width: 70, height: 70 },
-  heroRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
-  brandBadge: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 },
-  brandBadgeText: { color: "#fff", fontWeight: "800", fontSize: 14, letterSpacing: 1.5 },
-  brandPlus: { fontSize: 22, color: "rgba(255,255,255,0.7)", fontWeight: "300" },
+  logoRow: { alignItems: "flex-start" },
+  logoCircle: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
   h1Wide: { fontSize: 38, fontWeight: "800", color: "#fff", marginTop: 28, lineHeight: 46, letterSpacing: -0.8 },
   h1Mobile: { fontSize: 28, fontWeight: "700", color: colors.ink, marginTop: 24, lineHeight: 34, letterSpacing: -0.5 },
   subWide: { fontSize: 16, color: "rgba(255,255,255,0.78)", marginTop: 12, lineHeight: 24, maxWidth: 420 },
