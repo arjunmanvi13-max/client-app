@@ -23,6 +23,14 @@ import {
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
 import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
+import {
+  DATE_PLACEHOLDER,
+  dateHelpText,
+  formatDate,
+  isValidDisplayDate,
+  parseToISO,
+  toISODate,
+} from "../../../src/dateFormat";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -163,6 +171,7 @@ export default function ManageEdit() {
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isTeacher = user?.role === "teacher";
+  const canOverrideFees = canOverridePwsFees(user?.role);
   const perms = user?.permissions || {};
   const canEdit = (() => {
     if (isLoginUserKind) return isSuper;
@@ -820,7 +829,7 @@ export default function ManageEdit() {
                         try {
                           await api.post(`/users/${id}/${next === "active" ? "activate" : "deactivate"}`);
                           setUserStatus(next);
-                          Alert.alert("Done", `${kind === "coach" ? "Coach" : "User"} ${next === "active" ? "reactivated" : "deactivated"}.`);
+                          Alert.alert("Done", `${kindParam === "coach" ? "Coach" : "User"} ${next === "active" ? "reactivated" : "deactivated"}.`);
                         } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
                       });
                     }}
@@ -1467,7 +1476,7 @@ export default function ManageEdit() {
                 <Feather name="users" size={14} color="#7C3AED" />
                 <Text style={s.parentBoxTitle}>Linked Parents</Text>
               </View>
-              <Text style={s.feesBoxSub}>Parents linked here can see this {kind}'s attendance and fees from their parent portal.</Text>
+              <Text style={s.feesBoxSub}>Parents linked here can see this {kindParam}'s attendance and fees from their parent portal.</Text>
 
               {parentUserIds.length === 0 && (
                 <Text style={s.parentEmpty} testID="no-linked-parents">No parents linked yet.</Text>
