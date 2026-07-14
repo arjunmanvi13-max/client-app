@@ -168,6 +168,7 @@ export default function CategoryPermissionsScreen() {
       setSaveMsg(`Saved — ${count} account${count === 1 ? "" : "s"} updated.`);
       loadCategories();
     } catch (e: any) {
+      setSaveMsg("");
       setError(permissionsApiError(e, "Save failed"));
     } finally {
       setSaving(false);
