@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, usePathname } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
 import {
@@ -22,7 +22,7 @@ import {
   type PwsAdminDesignation,
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
-import { getManageListMeta } from "../../../src/manageKinds";
+import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -132,7 +132,8 @@ function showError(title: string, message: string) {
 
 export default function ManageEdit() {
   const { kind: kindRaw, id: idRaw } = useLocalSearchParams<{ kind: string | string[]; id: string | string[] }>();
-  const kindParam = resolveRouteParam(kindRaw);
+  const pathname = usePathname() || "";
+  const kindParam = resolveManageKind(resolveRouteParam(kindRaw), pathname);
   const id = resolveRouteParam(idRaw);
   const { user } = useAuth();
   const router = useRouter();

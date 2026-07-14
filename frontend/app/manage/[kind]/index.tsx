@@ -2,10 +2,9 @@ import { useEffect, useState, useCallback } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
-import { api, ROLE_COLORS, useAuth, userHasPermission } from "../../../src/auth";
-import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
-import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "../../../src/coachAccess";
+import { useLocalSearchParams, useRouter, useFocusEffect, usePathname } from "expo-router";
+import { api, useAuth, userHasPermission } from "../../../src/auth";
+import { Permission } from "../../../src/rbac";
 import {
   CATALOG_BY_CODE,
   designationLabel,
@@ -15,7 +14,8 @@ import {
   resolveRouteParam,
   type LoginUserType,
 } from "../../../src/userClassification";
-import { getManageListMeta } from "../../../src/manageKinds";
+import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
+import { RosterManageList } from "../../../src/RosterManageList";
 
 /** Approved login user types — Super Admin hub only. */
 function LoginUserManageList({ kind }: { kind: LoginUserType }) {
@@ -140,233 +140,19 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   );
 }
 
-/** Roster records (students, players, staff) and legacy user lists from Directory sidebar. */
-function RosterManageList({ kind }: { kind: string }) {
+export default function ManageList() {
+  const { kind: kindRaw } = useLocalSearchParams<{ kind: string | string[] }>();
+  const pathname = usePathname() || "";
+  const kindParam = resolveManageKind(resolveRouteParam(kindRaw), pathname);
   const router = useRouter();
-  const { user } = useAuth();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState("");
-  const [showDeactivated, setShowDeactivated] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [sectionFilter, setSectionFilter] = useState<string | null>(null);
-  const [centreFilter, setCentreFilter] = useState<string | null>(null);
-  const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
-  const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"];
-  const meta = getManageListMeta(kind)!;
-  const role = normalizeRole(user?.role || "");
-  const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
-    || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
-    || userHasPermission(user, Permission.MANAGE_ACCESS);
-  const isPlayer = kind === "player";
-  const coachScope = resolveCoachDataScope(user);
-  const coachBlocked = isPlayer && isCoachUser(user) && coachScope.requiresSportAssignment;
-  const isStudent = kind === "student";
-  const isTeacher = role === UserRole.PWS_TEACHER;
-  const canAdd = (() => {
-    if (isTeacher && kind === "student") return false;
-    if (isAdmin) return true;
-    if (meta.isUser) return (user?.can_manage || []).includes(kind);
-    if (kind === "student") return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
-    if (kind === "player") return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
-    return (user?.can_manage || []).includes(kind);
-  })();
 
-  useEffect(() => {
-    if (user && isCoachUser(user) && kind === "staff") {
-      router.replace("/(tabs)/dashboard");
-    }
-  }, [user, kind, router]);
-
-  useEffect(() => {
-    if (isStudent) {
-      api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => setSections([]));
-    }
-  }, [isStudent]);
-
-  const load = useCallback(async () => {
-    if (coachBlocked) return;
-    setLoading(true);
-    try {
-      if (meta.isUser) {
-        const { data } = await api.get("/users", { params: { role: kind } });
-        let rows = data;
-        if (search.trim()) {
-          const q = search.trim().toLowerCase();
-          rows = rows.filter((u: any) =>
-            (u.name || "").toLowerCase().includes(q)
-            || (u.email || "").toLowerCase().includes(q)
-            || (u.mobile || "").includes(q),
-          );
-        }
-        setItems(rows);
-      } else {
-        const params: any = { kind };
-        if (search.trim()) params.q = search.trim();
-        if (isPlayer && showDeactivated) params.include_deactivated = true;
-        if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
-        if (isPlayer && centreFilter) params.centre = centreFilter;
-        if (isStudent && sectionFilter) params.section_id = sectionFilter;
-        const { data } = await api.get("/people", { params });
-        setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
-      }
-    } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter, user, coachBlocked]);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  if (user && isCoachUser(user) && kind === "staff") {
+  if (!kindParam) {
     return (
       <SafeAreaView style={s.safe} edges={["top"]}>
         <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
   }
-
-  return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="list-back">
-          <Feather name="chevron-left" size={22} color="#0F172A" />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={s.h1}>{meta.label}</Text>
-          <Text style={s.sub}>{items.length} record{items.length !== 1 ? "s" : ""}</Text>
-          {isPlayer && isCoachUser(user) && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
-            <View style={s.scopeBadge}>
-              <Feather name="lock" size={12} color="#1E40AF" />
-              <Text style={s.scopeText}>Showing {coachScope.assignedSport} players</Text>
-            </View>
-          )}
-        </View>
-        <TouchableOpacity testID={`add-${kind}`} style={[s.addBtn, { backgroundColor: meta.tint }, !canAdd && { opacity: 0.45 }]} disabled={!canAdd} onPress={() => router.push(`/manage/${kind}/new`)}>
-          <Feather name="plus" size={18} color="#fff" />
-          <Text style={s.addText}>Add</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={s.searchRow}>
-        {!coachBlocked && (
-        <>
-        <Feather name="search" size={16} color="#94A3B8" />
-        <TextInput
-          testID="people-search"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search name, ID, phone…"
-          placeholderTextColor="#94A3B8"
-          style={s.searchInput}
-          onSubmitEditing={load}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => { setSearch(""); }}>
-            <Feather name="x" size={16} color="#94A3B8" />
-          </TouchableOpacity>
-        )}
-        </>
-        )}
-      </View>
-
-      {coachBlocked && (
-        <View style={s.blockedBox}>
-          <Feather name="alert-circle" size={28} color="#DC2626" />
-          <Text style={s.blockedTitle}>Sport assignment required</Text>
-          <Text style={s.blockedText}>{coachSportAssignmentMessage(coachScope)}</Text>
-        </View>
-      )}
-
-      {isPlayer && isAdmin && !coachBlocked && (
-        <View style={s.toggleRow}>
-          <TouchableOpacity testID="toggle-active" style={[s.togglePill, !showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(false)}>
-            <Text style={[s.toggleTxt, !showDeactivated && s.toggleTxtActive]}>Active</Text>
-          </TouchableOpacity>
-          <TouchableOpacity testID="toggle-deactivated" style={[s.togglePill, showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(true)}>
-            <Text style={[s.toggleTxt, showDeactivated && s.toggleTxtActive]}>All (incl. inactive)</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {isPlayer && !coachBlocked && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
-          <TouchableOpacity testID="ptype-all" style={[s.togglePill, !typeFilter && s.togglePillActive]} onPress={() => setTypeFilter(null)}>
-            <Text style={[s.toggleTxt, !typeFilter && s.toggleTxtActive]}>All Types</Text>
-          </TouchableOpacity>
-          {BOARDING_TYPES.map((t) => (
-            <TouchableOpacity key={t} testID={`ptype-${t.toLowerCase().replace(/\s+/g, "-")}`} style={[s.togglePill, typeFilter === t && s.togglePillActive]} onPress={() => setTypeFilter(typeFilter === t ? null : t)}>
-              <Text style={[s.toggleTxt, typeFilter === t && s.toggleTxtActive]}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-          {["Balua", "Harding Park"].map((c) => (
-            <TouchableOpacity key={c} testID={`centre-${c}`} style={[s.togglePill, centreFilter === c && s.togglePillActive]} onPress={() => setCentreFilter(centreFilter === c ? null : c)}>
-              <Text style={[s.toggleTxt, centreFilter === c && s.toggleTxtActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      {isStudent && sections.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
-          <TouchableOpacity style={[s.togglePill, !sectionFilter && s.togglePillActive]} onPress={() => setSectionFilter(null)}>
-            <Text style={[s.toggleTxt, !sectionFilter && s.toggleTxtActive]}>All Sections</Text>
-          </TouchableOpacity>
-          {sections.map((sec) => (
-            <TouchableOpacity key={sec.id} style={[s.togglePill, sectionFilter === sec.id && s.togglePillActive]} onPress={() => setSectionFilter(sectionFilter === sec.id ? null : sec.id)}>
-              <Text style={[s.toggleTxt, sectionFilter === sec.id && s.toggleTxtActive]}>{sec.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-
-      <ScrollView contentContainerStyle={s.scroll}>
-        {loading ? <ActivityIndicator color={meta.tint} style={{ marginTop: 24 }} /> :
-         items.length === 0 ? (
-           <View style={s.empty}>
-             <Feather name="users" size={36} color="#94A3B8" />
-             <Text style={s.emptyText}>
-               {search.trim()
-                 ? `No matches for "${search.trim()}".`
-                 : `No ${meta.label.toLowerCase()} yet. Tap Add to create one.`}
-             </Text>
-           </View>
-         ) : items.map((it) => {
-          const isDeact = it.status === "deactivated";
-          return (
-          <TouchableOpacity
-            key={it.id}
-            testID={`row-${it.id}`}
-            style={[s.row, isDeact && s.rowDeact]}
-            onPress={() => router.push(`/manage/${kind}/${it.id}`)}
-          >
-            <View style={[s.avatar, { backgroundColor: isDeact ? "#94A3B8" : (ROLE_COLORS[kind] || meta.tint) }]}>
-              <Text style={s.avatarTxt}>{it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Text style={s.name}>{it.name}</Text>
-                {isDeact && <View style={s.deactPill}><Text style={s.deactPillTxt}>Inactive</Text></View>}
-              </View>
-              <Text style={s.metaTxt}>{meta.subtitle(it)}</Text>
-              {meta.isUser && it.can_manage?.length > 0 && (
-                <View style={s.permRow}>
-                  {it.can_manage.map((p: string) => (
-                    <View key={p} style={s.permPill}><Text style={s.permTxt}>{p}</Text></View>
-                  ))}
-                </View>
-              )}
-            </View>
-            <Feather name="chevron-right" size={18} color="#94A3B8" />
-          </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-export default function ManageList() {
-  const { kind: kindRaw } = useLocalSearchParams<{ kind: string | string[] }>();
-  const kindParam = resolveRouteParam(kindRaw);
-  const router = useRouter();
 
   if (isApprovedLoginUserType(kindParam)) {
     return <LoginUserManageList kind={kindParam} />;

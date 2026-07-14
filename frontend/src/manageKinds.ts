@@ -71,6 +71,13 @@ export function getManageListMeta(kind: string): ManageListMeta | null {
   return MANAGE_LIST_META[kind] || null;
 }
 
-export function rosterLabel(kind: string): string {
-  return MANAGE_LIST_META[kind]?.label || kind;
+export function resolveManageKind(kindParam: string, pathname: string): string {
+  const fromParam = (kindParam || "").trim();
+  if (fromParam) return fromParam;
+  const match = pathname.match(/\/manage\/([^/?]+)/);
+  return match?.[1] || "";
+}
+
+export function isDirectoryRosterKind(kind: string): boolean {
+  return isPeopleKind(kind);
 }
