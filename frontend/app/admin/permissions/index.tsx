@@ -1,258 +1,430 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, TextInput } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Switch,
+  ActivityIndicator,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission } from "../../../src/rbac";
-import { formatDateTime } from "../../../src/dateFormat";
+import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, type LoginUserType } from "../../../src/userClassification";
+import { colors, radii, shadow } from "../../../src/theme";
+import { useBreakpoint } from "../../../src/useBreakpoint";
 
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  role_category?: string;
-  organization?: string;
-  coach_type?: string | null;
-  department?: string | null;
-  status?: string;
-  mobile?: string | null;
+type CategorySummary = {
+  user_type: LoginUserType;
+  display_name: string;
+  entity_scope: string;
+  locked: boolean;
+  enabled_count: number;
+  total_count: number;
 };
 
-type AuditEntry = {
+type ModuleNode = {
   id: string;
-  at: string;
-  actor_name: string;
-  target_name: string;
-  template_applied?: string | null;
-  changes: any;
+  label: string;
+  permission_keys?: string[];
+  rbac_permissions?: string[];
+  children?: ModuleNode[];
 };
 
-export default function PermissionsList() {
+type CategoryDetail = {
+  user_type: LoginUserType;
+  display_name: string;
+  entity_scope: string;
+  locked: boolean;
+  catalog: Array<{ id: string; label: string; modules: ModuleNode[] }>;
+  modules: Record<string, boolean>;
+  updated_at?: string | null;
+  updated_by_name?: string | null;
+};
+
+function leafModuleIds(nodes: ModuleNode[]): string[] {
+  const out: string[] = [];
+  const walk = (n: ModuleNode) => {
+    if (n.children?.length) n.children.forEach(walk);
+    else out.push(n.id);
+  };
+  nodes.forEach(walk);
+  return out;
+}
+
+function allLeafIds(catalog: CategoryDetail["catalog"]): string[] {
+  return catalog.flatMap((g) => g.modules.flatMap((m) => leafModuleIds([m])));
+}
+
+export default function CategoryPermissionsScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const { isWide, horizontalPadding } = useBreakpoint();
+  const [categories, setCategories] = useState<CategorySummary[]>([]);
+  const [selected, setSelected] = useState<LoginUserType>(APPROVED_LOGIN_USER_TYPES[1]);
+  const [detail, setDetail] = useState<CategoryDetail | null>(null);
+  const [draft, setDraft] = useState<Record<string, boolean>>({});
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<"users" | "audit">("users");
-  const [filter, setFilter] = useState<"all" | "PWS" | "ALPHA" | "BOTH">("all");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "deactivated">("all");
-  const [search, setSearch] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadCategories = useCallback(async () => {
+    setError("");
     try {
-      const [u, a] = await Promise.all([
-        api.get("/users"),
-        api.get("/permissions/audit", { params: { limit: 10 } }),
-      ]);
-      setUsers(u.data);
-      setAudit(a.data);
-    } catch {} finally { setLoading(false); }
+      const { data } = await api.get("/permissions/categories");
+      const cats: CategorySummary[] = data.categories || [];
+      setCategories(cats);
+      if (!cats.find((c) => c.user_type === selected) && cats.length) {
+        setSelected(cats.find((c) => !c.locked)?.user_type || cats[0].user_type);
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || "Failed to load categories");
+    } finally {
+      setLoading(false);
+    }
+  }, [selected]);
+
+  const loadDetail = useCallback(async (userType: LoginUserType) => {
+    setLoadingDetail(true);
+    setSaveMsg("");
+    try {
+      const { data } = await api.get(`/permissions/categories/${userType}`);
+      setDetail(data);
+      setDraft({ ...data.modules });
+      setSavedSnapshot({ ...data.modules });
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || "Failed to load category");
+      setDetail(null);
+    } finally {
+      setLoadingDetail(false);
+    }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
+  useFocusEffect(useCallback(() => {
+    setLoading(true);
+    loadCategories();
+  }, [loadCategories]));
 
-  const roles = useMemo(
-    () => Array.from(new Set(users.filter((u) => u.role !== "super_admin").map((u) => u.role))).sort(),
-    [users]
-  );
+  useEffect(() => {
+    if (selected) loadDetail(selected);
+  }, [selected, loadDetail]);
+
+  const dirty = useMemo(() => {
+    if (!detail) return false;
+    return Object.keys(draft).some((k) => !!draft[k] !== !!savedSnapshot[k]);
+  }, [draft, savedSnapshot, detail]);
+
+  const toggle = (id: string, value?: boolean) => {
+    if (detail?.locked) return;
+    setDraft((prev) => ({ ...prev, [id]: value ?? !prev[id] }));
+    setSaveMsg("");
+  };
+
+  const selectAll = () => {
+    if (!detail || detail.locked) return;
+    const ids = allLeafIds(detail.catalog);
+    setDraft((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => { next[id] = true; });
+      return next;
+    });
+  };
+
+  const clearAll = () => {
+    if (!detail || detail.locked) return;
+    const ids = allLeafIds(detail.catalog);
+    setDraft((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => { next[id] = false; });
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (!detail || detail.locked || !dirty) return;
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const { data } = await api.put(`/permissions/categories/${detail.user_type}`, { modules: draft });
+      setDetail(data);
+      setDraft({ ...data.modules });
+      setSavedSnapshot({ ...data.modules });
+      const count = data.users_updated ?? 0;
+      setSaveMsg(`Saved — ${count} account${count === 1 ? "" : "s"} updated.`);
+      loadCategories();
+    } catch (e: any) {
+      setSaveMsg("");
+      setError(e?.response?.data?.detail || "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!user) return null;
   if (!userHasPermission(user, Permission.MANAGE_ACCESS)) {
     return (
       <SafeAreaView style={s.safe}>
-        <View style={s.header}><Text style={s.h1}>Permissions</Text></View>
-        <View style={s.empty}>
-          <Feather name="lock" size={40} color="#94A3B8" />
-          <Text style={s.emptyTitle}>Super Admin only</Text>
+        <View style={s.denied}>
+          <Feather name="lock" size={40} color={colors.hint} />
+          <Text style={s.deniedTitle}>Super Admin only</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const filtered = users.filter((u) => {
-    if (u.role === "super_admin") return false; // hide self
-    if (filter !== "all") {
-      if (filter === "BOTH") { if (u.organization !== "BOTH") return false; }
-      else if (u.organization !== filter && u.organization !== "BOTH") return false;
-    }
-    if (roleFilter !== "all" && u.role !== roleFilter) return false;
-    if (statusFilter !== "all" && (u.status || "active") !== statusFilter) return false;
-    const q = search.trim().toLowerCase();
-    if (q) {
-      const hay = [u.name, u.email, u.id, u.department, u.role, u.organization, u.mobile]
-        .filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.header}>
+    <SafeAreaView style={s.safe} edges={["top"]} testID="category-permissions">
+      <View style={[s.header, { paddingHorizontal: horizontalPadding }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="perm-back">
-          <Feather name="chevron-left" size={22} color="#0F172A" />
+          <Feather name="chevron-left" size={22} color={colors.ink} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.overline}>SUPER ADMIN · ACCESS CONTROL</Text>
-          <Text style={s.h1}>Permissions</Text>
+          <Text style={s.h1}>User Category Permissions</Text>
+          <Text style={s.sub}>Configure module access by login user type — not individual accounts.</Text>
         </View>
       </View>
 
-      <View style={s.tabRow}>
-        <TouchableOpacity testID="tab-users" style={[s.tab, tab === "users" && s.tabActive]} onPress={() => setTab("users")}>
-          <Text style={[s.tabTxt, tab === "users" && s.tabTxtActive]}>Users</Text>
-        </TouchableOpacity>
-        <TouchableOpacity testID="tab-audit" style={[s.tab, tab === "audit" && s.tabActive]} onPress={() => setTab("audit")}>
-          <Text style={[s.tabTxt, tab === "audit" && s.tabTxtActive]}>Audit log</Text>
-        </TouchableOpacity>
-      </View>
+      {error ? (
+        <View style={[s.banner, s.bannerError, { marginHorizontal: horizontalPadding }]}>
+          <Text style={s.bannerErrorTxt}>{error}</Text>
+          <TouchableOpacity onPress={() => { setError(""); loadCategories(); loadDetail(selected); }}>
+            <Text style={s.link}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
-      <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0F766E" />}>
-        {tab === "users" && (
-          <>
-            <View style={s.searchWrap}>
-              <Feather name="search" size={16} color="#94A3B8" />
-              <TextInput
-                testID="perm-search"
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search name, email, ID, designation, organization…"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                style={s.searchInput}
-              />
-              {search.length > 0 && (
-                <TouchableOpacity testID="perm-search-clear" onPress={() => setSearch("")} hitSlop={10}>
-                  <Feather name="x" size={16} color="#94A3B8" />
-                </TouchableOpacity>
-              )}
-            </View>
+      {saveMsg ? (
+        <View style={[s.banner, s.bannerOk, { marginHorizontal: horizontalPadding }]} testID="perm-save-success">
+          <Feather name="check-circle" size={16} color={colors.success} />
+          <Text style={s.bannerOkTxt}>{saveMsg}</Text>
+        </View>
+      ) : null}
 
-            <View style={s.filterRow}>
-              {(["all", "PWS", "ALPHA", "BOTH"] as const).map((f) => (
-                <TouchableOpacity key={f} testID={`filter-${f}`} style={[s.filterChip, filter === f && s.filterChipActive]} onPress={() => setFilter(f)}>
-                  <Text style={[s.filterTxt, filter === f && s.filterTxtActive]}>{f === "all" ? "All orgs" : f}</Text>
+      {dirty && !detail?.locked ? (
+        <View style={[s.banner, s.bannerWarn, { marginHorizontal: horizontalPadding }]} testID="perm-unsaved">
+          <Feather name="alert-circle" size={16} color={colors.warning} />
+          <Text style={s.bannerWarnTxt}>Unsaved changes</Text>
+        </View>
+      ) : null}
+
+      {loading ? (
+        <ActivityIndicator color="#0F766E" style={{ marginTop: 40 }} />
+      ) : (
+        <View style={[s.body, isWide && s.bodyWide, { paddingHorizontal: horizontalPadding }]}>
+          {/* Category list */}
+          <ScrollView style={[s.catList, isWide && s.catListWide]} contentContainerStyle={{ paddingBottom: 16 }}>
+            {categories.map((cat) => {
+              const meta = CATALOG_BY_CODE[cat.user_type];
+              const active = selected === cat.user_type;
+              return (
+                <TouchableOpacity
+                  key={cat.user_type}
+                  testID={`cat-${cat.user_type}`}
+                  style={[s.catItem, active && s.catItemActive]}
+                  onPress={() => setSelected(cat.user_type)}
+                >
+                  <View style={[s.catIcon, { backgroundColor: (meta?.tint || colors.primary) + "22" }]}>
+                    <Feather name={(meta?.icon as any) || "user"} size={16} color={meta?.tint || colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.catName, active && s.catNameActive]}>{cat.display_name}</Text>
+                    <Text style={s.catMeta}>
+                      {cat.entity_scope} · {cat.enabled_count}/{cat.total_count} modules
+                      {cat.locked ? " · Locked" : ""}
+                    </Text>
+                  </View>
+                  {active && <Feather name="chevron-right" size={16} color={colors.primary} />}
                 </TouchableOpacity>
-              ))}
-              {(["all", "active", "deactivated"] as const).map((st) => (
-                <TouchableOpacity key={st} testID={`status-${st}`} style={[s.filterChip, statusFilter === st && { backgroundColor: st === "deactivated" ? "#DC2626" : "#047857", borderColor: st === "deactivated" ? "#DC2626" : "#047857" }]} onPress={() => setStatusFilter(st)}>
-                  <Text style={[s.filterTxt, statusFilter === st && s.filterTxtActive]}>{st === "all" ? "Any status" : st === "active" ? "Active" : "Inactive"}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={s.roleRow}>
-              <TouchableOpacity testID="role-all" style={[s.filterChip, roleFilter === "all" && s.filterChipActive]} onPress={() => setRoleFilter("all")}>
-                <Text style={[s.filterTxt, roleFilter === "all" && s.filterTxtActive]}>All roles</Text>
-              </TouchableOpacity>
-              {roles.map((r) => (
-                <TouchableOpacity key={r} testID={`role-${r}`} style={[s.filterChip, roleFilter === r && s.filterChipActive]} onPress={() => setRoleFilter(roleFilter === r ? "all" : r)}>
-                  <Text style={[s.filterTxt, roleFilter === r && s.filterTxtActive]}>{r.replace("_", " ")}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <Text style={s.resultCount} testID="perm-result-count">{filtered.length} user{filtered.length !== 1 ? "s" : ""}</Text>
-            {loading ? <ActivityIndicator color="#0F766E" style={{ marginTop: 32 }} /> :
-             filtered.length === 0 ? <Text style={s.emptyText}>No users.</Text> :
-             filtered.map((u) => (
-               <TouchableOpacity
-                 key={u.id}
-                 testID={`perm-user-${u.id}`}
-                 style={s.userRow}
-                 onPress={() => router.push(`/admin/permissions/${u.id}`)}
-               >
-                 <View style={[s.avatar, { backgroundColor: u.role_category === "Admin" ? "#0F766E" : "#0EA5E9" }]}>
-                   <Feather name={u.role_category === "Admin" ? "shield" : "user"} size={16} color="#fff" />
-                 </View>
-                 <View style={{ flex: 1 }}>
-                   <Text style={s.userName}>{u.name}</Text>
-                   <Text style={s.userMeta}>{u.email}{u.department ? ` · ${u.department}` : ""}</Text>
-                   <View style={s.metaPills}>
-                     <View style={s.pill}><Text style={s.pillTxt}>{u.role.replace("_", " ")}</Text></View>
-                     <View style={s.pill}><Text style={s.pillTxt}>{u.organization}</Text></View>
-                     {(u.status || "active") === "deactivated" && (
-                       <View style={[s.pill, { backgroundColor: "#FEE2E2" }]}><Text style={[s.pillTxt, { color: "#DC2626" }]}>Inactive</Text></View>
-                     )}
-                     <View style={[s.pill, { backgroundColor: u.role_category === "Admin" ? "#0F766E1A" : "#0EA5E91A" }]}>
-                       <Text style={[s.pillTxt, { color: u.role_category === "Admin" ? "#0F766E" : "#0EA5E9" }]}>{u.role_category}</Text>
-                     </View>
-                   </View>
-                 </View>
-                 <Feather name="chevron-right" size={18} color="#94A3B8" />
-               </TouchableOpacity>
-             ))
-            }
-          </>
-        )}
-        {tab === "audit" && (
-          loading ? <ActivityIndicator color="#0F766E" style={{ marginTop: 32 }} /> :
-          audit.length === 0 ? <Text style={s.emptyText}>No audit entries yet.</Text> :
-          audit.map((a) => (
-            <View key={a.id} style={s.auditRow}>
-              <Feather name="clock" size={14} color="#64748B" />
-              <View style={{ flex: 1 }}>
-                <Text style={s.auditTitle}>
-                  {a.actor_name} → {a.target_name}
-                  {a.template_applied ? `  ·  template: ${a.template_applied}` : ""}
-                </Text>
-                <Text style={s.auditTime}>{formatDateTime(a.at)}</Text>
-                {a.changes?.permissions && (
-                  <View style={s.changeWrap}>
-                    {Object.keys(a.changes.permissions).slice(0, 6).map((k) => (
-                      <Text key={k} style={s.changeTxt}>
-                        • {k}: {a.changes.permissions[k].from ? "ON" : "off"} → {a.changes.permissions[k].to ? "ON" : "off"}
-                      </Text>
+              );
+            })}
+          </ScrollView>
+
+          {/* Permissions panel */}
+          <View style={[s.panel, isWide && s.panelWide]}>
+            {loadingDetail || !detail ? (
+              <ActivityIndicator color="#0F766E" style={{ marginTop: 32 }} />
+            ) : (
+              <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+                <View style={s.panelHead}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.panelTitle}>{detail.display_name}</Text>
+                    <Text style={s.panelSub}>
+                      {detail.entity_scope} scope
+                      {detail.updated_at ? ` · Updated ${detail.updated_at.slice(0, 10)}` : ""}
+                      {detail.updated_by_name ? ` by ${detail.updated_by_name}` : ""}
+                    </Text>
+                  </View>
+                  {detail.locked ? (
+                    <View style={s.lockPill}>
+                      <Feather name="lock" size={12} color={colors.muted} />
+                      <Text style={s.lockTxt}>Full access</Text>
+                    </View>
+                  ) : (
+                    <View style={s.bulkRow}>
+                      <TouchableOpacity testID="perm-select-all" style={s.bulkBtn} onPress={selectAll}>
+                        <Text style={s.bulkTxt}>Select all</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity testID="perm-clear-all" style={s.bulkBtn} onPress={clearAll}>
+                        <Text style={s.bulkTxt}>Clear all</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                {detail.catalog.map((group) => (
+                  <View key={group.id} style={s.group}>
+                    <Text style={s.groupLabel}>{group.label}</Text>
+                    {group.modules.map((mod) => (
+                      <ModuleBlock
+                        key={mod.id}
+                        mod={mod}
+                        draft={draft}
+                        locked={!!detail.locked}
+                        onToggle={toggle}
+                      />
                     ))}
                   </View>
-                )}
-              </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
+                ))}
+
+                <TouchableOpacity
+                  testID="perm-save"
+                  style={[s.saveBtn, (!dirty || detail.locked || saving) && s.saveBtnDisabled]}
+                  onPress={save}
+                  disabled={!dirty || detail.locked || saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="save" size={16} color="#fff" />
+                      <Text style={s.saveTxt}>Save changes</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
+function ModuleBlock({
+  mod,
+  draft,
+  locked,
+  onToggle,
+  depth = 0,
+}: {
+  mod: ModuleNode;
+  draft: Record<string, boolean>;
+  locked: boolean;
+  onToggle: (id: string, value?: boolean) => void;
+  depth?: number;
+}) {
+  const children = mod.children || [];
+  if (children.length) {
+    return (
+      <View style={[s.nestedGroup, depth > 0 && { marginLeft: 12 }]}>
+        <Text style={s.nestedParent}>{mod.label}</Text>
+        {children.map((child) => (
+          <ModuleBlock key={child.id} mod={child} draft={draft} locked={locked} onToggle={onToggle} depth={depth + 1} />
+        ))}
+      </View>
+    );
+  }
+
+  const enabled = !!draft[mod.id];
+  return (
+    <View style={[s.moduleRow, depth > 0 && s.moduleRowNested]} testID={`mod-${mod.id}`}>
+      <View style={{ flex: 1 }}>
+        <Text style={s.moduleLabel}>{mod.label}</Text>
+      </View>
+      <Switch
+        value={enabled}
+        onValueChange={(v) => onToggle(mod.id, v)}
+        disabled={locked}
+        trackColor={{ false: colors.border, true: "#99F6E4" }}
+        thumbColor={enabled ? "#0F766E" : "#f4f3f4"}
+        testID={`toggle-${mod.id}`}
+      />
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#F4F5F7" },
-  header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingTop: 12, gap: 4 },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: { flexDirection: "row", alignItems: "flex-start", paddingTop: 12, gap: 4, paddingBottom: 12 },
   backBtn: { padding: 8 },
-  overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5, color: "#94A3B8" },
-  h1: { fontSize: 22, fontWeight: "700", color: "#0F172A", marginTop: 2, letterSpacing: -0.5 },
-  tabRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 12 },
-  tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
-  tabActive: { backgroundColor: "#0F766E", borderColor: "#0F766E" },
-  tabTxt: { fontSize: 13, fontWeight: "700", color: "#64748B" },
-  tabTxtActive: { color: "#fff" },
-  scroll: { padding: 20, paddingTop: 12 },
-  filterRow: { flexDirection: "row", gap: 8, marginBottom: 8, flexWrap: "wrap" },
-  roleRow: { flexDirection: "row", gap: 8, paddingBottom: 8 },
-  searchWrap: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
-  searchInput: { flex: 1, fontSize: 14, color: "#0F172A", padding: 0 },
-  resultCount: { fontSize: 11, fontWeight: "700", color: "#94A3B8", marginBottom: 8 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
-  filterChipActive: { backgroundColor: "#0F172A", borderColor: "#0F172A" },
-  filterTxt: { fontSize: 12, fontWeight: "700", color: "#64748B" },
-  filterTxtActive: { color: "#fff" },
-  userRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
-  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  userName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
-  userMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  metaPills: { flexDirection: "row", gap: 6, marginTop: 6, flexWrap: "wrap" },
-  pill: { backgroundColor: "#F1F5F9", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
-  pillTxt: { fontSize: 10, fontWeight: "700", color: "#475569", textTransform: "capitalize" },
-  empty: { padding: 40, alignItems: "center", gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A", marginTop: 8 },
-  emptyText: { textAlign: "center", color: "#64748B", marginTop: 24 },
-  auditRow: { flexDirection: "row", gap: 10, padding: 14, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
-  auditTitle: { fontSize: 13, fontWeight: "700", color: "#0F172A" },
-  auditTime: { fontSize: 11, color: "#94A3B8", marginTop: 2 },
-  changeWrap: { marginTop: 6, gap: 2 },
-  changeTxt: { fontSize: 11, color: "#475569" },
+  overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: colors.hint },
+  h1: { fontSize: 22, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  sub: { fontSize: 12, color: colors.muted2, marginTop: 4, maxWidth: 520 },
+  body: { flex: 1, gap: 12 },
+  bodyWide: { flexDirection: "row", alignItems: "stretch" },
+  catList: { maxHeight: 220 },
+  catListWide: { width: 280, maxHeight: undefined, flexShrink: 0 },
+  catItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+  },
+  catItemActive: { borderColor: "#0F766E", backgroundColor: "#F0FDFA" },
+  catIcon: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  catName: { fontSize: 14, fontWeight: "700", color: colors.ink2 },
+  catNameActive: { color: "#0F766E" },
+  catMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
+  panel: { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: 16, ...shadow.sm },
+  panelWide: { minHeight: 400 },
+  panelHead: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 16, flexWrap: "wrap" },
+  panelTitle: { fontSize: 18, fontWeight: "800", color: colors.ink },
+  panelSub: { fontSize: 12, color: colors.muted2, marginTop: 4 },
+  lockPill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.borderSoft, paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill },
+  lockTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },
+  bulkRow: { flexDirection: "row", gap: 8 },
+  bulkBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.borderSoft },
+  bulkTxt: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  group: { marginBottom: 18 },
+  groupLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6, color: colors.muted2, textTransform: "uppercase", marginBottom: 8 },
+  nestedGroup: { marginBottom: 8, paddingLeft: 4, borderLeftWidth: 2, borderLeftColor: colors.borderSoft },
+  nestedParent: { fontSize: 12, fontWeight: "700", color: colors.ink2, marginBottom: 6, marginLeft: 8 },
+  moduleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, borderRadius: radii.sm },
+  moduleRowNested: { marginLeft: 8, backgroundColor: colors.surface2 },
+  moduleLabel: { fontSize: 13, fontWeight: "600", color: colors.ink2 },
+  saveBtn: {
+    marginTop: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#0F766E",
+    paddingVertical: 14,
+    borderRadius: radii.md,
+  },
+  saveBtnDisabled: { opacity: 0.45 },
+  saveTxt: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  banner: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: radii.md, marginBottom: 8 },
+  bannerOk: { backgroundColor: colors.successSoft },
+  bannerOkTxt: { color: "#047857", fontWeight: "600", fontSize: 13, flex: 1 },
+  bannerWarn: { backgroundColor: colors.warningSoft },
+  bannerWarnTxt: { color: "#92400E", fontWeight: "600", fontSize: 13, flex: 1 },
+  bannerError: { backgroundColor: colors.dangerSoft, justifyContent: "space-between" },
+  bannerErrorTxt: { color: colors.danger, fontSize: 13, flex: 1 },
+  link: { color: colors.primary, fontWeight: "700", fontSize: 12 },
+  denied: { padding: 40, alignItems: "center", gap: 8 },
+  deniedTitle: { fontSize: 16, fontWeight: "700", color: colors.ink },
 });
