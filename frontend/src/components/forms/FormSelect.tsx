@@ -1,5 +1,13 @@
-import { useState } from "react";
-import { View, Text, Pressable, Modal, StyleSheet } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Platform,
+  type View as RNView,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../../theme";
 
@@ -16,39 +24,99 @@ type FormSelectProps = {
   testID?: string;
 };
 
-export function FormSelect({
-  label,
+const webSelectStyle: Record<string, string | number> = {
+  width: "100%",
+  boxSizing: "border-box",
+  backgroundColor: colors.surface,
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: colors.border,
+  borderRadius: radii.md,
+  paddingTop: 12,
+  paddingBottom: 12,
+  paddingLeft: 14,
+  paddingRight: 32,
+  fontSize: 15,
+  color: colors.ink,
+  fontWeight: "500",
+  outline: "none",
+  cursor: "pointer",
+};
+
+function WebNativeSelect({
   value,
   options,
   onChange,
-  placeholder = "Select…",
-  required,
+  placeholder,
   disabled,
   testID,
-}: FormSelectProps) {
+}: Omit<FormSelectProps, "label" | "required">) {
+  return (
+    <select
+      data-testid={testID}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        ...webSelectStyle,
+        opacity: disabled ? 0.85 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+        backgroundColor: disabled ? colors.surface2 : colors.surface,
+      }}
+    >
+      <option value="" disabled hidden>
+        {placeholder || "Select…"}
+      </option>
+      {options.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function InlineSelect({
+  value,
+  options,
+  onChange,
+  placeholder,
+  disabled,
+  testID,
+}: Omit<FormSelectProps, "label" | "required">) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<RNView>(null);
   const selected = options.find((o) => o.value === value);
 
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const onDocClick = (e: MouseEvent) => {
+        const node = rootRef.current as unknown as HTMLElement | null;
+        if (node && !node.contains(e.target as Node)) close();
+      };
+      document.addEventListener("mousedown", onDocClick);
+      return () => document.removeEventListener("mousedown", onDocClick);
+    }
+  }, [open]);
+
   return (
-    <View style={s.field}>
-      <Text style={s.label}>
-        {label}
-        {required ? " *" : ""}
-      </Text>
+    <View ref={rootRef} style={s.controlWrap}>
       <Pressable
         testID={testID}
         disabled={disabled}
-        onPress={() => setOpen(true)}
-        style={[s.trigger, disabled && s.triggerDisabled]}
+        onPress={() => setOpen((v) => !v)}
+        style={[s.trigger, disabled && s.triggerDisabled, open && s.triggerOpen]}
       >
-        <Text style={[s.triggerText, !selected && s.placeholder]} numberOfLines={1}>
-          {selected?.label || placeholder}
+        <Text style={[s.triggerText, !selected && s.placeholderText]} numberOfLines={1}>
+          {selected?.label || placeholder || "Select…"}
         </Text>
-        <Feather name="chevron-down" size={16} color={colors.hint} />
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.hint} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={s.backdrop} onPress={() => setOpen(false)}>
-          <View style={s.menu}>
+      {open && (
+        <View style={s.menuInline}>
+          <ScrollView style={s.menuScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {options.map((opt) => (
               <Pressable
                 key={opt.value}
@@ -62,19 +130,47 @@ export function FormSelect({
                 <Text style={[s.menuItemText, value === opt.value && s.menuItemTextActive]}>
                   {opt.label}
                 </Text>
-                {value === opt.value && <Feather name="check" size={16} color={colors.primary} />}
+                {value === opt.value && <Feather name="check" size={14} color={colors.primary} />}
               </Pressable>
             ))}
-          </View>
-        </Pressable>
-      </Modal>
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export function FormSelect({
+  label,
+  value,
+  options,
+  onChange,
+  placeholder = "Select…",
+  required,
+  disabled,
+  testID,
+}: FormSelectProps) {
+  const controlProps = { value, options, onChange, placeholder, disabled, testID };
+
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>
+        {label}
+        {required ? " *" : ""}
+      </Text>
+      {Platform.OS === "web" ? (
+        <WebNativeSelect {...controlProps} />
+      ) : (
+        <InlineSelect {...controlProps} />
+      )}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  field: { flex: 1, minWidth: 0 },
+  field: { flex: 1, minWidth: 0, zIndex: 1 },
   label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
+  controlWrap: { position: "relative", zIndex: 10 },
   trigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -87,32 +183,37 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  triggerOpen: { borderColor: colors.primary, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   triggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },
   triggerText: { flex: 1, fontSize: 15, color: colors.ink, fontWeight: "500" },
-  placeholder: { color: colors.hint, fontWeight: "400" },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15,23,42,0.35)",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  menu: {
+  placeholderText: { color: colors.hint, fontWeight: "400" },
+  menuInline: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: -1,
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 6,
-    maxHeight: 360,
+    borderColor: colors.primary,
+    borderBottomLeftRadius: radii.md,
+    borderBottomRightRadius: radii.md,
+    maxHeight: 220,
+    zIndex: 20,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      default: {},
+    }),
   },
+  menuScroll: { maxHeight: 220 },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: radii.sm,
+    paddingVertical: 10,
   },
   menuItemActive: { backgroundColor: colors.primarySofter },
-  menuItemText: { fontSize: 15, color: colors.ink, fontWeight: "500" },
+  menuItemText: { fontSize: 14, color: colors.ink, fontWeight: "500" },
   menuItemTextActive: { color: colors.primary, fontWeight: "700" },
 });
