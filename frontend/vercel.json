@@ -1,0 +1,46 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/manage/:kind/:id",
+      "destination": "/manage/[kind]/[id]"
+    },
+    {
+      "source": "/manage/:kind",
+      "destination": "/manage/[kind]"
+    },
+    {
+      "source": "/task/:id",
+      "destination": "/task/[id]"
+    },
+    {
+      "source": "/report-cards/:id",
+      "destination": "/report-cards/[id]"
+    },
+    {
+      "source": "/fees/pws-student/:id",
+      "destination": "/fees/pws-student/[id]"
+    },
+    {
+      "source": "/parent/ward/:id",
+      "destination": "/parent/ward/[id]"
+    },
+    {
+      "source": "/admin/invoices/:id",
+      "destination": "/admin/invoices/[id]"
+    },
+    {
+      "source": "/admin/permissions/:id",
+      "destination": "/admin/permissions/[id]"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
