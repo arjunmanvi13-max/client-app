@@ -1,6 +1,6 @@
 /**
  * Canonical login user types — mirrors backend user_classification.py.
- * Settings > Manage shows ONLY these seven categories.
+ * Access Control > Manage Users & Rosters shows ONLY these seven categories.
  */
 import { UserRole } from "./rbac";
 

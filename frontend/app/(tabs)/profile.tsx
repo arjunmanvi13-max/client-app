@@ -19,8 +19,6 @@ export default function Profile() {
   if (!user) return null;
 
   const isCoach = isCoachUser(user);
-  const canManageRosters = user.role === "admin" || user.role === "super_admin"
-    || (user.role !== "teacher" && !isCoach && (user.can_manage || []).length > 0);
 
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure?", [
@@ -61,9 +59,6 @@ export default function Profile() {
         </View>
 
         <View style={s.menu}>
-          {canManageRosters && (
-            <Row icon="user-plus" label="Manage users & rosters" onPress={() => router.push("/manage")} testID="menu-manage" />
-          )}
           <Row icon="key" label="Change password" onPress={() => setPwdOpen(true)} testID="menu-change-pwd" />
           {!isCoach && (
             <Row icon="bell" label="Notifications" onPress={() => router.push("/notifications")} testID="menu-notif" />

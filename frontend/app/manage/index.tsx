@@ -29,7 +29,7 @@ export default function ManageHub() {
           <Feather name="shield-off" size={36} color="#94A3B8" />
           <Text style={s.emptyTitle}>Super Admin only</Text>
           <Text style={s.emptyText}>
-            Settings &gt; Manage is restricted to Super Admin for creating and assigning approved login user types.
+            Access Control &gt; Manage Users &amp; Rosters is restricted to Super Admin for creating and assigning approved login user types.
           </Text>
         </View>
       </SafeAreaView>
