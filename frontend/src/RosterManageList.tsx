@@ -7,6 +7,7 @@ import { api, ROLE_COLORS, useAuth, userHasPermission } from "./auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "./coachAccess";
 import { getManageListMeta } from "./manageKinds";
+import { PlayerRosterListView } from "./PlayerRosterListView";
 
 /** Roster records (students, players, staff) and legacy user lists from Directory sidebar. */
 export function RosterManageList({ kind }: { kind: string }) {
@@ -21,8 +22,6 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [centreFilter, setCentreFilter] = useState<string | null>(null);
   const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
-  const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"];
-  const PLAYER_SPORTS = ["Cricket", "Football"] as const;
   const meta = getManageListMeta(kind)!;
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
@@ -103,6 +102,35 @@ export function RosterManageList({ kind }: { kind: string }) {
     );
   }
 
+  if (isPlayer) {
+    return (
+      <PlayerRosterListView
+        items={items}
+        loading={loading}
+        search={search}
+        setSearch={setSearch}
+        onSearchSubmit={load}
+        showDeactivated={showDeactivated}
+        setShowDeactivated={setShowDeactivated}
+        sportFilter={sportFilter}
+        setSportFilter={setSportFilter}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
+        centreFilter={centreFilter}
+        setCentreFilter={setCentreFilter}
+        canBrowseAllSports={canBrowseAllSports}
+        isCoachPlayerView={isCoachPlayerView}
+        coachScope={coachScope}
+        isAdmin={isAdmin}
+        coachBlocked={coachBlocked}
+        canAdd={canAdd}
+        onAdd={() => router.push("/manage/player/new")}
+        onBack={() => router.back()}
+        onOpenPlayer={(id) => router.push(`/manage/player/${id}`)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.header}>
@@ -153,69 +181,6 @@ export function RosterManageList({ kind }: { kind: string }) {
           <Text style={s.blockedTitle}>Sport assignment required</Text>
           <Text style={s.blockedText}>{coachSportAssignmentMessage(coachScope)}</Text>
         </View>
-      )}
-
-      {isPlayer && isAdmin && !coachBlocked && (
-        <View style={s.toggleRow}>
-          <TouchableOpacity testID="toggle-active" style={[s.togglePill, !showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(false)}>
-            <Text style={[s.toggleTxt, !showDeactivated && s.toggleTxtActive]}>Active</Text>
-          </TouchableOpacity>
-          <TouchableOpacity testID="toggle-deactivated" style={[s.togglePill, showDeactivated && s.togglePillActive]} onPress={() => setShowDeactivated(true)}>
-            <Text style={[s.toggleTxt, showDeactivated && s.toggleTxtActive]}>All (incl. inactive)</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {isPlayer && !coachBlocked && (canBrowseAllSports || (isCoachPlayerView && coachScope.assignedSport)) && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
-          {canBrowseAllSports && (
-            <TouchableOpacity
-              testID="sport-all"
-              style={[s.togglePill, !sportFilter && s.togglePillActive]}
-              onPress={() => setSportFilter(null)}
-            >
-              <Text style={[s.toggleTxt, !sportFilter && s.toggleTxtActive]}>All Sports</Text>
-            </TouchableOpacity>
-          )}
-          {(canBrowseAllSports ? PLAYER_SPORTS : coachScope.assignedSport ? [coachScope.assignedSport] : []).map((sp) => {
-            const active = sportFilter === sp;
-            return (
-              <TouchableOpacity
-                key={sp}
-                testID={`sport-${sp.toLowerCase()}`}
-                style={[
-                  s.togglePill,
-                  active && (isCoachPlayerView ? s.togglePillLocked : s.togglePillActive),
-                ]}
-                disabled={isCoachPlayerView}
-                onPress={() => {
-                  if (!canBrowseAllSports) return;
-                  setSportFilter(active ? null : sp);
-                }}
-              >
-                <Text style={[s.toggleTxt, active && (isCoachPlayerView ? s.toggleTxtLocked : s.toggleTxtActive)]}>{sp}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-
-      {isPlayer && !coachBlocked && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
-          <TouchableOpacity testID="ptype-all" style={[s.togglePill, !typeFilter && s.togglePillActive]} onPress={() => setTypeFilter(null)}>
-            <Text style={[s.toggleTxt, !typeFilter && s.toggleTxtActive]}>All Types</Text>
-          </TouchableOpacity>
-          {BOARDING_TYPES.map((t) => (
-            <TouchableOpacity key={t} testID={`ptype-${t.toLowerCase().replace(/\s+/g, "-")}`} style={[s.togglePill, typeFilter === t && s.togglePillActive]} onPress={() => setTypeFilter(typeFilter === t ? null : t)}>
-              <Text style={[s.toggleTxt, typeFilter === t && s.toggleTxtActive]}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-          {["Balua", "Harding Park"].map((c) => (
-            <TouchableOpacity key={c} testID={`centre-${c}`} style={[s.togglePill, centreFilter === c && s.togglePillActive]} onPress={() => setCentreFilter(centreFilter === c ? null : c)}>
-              <Text style={[s.toggleTxt, centreFilter === c && s.toggleTxtActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       )}
 
       {isStudent && sections.length > 0 && (
