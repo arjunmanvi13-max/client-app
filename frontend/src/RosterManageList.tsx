@@ -8,6 +8,7 @@ import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "./coachAccess";
 import { getManageListMeta } from "./manageKinds";
 import { PlayerRosterListView } from "./PlayerRosterListView";
+import { StudentRosterListView } from "./StudentRosterListView";
 
 /** Roster records (students, players, staff) and legacy user lists from Directory sidebar. */
 export function RosterManageList({ kind }: { kind: string }) {
@@ -131,6 +132,25 @@ export function RosterManageList({ kind }: { kind: string }) {
     );
   }
 
+  if (isStudent) {
+    return (
+      <StudentRosterListView
+        items={items}
+        loading={loading}
+        search={search}
+        setSearch={setSearch}
+        onSearchSubmit={load}
+        sections={sections}
+        sectionFilter={sectionFilter}
+        setSectionFilter={setSectionFilter}
+        canAdd={canAdd}
+        onAdd={() => router.push("/manage/student/new")}
+        onBack={() => router.back()}
+        onOpenStudent={(id) => router.push(`/manage/student/${id}`)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.header}>
@@ -181,19 +201,6 @@ export function RosterManageList({ kind }: { kind: string }) {
           <Text style={s.blockedTitle}>Sport assignment required</Text>
           <Text style={s.blockedText}>{coachSportAssignmentMessage(coachScope)}</Text>
         </View>
-      )}
-
-      {isStudent && sections.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
-          <TouchableOpacity style={[s.togglePill, !sectionFilter && s.togglePillActive]} onPress={() => setSectionFilter(null)}>
-            <Text style={[s.toggleTxt, !sectionFilter && s.toggleTxtActive]}>All Sections</Text>
-          </TouchableOpacity>
-          {sections.map((sec) => (
-            <TouchableOpacity key={sec.id} style={[s.togglePill, sectionFilter === sec.id && s.togglePillActive]} onPress={() => setSectionFilter(sectionFilter === sec.id ? null : sec.id)}>
-              <Text style={[s.toggleTxt, sectionFilter === sec.id && s.toggleTxtActive]}>{sec.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       )}
 
       <ScrollView contentContainerStyle={s.scroll}>
