@@ -41,6 +41,27 @@ export const PWS_CLASS_OPTIONS = [
   "Class X",
 ] as const;
 
+export const PWS_CLASS_FILTER_LABELS: Record<string, string> = {
+  Nursery: "Nur",
+  LKG: "LKG",
+  UKG: "UKG",
+  "Class I": "Std 1",
+  "Class II": "Std 2",
+  "Class III": "Std 3",
+  "Class IV": "Std 4",
+  "Class V": "Std 5",
+  "Class VI": "Std 6",
+  "Class VII": "Std 7",
+  "Class VIII": "Std 8",
+  "Class IX": "Std 9",
+  "Class X": "Std 10",
+};
+
+export function pwsClassFilterLabel(pwsClass?: string | null) {
+  if (!pwsClass) return "";
+  return PWS_CLASS_FILTER_LABELS[pwsClass] || pwsClass;
+}
+
 export const CLASS_PREFIX: Record<string, string> = {
   Nursery: "Nursery",
   LKG: "LKG",

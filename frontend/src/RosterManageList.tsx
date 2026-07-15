@@ -19,10 +19,9 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [search, setSearch] = useState("");
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [sectionFilter, setSectionFilter] = useState<string | null>(null);
+  const [classFilter, setClassFilter] = useState<string | null>(null);
   const [centreFilter, setCentreFilter] = useState<string | null>(null);
   const [sportFilter, setSportFilter] = useState<string | null>(null);
-  const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const meta = getManageListMeta(kind)!;
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
@@ -51,12 +50,6 @@ export function RosterManageList({ kind }: { kind: string }) {
   }, [user, kind, router]);
 
   useEffect(() => {
-    if (isStudent) {
-      api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => setSections([]));
-    }
-  }, [isStudent]);
-
-  useEffect(() => {
     if (!isPlayer || coachBlocked) return;
     if (isCoachPlayerView && coachScope.assignedSport) {
       setSportFilter(coachScope.assignedSport);
@@ -83,15 +76,16 @@ export function RosterManageList({ kind }: { kind: string }) {
         const params: any = { kind };
         if (search.trim()) params.q = search.trim();
         if (isPlayer && showDeactivated) params.include_deactivated = true;
+        if (isStudent && showDeactivated) params.include_deactivated = true;
         if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
         if (isPlayer && centreFilter) params.centre = centreFilter;
         if (isPlayer && sportFilter) params.sport = sportFilter;
-        if (isStudent && sectionFilter) params.section_id = sectionFilter;
+        if (isStudent && classFilter) params.pws_class = classFilter;
         const { data } = await api.get("/people", { params });
         setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
       }
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter, sportFilter, user, coachBlocked]);
+  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -140,9 +134,11 @@ export function RosterManageList({ kind }: { kind: string }) {
         search={search}
         setSearch={setSearch}
         onSearchSubmit={load}
-        sections={sections}
-        sectionFilter={sectionFilter}
-        setSectionFilter={setSectionFilter}
+        showDeactivated={showDeactivated}
+        setShowDeactivated={setShowDeactivated}
+        classFilter={classFilter}
+        setClassFilter={setClassFilter}
+        isAdmin={isAdmin}
         canAdd={canAdd}
         onAdd={() => router.push("/manage/student/new")}
         onBack={() => router.back()}

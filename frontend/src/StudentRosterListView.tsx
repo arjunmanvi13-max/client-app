@@ -16,6 +16,7 @@ import { colors, formColors, radii, spacing } from "./theme";
 import { useBreakpoint } from "./useBreakpoint";
 import { FilterSelect, filterSelectSlotStyle } from "./components/FilterSelect";
 import type { FormSelectOption } from "./components/forms/FormSelect";
+import { PWS_CLASS_OPTIONS, PWS_CLASS_FILTER_LABELS, pwsClassFilterLabel } from "./StudentRosterFormFields";
 
 const PAGE_SIZE = 10;
 const STUDENT_TINT = "#2563EB";
@@ -35,15 +36,28 @@ function sectionBadgeStyle(label?: string) {
   return { bg: "#F1F5F9", text: "#475569", border: "#E2E8F0" };
 }
 
+function classBadgeStyle(pwsClass?: string) {
+  const label = pwsClassFilterLabel(pwsClass);
+  if (label === "Nur" || label === "LKG" || label === "UKG") {
+    return { bg: "#FEF3C7", text: "#B45309", border: "#FDE68A" };
+  }
+  if (label.startsWith("Std")) {
+    return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
+  }
+  return { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
+}
+
 type StudentRosterListViewProps = {
   items: any[];
   loading: boolean;
   search: string;
   setSearch: (v: string) => void;
   onSearchSubmit: () => void;
-  sections: { id: string; label: string }[];
-  sectionFilter: string | null;
-  setSectionFilter: (v: string | null) => void;
+  showDeactivated: boolean;
+  setShowDeactivated: (v: boolean) => void;
+  classFilter: string | null;
+  setClassFilter: (v: string | null) => void;
+  isAdmin: boolean;
   canAdd: boolean;
   onAdd: () => void;
   onBack: () => void;
@@ -56,9 +70,11 @@ export function StudentRosterListView({
   search,
   setSearch,
   onSearchSubmit,
-  sections,
-  sectionFilter,
-  setSectionFilter,
+  showDeactivated,
+  setShowDeactivated,
+  classFilter,
+  setClassFilter,
+  isAdmin,
   canAdd,
   onAdd,
   onBack,
@@ -84,15 +100,23 @@ export function StudentRosterListView({
 
   useEffect(() => {
     setPage(1);
-  }, [search, sectionFilter, total]);
+  }, [search, showDeactivated, classFilter, total]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const sectionOptions: FormSelectOption[] = [
-    { value: "", label: "All Sections" },
-    ...sections.map((sec) => ({ value: sec.id, label: sec.label })),
+  const statusOptions: FormSelectOption[] = [
+    { value: "active", label: "Active" },
+    { value: "all", label: "All (incl. inactive)" },
+  ];
+
+  const classOptions: FormSelectOption[] = [
+    { value: "", label: "All Classes" },
+    ...PWS_CLASS_OPTIONS.map((c) => ({
+      value: c,
+      label: PWS_CLASS_FILTER_LABELS[c] || c,
+    })),
   ];
 
   return (
@@ -134,16 +158,25 @@ export function StudentRosterListView({
               )}
             </View>
 
-            {sections.length > 0 && (
+            {isAdmin && (
               <View style={filterSelectSlotStyle}>
                 <FilterSelect
-                  testID="section-filter"
-                  value={sectionFilter || ""}
-                  options={sectionOptions}
-                  onChange={(v) => setSectionFilter(v || null)}
+                  testID="toggle-status"
+                  value={showDeactivated ? "all" : "active"}
+                  options={statusOptions}
+                  onChange={(v) => setShowDeactivated(v === "all")}
                 />
               </View>
             )}
+
+            <View style={filterSelectSlotStyle}>
+              <FilterSelect
+                testID="class-filter"
+                value={classFilter || ""}
+                options={classOptions}
+                onChange={(v) => setClassFilter(v || null)}
+              />
+            </View>
 
             <TouchableOpacity
               testID="add-student"
@@ -152,7 +185,7 @@ export function StudentRosterListView({
               onPress={onAdd}
             >
               <Feather name="plus" size={16} color="#fff" />
-              <Text style={s.addText}>Add</Text>
+              <Text style={s.addText}>Add Student</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -165,7 +198,7 @@ export function StudentRosterListView({
             <Text style={s.emptyText}>
               {search.trim()
                 ? `No matches for "${search.trim()}".`
-                : "No students yet. Tap Add to create one."}
+                : "No students yet. Tap Add Student to create one."}
             </Text>
           </View>
         ) : (
@@ -174,7 +207,8 @@ export function StudentRosterListView({
               <View style={[s.tableRow, s.tableHead]}>
                 <Text style={[s.th, s.colStudent]}>Student</Text>
                 <Text style={[s.th, s.colId]}>Student ID</Text>
-                <Text style={[s.th, s.colSection]}>Class / Section</Text>
+                <Text style={[s.th, s.colClass]}>Class</Text>
+                <Text style={[s.th, s.colSection]}>Section</Text>
                 <Text style={[s.th, s.colRoll]}>Roll Number</Text>
                 <View style={s.colActions} />
               </View>
@@ -183,6 +217,8 @@ export function StudentRosterListView({
                 const isDeact = it.status === "deactivated";
                 const sectionLabel = it.group || "";
                 const sectionBadge = sectionBadgeStyle(sectionLabel);
+                const classBadge = classBadgeStyle(it.pws_class);
+                const classLabel = pwsClassFilterLabel(it.pws_class);
 
                 return (
                   <Pressable
@@ -210,6 +246,16 @@ export function StudentRosterListView({
                     <Text style={[s.td, s.colId, s.idCell]}>
                       {it.admission_number || "—"}
                     </Text>
+
+                    <View style={s.colClass}>
+                      {classLabel ? (
+                        <View style={[s.classBadge, { backgroundColor: classBadge.bg, borderColor: classBadge.border }]}>
+                          <Text style={[s.classBadgeTxt, { color: classBadge.text }]}>{classLabel}</Text>
+                        </View>
+                      ) : (
+                        <Text style={s.dash}>—</Text>
+                      )}
+                    </View>
 
                     <View style={s.colSection}>
                       {sectionLabel ? (
@@ -358,7 +404,7 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
-  tableWide: { minWidth: 760 },
+  tableWide: { minWidth: 820 },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -389,10 +435,11 @@ const s = StyleSheet.create({
     letterSpacing: 0.5,
   },
   td: { fontSize: 13, color: colors.ink },
-  colStudent: { flex: 2.6, minWidth: 220 },
-  colId: { flex: 1.4, minWidth: 120 },
-  colSection: { flex: 1.1, minWidth: 100 },
-  colRoll: { flex: 0.9, minWidth: 90 },
+  colStudent: { flex: 2.4, minWidth: 200 },
+  colId: { flex: 1.3, minWidth: 110 },
+  colClass: { flex: 0.9, minWidth: 72 },
+  colSection: { flex: 0.9, minWidth: 72 },
+  colRoll: { flex: 0.8, minWidth: 80 },
   colActions: { width: 40, alignItems: "flex-end" },
   studentCell: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   avatar: {
@@ -422,6 +469,14 @@ const s = StyleSheet.create({
     fontWeight: "600",
     fontFamily: Platform.select({ web: "ui-monospace, SFMono-Regular, Menlo, monospace", default: undefined }),
   },
+  classBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+  },
+  classBadgeTxt: { fontSize: 11, fontWeight: "700" },
   sectionBadge: {
     alignSelf: "flex-start",
     paddingHorizontal: 8,
