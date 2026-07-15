@@ -19,8 +19,10 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [sectionFilter, setSectionFilter] = useState<string | null>(null);
   const [centreFilter, setCentreFilter] = useState<string | null>(null);
+  const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"];
+  const PLAYER_SPORTS = ["Cricket", "Football"] as const;
   const meta = getManageListMeta(kind)!;
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
@@ -28,6 +30,8 @@ export function RosterManageList({ kind }: { kind: string }) {
     || userHasPermission(user, Permission.MANAGE_ACCESS);
   const isPlayer = kind === "player";
   const coachScope = resolveCoachDataScope(user);
+  const isCoachPlayerView = isPlayer && isCoachUser(user);
+  const canBrowseAllSports = isPlayer && isAdmin && !isCoachPlayerView;
   const coachBlocked = isPlayer && isCoachUser(user) && coachScope.requiresSportAssignment;
   const isStudent = kind === "student";
   const isTeacher = role === UserRole.PWS_TEACHER;
@@ -52,6 +56,13 @@ export function RosterManageList({ kind }: { kind: string }) {
     }
   }, [isStudent]);
 
+  useEffect(() => {
+    if (!isPlayer || coachBlocked) return;
+    if (isCoachPlayerView && coachScope.assignedSport) {
+      setSportFilter(coachScope.assignedSport);
+    }
+  }, [isPlayer, isCoachPlayerView, coachScope.assignedSport, coachBlocked]);
+
   const load = useCallback(async () => {
     if (coachBlocked) return;
     setLoading(true);
@@ -74,12 +85,13 @@ export function RosterManageList({ kind }: { kind: string }) {
         if (isPlayer && showDeactivated) params.include_deactivated = true;
         if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
         if (isPlayer && centreFilter) params.centre = centreFilter;
+        if (isPlayer && sportFilter) params.sport = sportFilter;
         if (isStudent && sectionFilter) params.section_id = sectionFilter;
         const { data } = await api.get("/people", { params });
         setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
       }
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter, user, coachBlocked]);
+  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, sectionFilter, centreFilter, sportFilter, user, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -152,6 +164,40 @@ export function RosterManageList({ kind }: { kind: string }) {
             <Text style={[s.toggleTxt, showDeactivated && s.toggleTxtActive]}>All (incl. inactive)</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {isPlayer && !coachBlocked && (canBrowseAllSports || (isCoachPlayerView && coachScope.assignedSport)) && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.typeScroll} contentContainerStyle={s.typeRow}>
+          {canBrowseAllSports && (
+            <TouchableOpacity
+              testID="sport-all"
+              style={[s.togglePill, !sportFilter && s.togglePillActive]}
+              onPress={() => setSportFilter(null)}
+            >
+              <Text style={[s.toggleTxt, !sportFilter && s.toggleTxtActive]}>All Sports</Text>
+            </TouchableOpacity>
+          )}
+          {(canBrowseAllSports ? PLAYER_SPORTS : coachScope.assignedSport ? [coachScope.assignedSport] : []).map((sp) => {
+            const active = sportFilter === sp;
+            return (
+              <TouchableOpacity
+                key={sp}
+                testID={`sport-${sp.toLowerCase()}`}
+                style={[
+                  s.togglePill,
+                  active && (isCoachPlayerView ? s.togglePillLocked : s.togglePillActive),
+                ]}
+                disabled={isCoachPlayerView}
+                onPress={() => {
+                  if (!canBrowseAllSports) return;
+                  setSportFilter(active ? null : sp);
+                }}
+              >
+                <Text style={[s.toggleTxt, active && (isCoachPlayerView ? s.toggleTxtLocked : s.toggleTxtActive)]}>{sp}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       )}
 
       {isPlayer && !coachBlocked && (
@@ -246,8 +292,10 @@ const s = StyleSheet.create({
   typeRow: { paddingHorizontal: 20, gap: 8, alignItems: "center" },
   togglePill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#fff" },
   togglePillActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
+  togglePillLocked: { backgroundColor: "#EFF6FF", borderColor: "#93C5FD" },
   toggleTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
   toggleTxtActive: { color: "#fff" },
+  toggleTxtLocked: { color: "#1E40AF" },
   scroll: { padding: 20, paddingBottom: 40 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 8 },
   rowDeact: { opacity: 0.65 },
