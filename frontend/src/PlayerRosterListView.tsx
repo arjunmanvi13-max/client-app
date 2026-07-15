@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Platform,
+  type View as RNView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -16,74 +17,141 @@ import { colors, formColors, radii, spacing } from "./theme";
 import { useBreakpoint } from "./useBreakpoint";
 import type { CoachDataScope } from "./coachAccess";
 import { coachSportAssignmentMessage } from "./coachAccess";
+import type { FormSelectOption } from "./components/forms/FormSelect";
 
 const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"] as const;
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
 const CENTRES = ["Balua", "Harding Park"] as const;
+const PAGE_SIZE = 10;
 
 function sportAvatarStyle(sport?: string) {
-  if (sport === "Cricket") return { bg: "#DCFCE7", text: "#15803D" };
-  if (sport === "Football") return { bg: "#DBEAFE", text: "#1D4ED8" };
-  return { bg: "#ECFDF5", text: "#16A34A" };
+  if (sport === "Cricket") return { bg: "#DBEAFE", text: "#1D4ED8" };
+  if (sport === "Football") return { bg: "#DCFCE7", text: "#15803D" };
+  return { bg: "#F1F5F9", text: "#475569" };
 }
 
-function FilterRow({ children }: { children: ReactNode }) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={s.filterScroll}
-      contentContainerStyle={s.filterRowInner}
-    >
-      {children}
-    </ScrollView>
-  );
+function sportBadgeStyle(sport?: string) {
+  if (sport === "Cricket") return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
+  if (sport === "Football") return { bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0" };
+  return { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
 }
 
-function FilterPill({
-  label,
-  active,
-  onPress,
-  testID,
+function FilterSelect({
+  value,
+  options,
+  onChange,
   disabled,
-  locked,
+  testID,
 }: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  testID?: string;
+  value: string;
+  options: FormSelectOption[];
+  onChange: (value: string) => void;
   disabled?: boolean;
-  locked?: boolean;
+  testID?: string;
 }) {
-  return (
-    <TouchableOpacity
-      testID={testID}
-      disabled={disabled}
-      onPress={onPress}
-      style={[
-        s.filterPill,
-        active && (locked ? s.filterPillLocked : s.filterPillActive),
-      ]}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-    >
-      <Text style={[s.filterPillTxt, active && (locked ? s.filterPillTxtLocked : s.filterPillTxtActive)]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  if (Platform.OS === "web") {
+    return (
+      <View style={s.filterSelectWrap}>
+        <select
+          data-testid={testID}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            backgroundColor: disabled ? colors.surface2 : colors.surface,
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderColor: colors.border,
+            borderRadius: radii.md,
+            paddingTop: 8,
+            paddingBottom: 8,
+            paddingLeft: 10,
+            paddingRight: 28,
+            fontSize: 13,
+            color: colors.ink,
+            fontWeight: "600",
+            outline: "none",
+            cursor: disabled ? "not-allowed" : "pointer",
+            appearance: "none",
+            WebkitAppearance: "none",
+            MozAppearance: "none",
+            opacity: disabled ? 0.85 : 1,
+          }}
+        >
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <View style={s.filterChevron} pointerEvents="none">
+          <Feather name="chevron-down" size={14} color={colors.hint} />
+        </View>
+      </View>
+    );
+  }
+
+  return <NativeFilterSelect value={value} options={options} onChange={onChange} disabled={disabled} testID={testID} />;
 }
 
-function MetaBadge({ label, tint = "neutral" }: { label: string; tint?: "neutral" | "sport" | "location" }) {
-  const palette =
-    tint === "sport"
-      ? { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" }
-      : tint === "location"
-        ? { bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0" }
-        : { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
+function NativeFilterSelect({
+  value,
+  options,
+  onChange,
+  disabled,
+  testID,
+}: {
+  value: string;
+  options: FormSelectOption[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  testID?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<RNView>(null);
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
+    const onDocClick = (e: MouseEvent) => {
+      const node = rootRef.current as unknown as HTMLElement | null;
+      if (node && !node.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
   return (
-    <View style={[s.metaBadge, { backgroundColor: palette.bg, borderColor: palette.border }]}>
-      <Text style={[s.metaBadgeTxt, { color: palette.text }]}>{label}</Text>
+    <View ref={rootRef} style={s.nativeFilterWrap}>
+      <Pressable
+        testID={testID}
+        disabled={disabled}
+        onPress={() => setOpen((v) => !v)}
+        style={[s.filterTrigger, disabled && s.filterTriggerDisabled]}
+      >
+        <Text style={s.filterTriggerTxt} numberOfLines={1}>
+          {selected?.label || "Select…"}
+        </Text>
+        <Feather name="chevron-down" size={14} color={colors.hint} />
+      </Pressable>
+      {open && (
+        <View style={s.filterMenu}>
+          {options.map((opt) => (
+            <Pressable
+              key={opt.value}
+              onPress={() => {
+                onChange(opt.value);
+                setOpen(false);
+              }}
+              style={[s.filterMenuItem, value === opt.value && s.filterMenuItemActive]}
+            >
+              <Text style={[s.filterMenuTxt, value === opt.value && s.filterMenuTxtActive]}>{opt.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -137,8 +205,9 @@ export function PlayerRosterListView({
   onBack,
   onOpenPlayer,
 }: PlayerRosterListViewProps) {
-  const { horizontalPadding, contentMaxWidth, isDesktop, isTablet } = useBreakpoint();
+  const { horizontalPadding, contentMaxWidth, isDesktop } = useBreakpoint();
   const [searchFocused, setSearchFocused] = useState(false);
+  const [page, setPage] = useState(1);
 
   const pageStyle = {
     paddingHorizontal: horizontalPadding,
@@ -147,32 +216,72 @@ export function PlayerRosterListView({
     width: contentMaxWidth ? ("100%" as const) : undefined,
   };
 
-  const cardWidth = isDesktop ? "31.5%" : isTablet ? "48%" : "100%";
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const startIdx = total === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const endIdx = Math.min(safePage * PAGE_SIZE, total);
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, showDeactivated, sportFilter, typeFilter, centreFilter, total]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const statusOptions: FormSelectOption[] = [
+    { value: "active", label: "Active" },
+    { value: "all", label: "All (incl. inactive)" },
+  ];
+
+  const sportOptions: FormSelectOption[] = canBrowseAllSports
+    ? [{ value: "", label: "All Sports" }, ...PLAYER_SPORTS.map((sp) => ({ value: sp, label: sp }))]
+    : coachScope.assignedSport
+      ? [{ value: coachScope.assignedSport, label: coachScope.assignedSport }]
+      : [];
+
+  const typeOptions: FormSelectOption[] = [
+    { value: "", label: "All Types" },
+    ...BOARDING_TYPES.map((t) => ({ value: t, label: t })),
+  ];
+
+  const locationOptions: FormSelectOption[] = [
+    { value: "", label: "All Locations" },
+    ...CENTRES.map((c) => ({ value: c, label: c })),
+  ];
+
+  const showSportFilter = canBrowseAllSports || (isCoachPlayerView && !!coachScope.assignedSport);
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={[s.page, pageStyle]}>
-        <View style={s.topBar}>
-          <View style={s.titleBlock}>
+        <View style={s.headerSection}>
+          <View style={s.titleRow}>
             <TouchableOpacity onPress={onBack} style={s.backBtn} testID="list-back">
               <Feather name="chevron-left" size={22} color={colors.ink} />
             </TouchableOpacity>
-            <View style={s.titleTextWrap}>
+            <View style={s.titleGroup}>
               <Text style={s.h1}>Players</Text>
-              <Text style={s.sub}>{items.length} record{items.length !== 1 ? "s" : ""}</Text>
-              {isCoachPlayerView && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
-                <View style={s.scopeBadge}>
-                  <Feather name="lock" size={11} color="#1D4ED8" />
-                  <Text style={s.scopeText}>{coachScope.assignedSport} only</Text>
-                </View>
-              )}
+              <View style={s.countBadge}>
+                <Text style={s.countBadgeTxt}>
+                  {total} record{total !== 1 ? "s" : ""}
+                </Text>
+              </View>
             </View>
+            {isCoachPlayerView && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
+              <View style={s.scopeBadge}>
+                <Feather name="lock" size={11} color="#1D4ED8" />
+                <Text style={s.scopeText}>{coachScope.assignedSport} only</Text>
+              </View>
+            )}
           </View>
 
           {!coachBlocked && (
-            <View style={s.actionsRow}>
+            <View style={s.toolbarRow}>
               <View style={[s.searchWrap, searchFocused && s.searchWrapFocused]}>
-                <Feather name="search" size={16} color={searchFocused ? colors.primary : colors.hint} />
+                <Feather name="search" size={15} color={searchFocused ? colors.primary : colors.hint} />
                 <TextInput
                   testID="people-search"
                   value={search}
@@ -186,18 +295,60 @@ export function PlayerRosterListView({
                 />
                 {search.length > 0 && (
                   <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
-                    <Feather name="x" size={16} color={colors.hint} />
+                    <Feather name="x" size={15} color={colors.hint} />
                   </TouchableOpacity>
                 )}
               </View>
+
+              {isAdmin && (
+                <View style={s.filterSlot}>
+                  <FilterSelect
+                    testID="toggle-status"
+                    value={showDeactivated ? "all" : "active"}
+                    options={statusOptions}
+                    onChange={(v) => setShowDeactivated(v === "all")}
+                  />
+                </View>
+              )}
+
+              {showSportFilter && sportOptions.length > 0 && (
+                <View style={s.filterSlot}>
+                  <FilterSelect
+                    testID="sport-filter"
+                    value={sportFilter || ""}
+                    options={sportOptions}
+                    disabled={isCoachPlayerView}
+                    onChange={(v) => setSportFilter(v || null)}
+                  />
+                </View>
+              )}
+
+              <View style={s.filterSlot}>
+                <FilterSelect
+                  testID="ptype-filter"
+                  value={typeFilter || ""}
+                  options={typeOptions}
+                  onChange={(v) => setTypeFilter(v || null)}
+                />
+              </View>
+
+              <View style={s.filterSlot}>
+                <FilterSelect
+                  testID="centre-filter"
+                  value={centreFilter || ""}
+                  options={locationOptions}
+                  onChange={(v) => setCentreFilter(v || null)}
+                />
+              </View>
+
               <TouchableOpacity
                 testID="add-player"
                 style={[s.addBtn, !canAdd && { opacity: 0.45 }]}
                 disabled={!canAdd}
                 onPress={onAdd}
               >
-                <Feather name="plus" size={18} color="#fff" />
-                <Text style={s.addText}>Add</Text>
+                <Feather name="plus" size={16} color="#fff" />
+                <Text style={s.addText}>Add Player</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -212,151 +363,133 @@ export function PlayerRosterListView({
         )}
 
         {!coachBlocked && (
-          <View style={s.filtersBlock}>
-            {isAdmin && (
-              <FilterRow>
-                <FilterPill
-                  testID="toggle-active"
-                  label="Active"
-                  active={!showDeactivated}
-                  onPress={() => setShowDeactivated(false)}
-                />
-                <FilterPill
-                  testID="toggle-deactivated"
-                  label="All (incl. inactive)"
-                  active={showDeactivated}
-                  onPress={() => setShowDeactivated(true)}
-                />
-              </FilterRow>
-            )}
+          <>
+            {loading ? (
+              <ActivityIndicator color="#16A34A" style={{ marginTop: 32 }} />
+            ) : total === 0 ? (
+              <View style={s.empty}>
+                <Feather name="users" size={36} color={colors.hint} />
+                <Text style={s.emptyText}>
+                  {search.trim()
+                    ? `No matches for "${search.trim()}".`
+                    : "No players yet. Tap Add Player to create one."}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={isDesktop ? false : true}>
+                <View style={[s.table, !isDesktop && s.tableWide]}>
+                  <View style={[s.tableRow, s.tableHead]}>
+                    <Text style={[s.th, s.colPlayer]}>Player</Text>
+                    <Text style={[s.th, s.colId]}>Player ID</Text>
+                    <Text style={[s.th, s.colSport]}>Sport</Text>
+                    <Text style={[s.th, s.colLocation]}>Location</Text>
+                    <Text style={[s.th, s.colType]}>Type</Text>
+                    <View style={s.colActions} />
+                  </View>
 
-            {(canBrowseAllSports || (isCoachPlayerView && coachScope.assignedSport)) && (
-              <FilterRow>
-                {canBrowseAllSports && (
-                  <FilterPill
-                    testID="sport-all"
-                    label="All Sports"
-                    active={!sportFilter}
-                    onPress={() => setSportFilter(null)}
-                  />
-                )}
-                {(canBrowseAllSports ? PLAYER_SPORTS : coachScope.assignedSport ? [coachScope.assignedSport] : []).map((sp) => (
-                  <FilterPill
-                    key={sp}
-                    testID={`sport-${String(sp).toLowerCase()}`}
-                    label={sp}
-                    active={sportFilter === sp}
-                    locked={isCoachPlayerView}
-                    disabled={isCoachPlayerView}
-                    onPress={() => setSportFilter(sp)}
-                  />
-                ))}
-              </FilterRow>
-            )}
+                  {pageItems.map((it) => {
+                    const isDeact = it.status === "deactivated";
+                    const initials = it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("");
+                    const avatar = sportAvatarStyle(it.sport);
+                    const sportBadge = sportBadgeStyle(it.sport);
+                    const typeLabel = it.player_type === "Hostel Only" ? "Hostel" : it.player_type;
 
-            <FilterRow>
-              <FilterPill
-                testID="ptype-all"
-                label="All Types"
-                active={!typeFilter}
-                onPress={() => setTypeFilter(null)}
-              />
-              {BOARDING_TYPES.map((t) => (
-                <FilterPill
-                  key={t}
-                  testID={`ptype-${t.toLowerCase().replace(/\s+/g, "-")}`}
-                  label={t}
-                  active={typeFilter === t}
-                  onPress={() => setTypeFilter(t)}
-                />
-              ))}
-            </FilterRow>
-
-            <FilterRow>
-              <FilterPill
-                testID="centre-all"
-                label="All Locations"
-                active={!centreFilter}
-                onPress={() => setCentreFilter(null)}
-              />
-              {CENTRES.map((c) => (
-                <FilterPill
-                  key={c}
-                  testID={`centre-${c.toLowerCase().replace(/\s+/g, "-")}`}
-                  label={c}
-                  active={centreFilter === c}
-                  onPress={() => setCentreFilter(c)}
-                />
-              ))}
-            </FilterRow>
-          </View>
-        )}
-
-        {loading ? (
-          <ActivityIndicator color="#16A34A" style={{ marginTop: 32 }} />
-        ) : items.length === 0 ? (
-          <View style={s.empty}>
-            <Feather name="users" size={36} color={colors.hint} />
-            <Text style={s.emptyText}>
-              {search.trim()
-                ? `No matches for "${search.trim()}".`
-                : "No players yet. Tap Add to create one."}
-            </Text>
-          </View>
-        ) : (
-          <View style={s.cardGrid}>
-            {items.map((it) => {
-              const isDeact = it.status === "deactivated";
-              const initials = it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("");
-              const avatar = sportAvatarStyle(it.sport);
-              const typeLabel = it.player_type === "Hostel Only" ? "Hostel" : it.player_type;
-
-              return (
-                <Pressable
-                  key={it.id}
-                  testID={`row-${it.id}`}
-                  style={({ hovered }: any) => [
-                    s.card,
-                    { width: cardWidth },
-                    isDeact && s.cardDeact,
-                    hovered && s.cardHovered,
-                  ]}
-                  onPress={() => onOpenPlayer(it.id)}
-                >
-                    <View style={[s.avatar, { backgroundColor: isDeact ? "#E2E8F0" : avatar.bg }]}>
-                      <Text style={[s.avatarTxt, { color: isDeact ? "#64748B" : avatar.text }]}>{initials}</Text>
-                    </View>
-
-                    <View style={s.cardMain}>
-                      <View style={s.nameRow}>
-                        <Text style={s.name} numberOfLines={1}>{it.name}</Text>
-                        {isDeact && (
-                          <View style={s.inactivePill}>
-                            <Text style={s.inactivePillTxt}>Inactive</Text>
+                    return (
+                      <Pressable
+                        key={it.id}
+                        testID={`row-${it.id}`}
+                        onPress={() => onOpenPlayer(it.id)}
+                        style={({ hovered }: any) => [s.tableRow, s.tableBodyRow, hovered && s.tableRowHover]}
+                      >
+                        <View style={[s.colPlayer, s.playerCell]}>
+                          <View style={[s.avatar, { backgroundColor: isDeact ? "#E2E8F0" : avatar.bg }]}>
+                            <Text style={[s.avatarTxt, { color: isDeact ? "#64748B" : avatar.text }]}>
+                              {initials}
+                            </Text>
                           </View>
-                        )}
-                      </View>
+                          <View style={s.playerNameWrap}>
+                            <Text style={[s.playerName, isDeact && s.playerNameDeact]}>{it.name}</Text>
+                            {isDeact && (
+                              <View style={s.inactivePill}>
+                                <Text style={s.inactivePillTxt}>Inactive</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
 
-                      <View style={s.badgeRow}>
-                        {it.player_id ? <MetaBadge label={it.player_id} /> : null}
-                        {it.sport ? <MetaBadge label={it.sport} tint="sport" /> : null}
-                        {it.centre ? <MetaBadge label={it.centre} tint="location" /> : null}
-                        {typeLabel ? <MetaBadge label={typeLabel} /> : null}
-                      </View>
-                    </View>
+                        <Text style={[s.td, s.colId, s.idCell]}>
+                          {it.player_id || "—"}
+                        </Text>
 
-                    <TouchableOpacity
-                      testID={`view-${it.id}`}
-                      style={s.viewBtn}
-                      onPress={() => onOpenPlayer(it.id)}
-                      hitSlop={8}
-                    >
-                      <Feather name="more-horizontal" size={18} color={colors.muted2} />
-                    </TouchableOpacity>
-                </Pressable>
-              );
-            })}
-          </View>
+                        <View style={s.colSport}>
+                          {it.sport ? (
+                            <View style={[s.tagBadge, { backgroundColor: sportBadge.bg, borderColor: sportBadge.border }]}>
+                              <Text style={[s.tagBadgeTxt, { color: sportBadge.text }]}>{it.sport}</Text>
+                            </View>
+                          ) : (
+                            <Text style={s.dash}>—</Text>
+                          )}
+                        </View>
+
+                        <Text style={[s.td, s.colLocation]}>{it.centre || "—"}</Text>
+
+                        <View style={s.colType}>
+                          {typeLabel ? (
+                            <View style={s.typeBadge}>
+                              <Text style={s.typeBadgeTxt}>{typeLabel}</Text>
+                            </View>
+                          ) : (
+                            <Text style={s.dash}>—</Text>
+                          )}
+                        </View>
+
+                        <View style={s.colActions}>
+                          <Pressable
+                            testID={`view-${it.id}`}
+                            onPress={() => onOpenPlayer(it.id)}
+                            style={({ hovered }: any) => [s.actionBtn, hovered && s.actionBtnHover]}
+                          >
+                            <Feather name="more-vertical" size={16} color={colors.muted2} />
+                          </Pressable>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
+
+            {!loading && total > 0 && (
+              <View style={s.footer}>
+                <Text style={s.footerText}>
+                  Showing {startIdx}–{endIdx} of {total} player{total !== 1 ? "s" : ""}
+                </Text>
+                <View style={s.pagination}>
+                  <TouchableOpacity
+                    testID="page-prev"
+                    style={[s.pageBtn, safePage <= 1 && s.pageBtnDisabled]}
+                    disabled={safePage <= 1}
+                    onPress={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <Feather name="chevron-left" size={16} color={safePage <= 1 ? colors.hint : colors.ink} />
+                    <Text style={[s.pageBtnTxt, safePage <= 1 && s.pageBtnTxtDisabled]}>Previous</Text>
+                  </TouchableOpacity>
+                  <Text style={s.pageIndicator}>
+                    {safePage} / {totalPages}
+                  </Text>
+                  <TouchableOpacity
+                    testID="page-next"
+                    style={[s.pageBtn, safePage >= totalPages && s.pageBtnDisabled]}
+                    disabled={safePage >= totalPages}
+                    onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <Text style={[s.pageBtnTxt, safePage >= totalPages && s.pageBtnTxtDisabled]}>Next</Text>
+                    <Feather name="chevron-right" size={16} color={safePage >= totalPages ? colors.hint : colors.ink} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -366,41 +499,47 @@ export function PlayerRosterListView({
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: formColors.pageBg },
   page: { paddingTop: spacing.lg, paddingBottom: 48, gap: spacing.lg },
-  topBar: {
+  headerSection: { gap: spacing.md },
+  titleRow: {
     flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     flexWrap: "wrap",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.md,
   },
-  titleBlock: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexGrow: 1, minWidth: 180 },
   backBtn: { padding: 6, marginLeft: -6 },
-  titleTextWrap: { gap: 2 },
+  titleGroup: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
   h1: { fontSize: 26, fontWeight: "800", color: colors.ink, letterSpacing: -0.4 },
-  sub: { fontSize: 13, color: colors.muted, fontWeight: "500" },
+  countBadge: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  countBadgeTxt: { fontSize: 12, fontWeight: "600", color: colors.muted2 },
   scopeBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: 4,
-    alignSelf: "flex-start",
     backgroundColor: "#EFF6FF",
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: radii.pill,
   },
   scopeText: { color: "#1D4ED8", fontWeight: "700", fontSize: 10 },
-  actionsRow: {
+  toolbarRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: spacing.sm,
-    flexGrow: 1,
-    minWidth: 260,
     justifyContent: "flex-end",
   },
   searchWrap: {
-    flex: 1,
-    minWidth: 180,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 200,
+    maxWidth: 320,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -409,7 +548,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "web" ? 10 : 8,
+    paddingVertical: Platform.OS === "web" ? 9 : 8,
     ...Platform.select({
       web: { transition: "border-color 0.15s ease, box-shadow 0.15s ease" } as object,
       default: {},
@@ -424,117 +563,196 @@ const s = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.ink,
     padding: 0,
     ...Platform.select({ web: { outlineStyle: "none" } as object, default: {} }),
   },
+  filterSlot: { minWidth: 130, width: 140, flexShrink: 0 },
+  filterSelectWrap: { position: "relative" },
+  filterChevron: {
+    position: "absolute",
+    right: 10,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  nativeFilterWrap: { position: "relative", zIndex: 5 },
+  filterTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  filterTriggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },
+  filterTriggerTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.ink },
+  filterMenu: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    zIndex: 20,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      default: {},
+    }),
+  },
+  filterMenuItem: { paddingHorizontal: 10, paddingVertical: 9 },
+  filterMenuItemActive: { backgroundColor: colors.primarySofter },
+  filterMenuTxt: { fontSize: 13, color: colors.ink, fontWeight: "500" },
+  filterMenuTxtActive: { color: colors.primary, fontWeight: "700" },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     backgroundColor: "#16A34A",
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: radii.md,
+    flexShrink: 0,
     ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
   },
   addText: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  filtersBlock: { gap: spacing.sm },
-  filterScroll: { flexGrow: 0 },
-  filterRowInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 2,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    backgroundColor: "#F9FAFB",
-    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
-  },
-  filterPillActive: {
-    backgroundColor: "#1D4ED8",
-    borderColor: "#1D4ED8",
-  },
-  filterPillLocked: {
-    backgroundColor: "#EFF6FF",
-    borderColor: "#93C5FD",
-  },
-  filterPillTxt: { fontSize: 12, fontWeight: "700", color: "#374151" },
-  filterPillTxtActive: { color: "#fff" },
-  filterPillTxtLocked: { color: "#1D4ED8" },
-  cardGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.md,
-  },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+  table: {
+    flex: 1,
+    minWidth: "100%",
     backgroundColor: colors.surface,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: "#F3F4F6",
-    padding: spacing.lg,
+    overflow: "hidden",
     ...Platform.select({
-      web: {
-        cursor: "pointer",
-        boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)",
-        transition: "box-shadow 0.15s ease",
-      } as object,
-      default: {
-        shadowColor: "#0F172A",
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 1,
-      },
+      web: { boxShadow: "0 1px 3px rgba(15, 23, 42, 0.05)" } as object,
+      default: {},
     }),
   },
-  cardHovered: Platform.select({
-    web: {
-      transform: [{ translateY: -1 }],
-      boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
-    } as object,
+  tableWide: { minWidth: 860 },
+  tableRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+  },
+  tableHead: {
+    paddingVertical: 10,
+    backgroundColor: "#FAFBFC",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  tableBodyRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
+  tableRowHover: Platform.select({
+    web: { backgroundColor: "#F9FAFB" } as object,
     default: {},
   }),
-  cardDeact: { opacity: 0.7 },
+  th: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.muted2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  td: { fontSize: 13, color: colors.ink },
+  colPlayer: { flex: 2.4, minWidth: 200 },
+  colId: { flex: 1, minWidth: 90 },
+  colSport: { flex: 1, minWidth: 90 },
+  colLocation: { flex: 1, minWidth: 100 },
+  colType: { flex: 1, minWidth: 100 },
+  colActions: { width: 40, alignItems: "flex-end" },
+  playerCell: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
-  avatarTxt: { fontWeight: "800", fontSize: 15 },
-  cardMain: { flex: 1, minWidth: 0, gap: 8 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  name: { fontSize: 15, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  avatarTxt: { fontWeight: "800", fontSize: 12 },
+  playerNameWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  playerName: { fontSize: 14, fontWeight: "600", color: colors.ink, flexShrink: 1 },
+  playerNameDeact: { color: colors.muted2 },
   inactivePill: {
     backgroundColor: "#F1F5F9",
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radii.pill,
   },
-  inactivePillTxt: { fontSize: 10, fontWeight: "800", color: "#64748B" },
-  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  metaBadge: {
+  inactivePillTxt: { fontSize: 9, fontWeight: "800", color: "#64748B" },
+  idCell: {
+    color: "#475569",
+    fontWeight: "600",
+    fontFamily: Platform.select({ web: "ui-monospace, SFMono-Regular, Menlo, monospace", default: undefined }),
+  },
+  tagBadge: {
+    alignSelf: "flex-start",
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: radii.sm,
+    borderRadius: radii.pill,
     borderWidth: 1,
   },
-  metaBadgeTxt: { fontSize: 10, fontWeight: "700" },
-  viewBtn: {
-    padding: 4,
+  tagBadgeTxt: { fontSize: 11, fontWeight: "700" },
+  typeBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#F9FAFB",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  typeBadgeTxt: { fontSize: 11, fontWeight: "700", color: "#475569" },
+  dash: { fontSize: 13, color: colors.hint },
+  actionBtn: {
+    padding: 6,
+    borderRadius: radii.sm,
     ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
   },
+  actionBtnHover: Platform.select({
+    web: { backgroundColor: "#F3F4F6" } as object,
+    default: {},
+  }),
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  footerText: { fontSize: 13, color: colors.muted2, fontWeight: "500" },
+  pagination: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  pageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
+  pageBtnDisabled: { opacity: 0.5 },
+  pageBtnTxt: { fontSize: 13, fontWeight: "600", color: colors.ink },
+  pageBtnTxtDisabled: { color: colors.hint },
+  pageIndicator: { fontSize: 13, fontWeight: "600", color: colors.muted2, minWidth: 48, textAlign: "center" },
   empty: { alignItems: "center", padding: 40, gap: 8 },
   emptyText: { color: colors.muted, textAlign: "center", fontSize: 13 },
   blockedBox: {
