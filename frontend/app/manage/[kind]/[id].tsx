@@ -609,7 +609,6 @@ export default function ManageEdit() {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
         const body: any = {
           name, kind: "player", organization: "ALPHA",
-          player_id: playerId || null,
           sport: sport || null, group: group || null, is_resident: isHostelType,
           guardian_name: guardianName || fatherName || null,
           father_name: guardianName || fatherName || null,
@@ -717,7 +716,8 @@ export default function ManageEdit() {
         : Array.isArray(detail)
           ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join("\n")
           : "Failed to save";
-      showError("Error", message);
+      const isDuplicate = typeof message === "string" && message.toLowerCase().includes("name and date of birth");
+      showError(isDuplicate ? "Duplicate entry" : "Error", message);
     } finally { setSaving(false); }
   };
 
@@ -915,6 +915,7 @@ export default function ManageEdit() {
               setAddress={setAddress}
               admissionNumber={admissionNumber}
               setAdmissionNumber={setAdmissionNumber}
+              playerId={playerId}
               rollNumber={rollNumber}
               setRollNumber={setRollNumber}
               dateOfAdmission={dateOfAdmission}

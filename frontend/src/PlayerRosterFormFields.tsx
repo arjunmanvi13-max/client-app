@@ -145,7 +145,6 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
     name,
     setName,
     playerId,
-    setPlayerId,
     dob,
     setDob,
     mobile,
@@ -252,15 +251,22 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
           </View>
           <View style={s.field}>
             <FieldLabel>Player ID</FieldLabel>
-            <TextInput
-              testID="field-player-id"
-              editable={!readOnly}
-              value={playerId}
-              onChangeText={setPlayerId}
-              placeholder="e.g. APL-0001"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
+            {isNew ? (
+              <View style={[s.input, s.inputReadonly, s.autoIdBox]}>
+                <Text style={s.autoIdTxt} testID="field-player-id-auto">
+                  Auto-assigned on save (starting APL - 150)
+                </Text>
+              </View>
+            ) : (
+              <TextInput
+                testID="field-player-id"
+                editable={false}
+                value={playerId}
+                placeholder="—"
+                placeholderTextColor={colors.hint}
+                style={[s.input, s.inputReadonly]}
+              />
+            )}
           </View>
           <View style={s.field}>
             <FieldLabel>Date of Birth</FieldLabel>
@@ -789,6 +795,8 @@ const s = StyleSheet.create({
     color: colors.ink,
   },
   inputReadonly: { backgroundColor: colors.surface2, color: colors.muted2 },
+  autoIdBox: { justifyContent: "center", minHeight: 44 },
+  autoIdTxt: { fontSize: 13, color: colors.muted2, fontWeight: "600" },
   help: { fontSize: 12, color: colors.muted2, marginTop: 4 },
   dobHelp: { fontSize: 12, color: "#0F766E", marginTop: 6, fontWeight: "600" },
   orgLocked: {

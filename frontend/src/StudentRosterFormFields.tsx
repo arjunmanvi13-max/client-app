@@ -119,6 +119,7 @@ export type StudentRosterFormFieldsProps = {
   setAddress: (v: string) => void;
   admissionNumber: string;
   setAdmissionNumber: (v: string) => void;
+  playerId: string;
   rollNumber: string;
   setRollNumber: (v: string) => void;
   dateOfAdmission: string;
@@ -182,6 +183,7 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
     setAddress,
     admissionNumber,
     setAdmissionNumber,
+    playerId,
     rollNumber,
     setRollNumber,
     dateOfAdmission,
@@ -389,6 +391,13 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
 
           <FormFieldGrid columns={2} isWide={isWide}>
             <FormTextField
+              label="Player ID"
+              testID={isNew ? "field-student-player-id-auto" : "field-student-player-id"}
+              value={isNew ? "Auto-assigned on save (starting APL - 150)" : (playerId || "—")}
+              onChangeText={() => {}}
+              readOnly
+            />
+            <FormTextField
               label="Admission Number"
               testID="field-admission-number"
               value={admissionNumber}
@@ -396,6 +405,9 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
               placeholder="e.g. PWS-20250001"
               readOnly={readOnly}
             />
+          </FormFieldGrid>
+
+          <FormFieldGrid columns={1} isWide={isWide}>
             <FormTextField
               label="Email"
               testID="field-student-email"
