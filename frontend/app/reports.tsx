@@ -127,6 +127,7 @@ export default function ReportsScreen() {
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
 
   const [reportPickerOpen, setReportPickerOpen] = useState(false);
+  const [entityPickerOpen, setEntityPickerOpen] = useState(false);
   const [periodPickerOpen, setPeriodPickerOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -159,6 +160,13 @@ export default function ReportsScreen() {
     if (canPickEntity) return ["BOTH", "PWS", "ALPHA"] as const;
     return ["PWS"] as const;
   }, [isSportsAdmin, canPickEntity]);
+
+  const entityDropdownOptions = useMemo(
+    () => entityOptions.map((v) => ({ value: v, label: entityLabel(v) })),
+    [entityOptions],
+  );
+
+  const canChangeEntity = entityOptions.length > 1;
 
   const onFilterChange = useCallback(<K extends keyof AdvancedFilterState>(key: K, value: AdvancedFilterState[K]) => {
     setAdvancedFilters((prev) => {
@@ -425,7 +433,7 @@ export default function ReportsScreen() {
         {/* Setup bar */}
         <View style={[s.setupCard, setupStacked && s.setupBarStacked]} {...(Platform.OS === "web" ? { className: "no-print" } as any : {})}>
           <View style={[s.setupGrid, setupStacked && s.setupGridStacked]}>
-          <SetupField label="Report" flex={1.2}>
+          <SetupField label="Report" flex={1}>
             <TouchableOpacity testID="report-picker" style={s.selectBtn} onPress={() => { setReportSearch(""); setReportPickerOpen(true); }}>
               <Feather name={(mvpMeta?.icon as any) || "file-text"} size={15} color={colors.primary} />
               <Text style={s.selectBtnTxt} numberOfLines={1}>{mvpMeta?.title || "Select report"}</Text>
@@ -433,21 +441,17 @@ export default function ReportsScreen() {
             </TouchableOpacity>
           </SetupField>
 
-          <SetupField label="Entity" flex={1.2}>
-            <View style={s.segment}>
-              {entityOptions.map((v) => (
-                <TouchableOpacity
-                  key={v}
-                  testID={`inst-${v}`}
-                  onPress={() => setInstitution(v as any)}
-                  style={[s.segmentItem, institution === v && s.segmentItemActive, entityOptions.length === 1 && { flex: 1 }]}
-                >
-                  <Text style={[s.segmentTxt, institution === v && s.segmentTxtActive]}>
-                    {v === "BOTH" ? "Combined" : v}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+          <SetupField label="Entity" flex={1}>
+            <TouchableOpacity
+              testID="entity-picker"
+              style={[s.selectBtn, !canChangeEntity && s.selectBtnDisabled]}
+              onPress={() => canChangeEntity && setEntityPickerOpen(true)}
+              disabled={!canChangeEntity}
+            >
+              <Feather name="layers" size={15} color={colors.primary} />
+              <Text style={s.selectBtnTxt} numberOfLines={1}>{entityLabel(institution)}</Text>
+              <Feather name="chevron-down" size={16} color={colors.muted2} />
+            </TouchableOpacity>
           </SetupField>
 
           <SetupField label="Period" flex={1}>
@@ -608,6 +612,25 @@ export default function ReportsScreen() {
         ))}
       </PickerModal>
 
+      {/* Entity picker modal */}
+      <PickerModal visible={entityPickerOpen} onClose={() => setEntityPickerOpen(false)} title="Select entity">
+        {entityDropdownOptions.map((opt) => (
+          <TouchableOpacity
+            key={opt.value}
+            testID={`inst-${opt.value}`}
+            style={[s.pickerRow, institution === opt.value && s.pickerRowActive]}
+            onPress={() => {
+              setInstitution(opt.value as "BOTH" | "ALPHA" | "PWS");
+              setEntityPickerOpen(false);
+            }}
+          >
+            <Feather name="layers" size={16} color={institution === opt.value ? colors.primary : colors.muted2} />
+            <Text style={[s.pickerRowTxt, institution === opt.value && s.pickerRowTxtActive]}>{opt.label}</Text>
+            {institution === opt.value && <Feather name="check" size={16} color={colors.primary} />}
+          </TouchableOpacity>
+        ))}
+      </PickerModal>
+
       {/* Mobile filters bottom sheet */}
       <PickerModal
         visible={filtersOpen && isMobile}
@@ -670,7 +693,7 @@ function ReadyStatusCard({ reportTitle, runState }: { reportTitle: string; runSt
 
 function SetupField({ label, flex, children }: { label: string; flex?: number; children: React.ReactNode }) {
   return (
-    <View style={{ flex: flex ?? 1, minWidth: 140 }}>
+    <View style={{ flex: flex ?? 1, minWidth: 160, flexGrow: 1 }}>
       {label.trim() ? <Text style={s.fieldLabel}>{label}</Text> : null}
       {children}
     </View>
@@ -816,16 +839,19 @@ const s = StyleSheet.create({
   inlineDateRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.borderSoft },
   fieldLabel: { fontSize: 10, fontWeight: "800", color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
   selectBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border,
-    borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10, minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: radii.xl,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 42,
   },
-  selectBtnTxt: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.ink },
-  segment: { flexDirection: "row", backgroundColor: colors.surface2, borderRadius: radii.md, padding: 3, borderWidth: 1, borderColor: colors.border },
-  segmentItem: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, borderRadius: radii.sm, alignItems: "center" },
-  segmentItemActive: { backgroundColor: colors.primary, },
-  segmentTxt: { fontSize: 11, fontWeight: "800", color: colors.muted },
-  segmentTxtActive: { color: "#fff" },
+  selectBtnDisabled: { opacity: 0.85 },
+  selectBtnTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: "#0F172A" },
   filtersBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
     borderWidth: 1.5, borderColor: colors.primary, borderRadius: radii.md,
