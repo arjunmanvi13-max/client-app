@@ -43,7 +43,7 @@ const MVP_REPORTS = [
   { id: "report-card-status", title: "Report Card Status", category: "Academic", icon: "award" },
 ] as const;
 
-const CATEGORIES = ["People", "Attendance", "Finance", "Academic"] as const;
+const CATEGORIES = ["Finance", "People", "Academic", "Attendance"] as const;
 const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
   { key: "this_month", label: "This month" },
   { key: "last_month", label: "Last month" },
