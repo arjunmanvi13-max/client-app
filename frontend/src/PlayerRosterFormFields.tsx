@@ -206,21 +206,15 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
     ? [{ value: "Both", label: "Both (Morning & Evening)" }]
     : SLOTS.filter((sl) => sl !== "Both").map((sl) => ({ value: sl, label: sl }));
 
-  const rc = playerType && sport && !isBoardingType ? RATE_CARD[playerType as PlayerType]?.[sport] : null;
-  const regEff = isBoardingType
-    ? (registrationFeeOverride
-      ? parseInt(registrationFeeOverride, 10)
-      : (sport ? RATE_CARD.Boarding[sport]?.registration ?? 0 : 0))
-    : registrationFeeOverride
-      ? parseInt(registrationFeeOverride, 10)
-      : (rc?.registration ?? 0);
-  const monEff = isBoardingType
-    ? BOARDING_FLAT_MONTHLY_FEE
-    : monthlyFeeOverride
-      ? parseInt(monthlyFeeOverride, 10)
-      : hostelFeeOverride && playerType === "Hostel Only"
-        ? parseInt(hostelFeeOverride, 10)
-        : (rc?.monthly ?? 0);
+  const rc = playerType && sport ? RATE_CARD[playerType as PlayerType]?.[sport] : null;
+  const regEff = registrationFeeOverride
+    ? parseInt(registrationFeeOverride, 10)
+    : (rc?.registration ?? 0);
+  const alphaMonEff = monthlyFeeOverride
+    ? parseInt(monthlyFeeOverride, 10)
+    : hostelFeeOverride && playerType === "Hostel Only"
+      ? parseInt(hostelFeeOverride, 10)
+      : (rc?.monthly ?? 0);
 
   const onCentreChange = (c: string) => {
     setCentre(c as "Balua" | "Harding Park");
@@ -405,7 +399,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             {playerType === "Daily" && "Attends training only — no hostel or boarding."}
             {playerType === "Hostel Only" && "Resides in hostel · attends training · uses hostel facilities."}
             {playerType === "Day Boarding" && "Stays during the day with meals · returns home evening."}
-            {playerType === "Boarding" && "Full residential · PWS class & section required · fixed ₹3,000/month sports fee."}
+            {playerType === "Boarding" && "Full residential · PWS class & section required · ALPHA + PWS fees apply."}
           </Text>
         )}
 
@@ -460,38 +454,10 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             </View>
             {!playerType || !sport ? (
               <Text style={s.feesBoxSub}>Pick a Player Type and Sport to see the applicable fee heads.</Text>
-            ) : isBoardingType ? (
-              <>
-                <View style={s.feesReadonlyBox}>
-                  <View style={s.feesReadonlyRow}>
-                    <Text style={s.feesReadonlyKey}>Registration (one-time)</Text>
-                    <Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text>
-                  </View>
-                  <View style={[s.feesReadonlyRow, s.feesFixedRow]}>
-                    <Text style={s.feesReadonlyKey}>Boarding (Fixed monthly)</Text>
-                    <Text style={s.feesFixedVal}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}/month</Text>
-                  </View>
-                  {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Transport (Monthly)</Text>
-                      <Text style={s.feesReadonlyVal}>
-                        ₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={s.feesBoxNote}>
-                  Boarding players use a fixed ₹3,000/month sports fee. Standard multi-tier monthly rates do not apply.
-                </Text>
-                {isNew && (
-                  <Text style={s.feesBoxNote}>
-                    These invoices will be auto-created after the player is saved. First-month rule: admission on/before 15th = full; from 16th onward = 50%.
-                  </Text>
-                )}
-              </>
             ) : (
               <>
                 <View style={s.feesReadonlyBox}>
+                  <Text style={s.feesGroupLabel}>ALPHA Sports Academy</Text>
                   <View style={s.feesReadonlyRow}>
                     <Text style={s.feesReadonlyKey}>Registration (one-time)</Text>
                     <Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text>
@@ -499,30 +465,51 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
                   {playerType === "Daily" && (
                     <View style={s.feesReadonlyRow}>
                       <Text style={s.feesReadonlyKey}>Monthly Coaching</Text>
-                      <Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text>
+                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
                     </View>
                   )}
                   {playerType === "Hostel Only" && (
                     <View style={s.feesReadonlyRow}>
                       <Text style={s.feesReadonlyKey}>Hostel (Monthly · includes coaching)</Text>
-                      <Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text>
+                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
                     </View>
                   )}
                   {playerType === "Day Boarding" && (
                     <View style={s.feesReadonlyRow}>
                       <Text style={s.feesReadonlyKey}>Day Boarding (Monthly · includes coaching)</Text>
-                      <Text style={s.feesReadonlyVal}>₹{monEff.toLocaleString("en-IN")}</Text>
+                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
                     </View>
+                  )}
+                  {playerType === "Boarding" && (
+                    <View style={s.feesReadonlyRow}>
+                      <Text style={s.feesReadonlyKey}>Boarding (Monthly · hostel + coaching)</Text>
+                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
+                    </View>
+                  )}
+                  {isBoardingType && (
+                    <>
+                      <View style={s.feesGroupDivider} />
+                      <Text style={s.feesGroupLabel}>PWS (linked student profile)</Text>
+                      <View style={[s.feesReadonlyRow, s.feesFixedRow]}>
+                        <Text style={s.feesReadonlyKey}>PWS Tuition (Monthly)</Text>
+                        <Text style={s.feesFixedVal}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}</Text>
+                      </View>
+                    </>
                   )}
                   {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
                     <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Transport (Monthly)</Text>
+                      <Text style={s.feesReadonlyKey}>Transport (Monthly · ALPHA)</Text>
                       <Text style={s.feesReadonlyVal}>
                         ₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}
                       </Text>
                     </View>
                   )}
                 </View>
+                {isBoardingType && (
+                  <Text style={s.feesBoxNote}>
+                    Boarding players are billed default ALPHA sports fees plus a fixed ₹3,000/month PWS tuition linked to their class profile.
+                  </Text>
+                )}
                 {isNew && (
                   <Text style={s.feesBoxNote}>
                     These invoices will be auto-created after the player is saved. First-month rule: admission on/before 15th = full; from 16th onward = 50%.
@@ -546,13 +533,13 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
               </View>
               {isBoardingType && (
                 <View style={s.overrideField}>
-                  <Text style={s.overrideHint}>Monthly fee (fixed for Boarding)</Text>
+                  <Text style={s.overrideHint}>PWS tuition (fixed monthly · linked student profile)</Text>
                   <View style={s.fixedFeeBadge}>
                     <Text style={s.fixedFeeBadgeTxt}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}/month</Text>
                   </View>
                 </View>
               )}
-              {isSuper && rc && !isBoardingType && (
+              {isSuper && rc && (
                 <>
                   <View style={s.overrideField}>
                     <Text style={s.overrideHint}>Registration (default ₹{rc.registration.toLocaleString("en-IN")})</Text>
@@ -567,7 +554,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
                     />
                   </View>
                   <View style={s.overrideField}>
-                    <Text style={s.overrideHint}>Monthly (default ₹{rc.monthly.toLocaleString("en-IN")})</Text>
+                    <Text style={s.overrideHint}>ALPHA monthly (default ₹{rc.monthly.toLocaleString("en-IN")})</Text>
                     <TextInput
                       testID="field-monthly-fee-override"
                       value={monthlyFeeOverride}
@@ -579,20 +566,6 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
                     />
                   </View>
                 </>
-              )}
-              {isSuper && isBoardingType && sport && (
-                <View style={s.overrideField}>
-                  <Text style={s.overrideHint}>Registration (default ₹{(RATE_CARD.Boarding[sport]?.registration ?? 0).toLocaleString("en-IN")})</Text>
-                  <TextInput
-                    testID="field-reg-fee-override"
-                    value={registrationFeeOverride}
-                    onChangeText={setRegistrationFeeOverride}
-                    keyboardType="numeric"
-                    placeholder={`Default ₹${RATE_CARD.Boarding[sport]?.registration ?? 0}`}
-                    placeholderTextColor={colors.hint}
-                    style={s.input}
-                  />
-                </View>
               )}
               {playerType === "Hostel Only" && !isSuper && (
                 <View style={s.overrideField}>
@@ -849,6 +822,15 @@ const s = StyleSheet.create({
   },
   feesBoxSub: { fontSize: 11, color: colors.muted, marginTop: 8 },
   feesReadonlyBox: { backgroundColor: colors.surface, padding: 10, borderRadius: radii.sm, marginTop: 8 },
+  feesGroupLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.primary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  feesGroupDivider: { height: 1, backgroundColor: colors.borderSoft, marginVertical: 10 },
   feesReadonlyRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
   feesReadonlyKey: { fontSize: 12, color: colors.muted2, fontWeight: "600" },
   feesReadonlyVal: { fontSize: 12, color: colors.ink, fontWeight: "800" },

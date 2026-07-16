@@ -643,8 +643,7 @@ export default function ManageEdit() {
           );
           if (boardingSectionId) body.section_id = boardingSectionId;
           body.group = boardingGroup;
-          body.monthly_fee_override = BOARDING_FLAT_MONTHLY_FEE;
-          body.hostel_fee_override = null;
+          body.pws_fee_overrides = { Tuition: BOARDING_FLAT_MONTHLY_FEE };
         }
         // assigned_coach_id removed — players are centre-based
         if (isNew) {
