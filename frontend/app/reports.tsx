@@ -44,6 +44,17 @@ const MVP_REPORTS = [
 ] as const;
 
 const CATEGORIES = ["Finance", "People", "Academic", "Attendance"] as const;
+
+const CATEGORY_ICONS: Record<(typeof CATEGORIES)[number], string> = {
+  Finance: "dollar-sign",
+  People: "users",
+  Academic: "book-open",
+  Attendance: "bar-chart-2",
+};
+
+function categoryIcon(category?: string) {
+  return (CATEGORY_ICONS[category as (typeof CATEGORIES)[number]] || "file-text") as any;
+}
 const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
   { key: "this_month", label: "This month" },
   { key: "last_month", label: "Last month" },
@@ -435,8 +446,8 @@ export default function ReportsScreen() {
           <View style={[s.setupGrid, setupStacked && s.setupGridStacked]}>
           <SetupField label="Report" flex={1}>
             <TouchableOpacity testID="report-picker" style={s.selectBtn} onPress={() => { setReportSearch(""); setReportPickerOpen(true); }}>
-              <Feather name={(mvpMeta?.icon as any) || "file-text"} size={15} color={colors.primary} />
-              <Text style={s.selectBtnTxt} numberOfLines={1}>{mvpMeta?.title || "Select report"}</Text>
+              <Feather name={categoryIcon(mvpMeta?.category)} size={15} color={colors.primary} />
+              <Text style={s.selectBtnTxt} numberOfLines={1}>{mvpMeta?.category || "Select report"}</Text>
               <Feather name="chevron-down" size={16} color={colors.muted2} />
             </TouchableOpacity>
           </SetupField>
