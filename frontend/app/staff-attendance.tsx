@@ -1,11 +1,14 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth, userHasPermission } from "../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { formatDate, toISODate } from "../src/dateFormat";
+import { FormSelect } from "../src/components/forms/FormSelect";
+import { colors, radii, spacing } from "../src/theme";
+import { useBreakpoint } from "../src/useBreakpoint";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
 
@@ -26,7 +29,9 @@ export default function StaffAttendance() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [absent, setAbsent] = useState<Set<string>>(new Set());
   const [centre, setCentre] = useState<"Balua" | "Harding Park" | null>(null);
+  const [shift, setShift] = useState("morning");
   const [date] = useState(toISODate());
+  const { isMobile } = useBreakpoint();
 
   const isAdmin = userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
@@ -86,7 +91,7 @@ export default function StaffAttendance() {
     if (!staff.length) return;
     setSubmitting(true);
     try {
-      const body: any = { date, absent_staff_ids: Array.from(absent) };
+      const body: any = { date, absent_staff_ids: Array.from(absent), session: shift };
       if (isHeadCoach && centre) body.centre = centre;
       if (isAdmin) body.organization = "PWS";
       const { data } = await api.post("/attendance/staff", body);
@@ -137,17 +142,34 @@ export default function StaffAttendance() {
       </View>
 
       {isHeadCoach && availableCentres.length > 1 && (
-        <View style={s.centreRow}>
-          {availableCentres.map((c) => (
-            <TouchableOpacity
-              key={c}
-              testID={`sa-centre-${c}`}
-              onPress={() => setCentre(c)}
-              style={[s.centreChip, centre === c && s.centreChipActive]}
-            >
-              <Text style={[s.centreTxt, centre === c && s.centreTxtActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
+        <View style={s.filterCard}>
+          <Text style={s.filterTitle}>Advanced filters</Text>
+          <View style={[s.filterGrid, !isMobile && s.filterGridWide]}>
+            <View style={[s.filterCell, !isMobile && s.filterCellHalf]}>
+              <FormSelect
+                label="Centre"
+                compact
+                value={centre || availableCentres[0]}
+                options={availableCentres.map((c) => ({ value: c, label: c }))}
+                onChange={(v) => setCentre(v as "Balua" | "Harding Park")}
+                testID="sa-centre"
+              />
+            </View>
+            <View style={[s.filterCell, !isMobile && s.filterCellHalf]}>
+              <FormSelect
+                label="Shift"
+                compact
+                value={shift}
+                options={[
+                  { value: "morning", label: "Morning" },
+                  { value: "afternoon", label: "Afternoon" },
+                  { value: "evening", label: "Evening" },
+                ]}
+                onChange={setShift}
+                testID="sa-shift"
+              />
+            </View>
+          </View>
         </View>
       )}
 
@@ -235,11 +257,21 @@ const s = StyleSheet.create({
   backBtn: { padding: 8 },
   overline: { fontSize: 11, fontWeight: "800", letterSpacing: 1.5, color: "#94A3B8" },
   h1: { fontSize: 22, fontWeight: "700", color: "#0F172A", marginTop: 2, letterSpacing: -0.5 },
-  centreRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, marginTop: 4 },
-  centreChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1.5, borderColor: "#E2E8F0", backgroundColor: "#fff" },
-  centreChipActive: { borderColor: "#EA580C", backgroundColor: "#FFF7ED" },
-  centreTxt: { fontSize: 13, fontWeight: "700", color: "#64748B" },
-  centreTxtActive: { color: "#EA580C" },
+  filterCard: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
+    ...Platform.select({ web: { boxShadow: "0 1px 3px rgba(15,23,42,0.05)" } as any, default: {} }),
+  },
+  filterTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A", marginBottom: spacing.sm },
+  filterGrid: { gap: spacing.md },
+  filterGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  filterCell: { width: "100%" },
+  filterCellHalf: { flex: 1, minWidth: 220, maxWidth: "50%" as any },
   summaryCard: { flexDirection: "row", marginHorizontal: 20, marginTop: 12, padding: 16, backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#E2E8F0", alignItems: "center" },
   sumBlock: { flex: 1, alignItems: "center" },
   sumDivider: { width: 1, height: 32, backgroundColor: "#E2E8F0" },
