@@ -15,8 +15,6 @@ import { colors, formColors, radii, spacing } from "./theme";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
-import { SegmentToggle } from "./components/forms/SegmentToggle";
-import { PillSelect } from "./components/forms/PillSelect";
 import { FormTextField } from "./components/forms/FormTextField";
 
 const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
@@ -256,6 +254,12 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
   };
 
   const studentTypeOptions: FormSelectOption[] = PWS_STUDENT_TYPES.map((t) => ({ value: t, label: t }));
+  const entityOptions: FormSelectOption[] = ORGS.map((o) => ({
+    value: o,
+    label: o === "BOTH" ? "Both" : o,
+  }));
+  const classOptions: FormSelectOption[] = PWS_CLASS_OPTIONS.map((c) => ({ value: c, label: c }));
+  const sectionOptions: FormSelectOption[] = SECTION_FILTER.map((sec) => ({ value: sec, label: sec }));
 
   const ovNum: Record<string, number> = {};
   for (const [k, v] of Object.entries(pwsOverrides)) {
@@ -273,34 +277,35 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
     <View style={s.root}>
       {/* Card 1 — Academic Allocation (full width) */}
       <FormSectionCard overline="Academic Allocation" testID="student-academic-card">
-        <SegmentToggle
-          label="Entity"
-          value={organization}
-          options={ORGS}
-          onChange={(v) => setOrganization(v)}
-          disabled={readOnly}
-          testID="field-entity"
-          formatLabel={(v) => (v === "BOTH" ? "Both" : v)}
-        />
-
-        <PillSelect
-          label="Class"
-          value={pwsClass}
-          options={PWS_CLASS_OPTIONS}
-          onChange={onClassChange}
-          disabled={readOnly}
-          scrollable
-          testID="field-pws-class"
-        />
-
-        <PillSelect
-          label="Section"
-          value={sectionValue}
-          options={SECTION_FILTER}
-          onChange={applySection}
-          disabled={readOnly}
-          testID="field-section"
-        />
+        <FormFieldGrid columns={3} isWide={isWide}>
+          <FormSelect
+            label="Entity"
+            testID="field-entity"
+            value={organization}
+            disabled={readOnly}
+            options={entityOptions}
+            placeholder="Select entity"
+            onChange={(v) => setOrganization(v as typeof organization)}
+          />
+          <FormSelect
+            label="Class"
+            testID="field-pws-class"
+            value={pwsClass}
+            disabled={readOnly}
+            options={classOptions}
+            placeholder="Select class"
+            onChange={onClassChange}
+          />
+          <FormSelect
+            label="Section"
+            testID="field-section"
+            value={sectionValue}
+            disabled={readOnly}
+            options={sectionOptions}
+            placeholder="Select section"
+            onChange={applySection}
+          />
+        </FormFieldGrid>
 
         <FormFieldGrid columns={2} isWide={isWide}>
           <FormSelect
