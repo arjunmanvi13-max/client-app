@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, usePathname } from "expo-router";
@@ -751,7 +751,7 @@ export default function ManageEdit() {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={(isStudentKind || isCoachUserForm) ? s.scrollStudent : s.scroll}>
+        <ScrollView contentContainerStyle={(isStudentKind || isCoachUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll}>
           {isCoachUserForm && (
             <FormPageHeader
               breadcrumb="SYSTEM & SETTINGS · ALPHA COACHES"
@@ -1289,9 +1289,23 @@ export default function ManageEdit() {
         {!isStudentKind && !isCoachUserForm && (
         <View style={s.bottomBar}>
           {canEdit && (
-          <TouchableOpacity testID="save-btn" onPress={save} disabled={saving} style={[s.saveBtn, saving && { opacity: 0.6 }]}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>{isNew ? "Create" : "Save changes"}</Text>}
-          </TouchableOpacity>
+            <View style={s.bottomBarInner}>
+              <TouchableOpacity testID="cancel-btn" onPress={() => router.back()} style={s.cancelBtn}>
+                <Text style={s.cancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <Pressable
+                testID="save-btn"
+                onPress={save}
+                disabled={saving}
+                style={({ pressed, hovered }) => [
+                  s.saveBtnPrimary,
+                  saving && s.saveBtnDisabled,
+                  (pressed || (Platform.OS === "web" && hovered)) && !saving && s.saveBtnHovered,
+                ]}
+              >
+                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>{isNew ? "Create" : "Save changes"}</Text>}
+              </Pressable>
+            </View>
           )}
         </View>
         )}
@@ -1309,6 +1323,13 @@ const s = StyleSheet.create({
   h1: { fontSize: 18, fontWeight: "700", color: "#0F172A", textTransform: "capitalize", flex: 1 },
   delBtn: { padding: 8 },
   scroll: { padding: 20, paddingBottom: 120 },
+  scrollPlayer: {
+    padding: 24,
+    paddingBottom: 120,
+    maxWidth: 960,
+    alignSelf: "center",
+    width: "100%",
+  },
   label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 8, marginTop: 16 },
   help: { fontSize: 12, color: "#64748B", marginTop: 2 },
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: "#0F172A" },
@@ -1328,7 +1349,51 @@ const s = StyleSheet.create({
   coachOpt: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#fff" },
   coachOptActive: { borderColor: "#1E40AF", backgroundColor: "#EFF6FF" },
   coachOptText: { color: "#475569", fontSize: 13 },
-  bottomBar: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: "#F4F5F7", borderTopWidth: 1, borderTopColor: "#E2E8F0" },
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    ...Platform.select({
+      web: { boxShadow: "0 -4px 16px rgba(15, 23, 42, 0.06)" } as object,
+      default: {
+        shadowColor: "#0F172A",
+        shadowOpacity: 0.06,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: -2 },
+        elevation: 8,
+      },
+    }),
+  },
+  bottomBarInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 12,
+    maxWidth: 960,
+    alignSelf: "center",
+    width: "100%",
+  },
+  cancelBtn: { paddingHorizontal: 16, paddingVertical: 12 },
+  cancelTxt: { fontSize: 15, fontWeight: "700", color: "#64748B" },
+  saveBtnPrimary: {
+    backgroundColor: "#1E40AF",
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 140,
+    minHeight: 46,
+    ...Platform.select({ web: { cursor: "pointer" } as object }),
+  },
+  saveBtnHovered: { backgroundColor: "#1D4ED8" },
+  saveBtnDisabled: { opacity: 0.6 },
   saveBtn: { backgroundColor: "#1E40AF", paddingVertical: 14, borderRadius: 14, alignItems: "center" },
   saveTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
   statusCard: { flexDirection: "row", alignItems: "center", marginTop: 18, padding: 14, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0", gap: 12 },

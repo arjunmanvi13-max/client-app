@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { api } from "./auth";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate, parseToISO, toISODate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
-import { colors, radii } from "./theme";
+import { colors, radii, spacing } from "./theme";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
@@ -75,8 +75,20 @@ function FieldLabel({ children, required }: { children: string; required?: boole
   return (
     <Text style={s.label}>
       {children}
-      {required ? " *" : ""}
+      {required ? <Text style={s.requiredMark}> *</Text> : null}
     </Text>
+  );
+}
+
+function FeesEmptyState() {
+  return (
+    <View style={s.feesEmptyState} testID="fees-empty-state">
+      <View style={s.feesEmptyIcon}>
+        <Feather name="info" size={18} color={colors.primary} />
+      </View>
+      <Text style={s.feesEmptyTitle}>Select Player Type & Sport to load fee heads</Text>
+      <Text style={s.feesEmptySub}>Fee structure will appear here once admission details are complete.</Text>
+    </View>
   );
 }
 
@@ -328,7 +340,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
         </FormFieldGrid>
       </FormSectionCard>
 
-      <FormSectionCard title="Sports & Admission Details">
+      <FormSectionCard title="Sports & Admission Details" overline="ALPHA Sports Academy">
         <FormFieldGrid columns={3} isWide={isWide}>
           <View style={s.field}>
             <FieldLabel required>Date of Admission</FieldLabel>
@@ -343,15 +355,6 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             />
             <Text style={s.help}>{dateHelpText()}</Text>
           </View>
-          <View style={s.field}>
-            <FieldLabel>Organization</FieldLabel>
-            <View style={s.orgLocked} testID="org-locked-alpha">
-              <Text style={s.orgLockedText}>ALPHA Sports Academy</Text>
-            </View>
-          </View>
-        </FormFieldGrid>
-
-        <FormFieldGrid columns={4} isWide={isWide}>
           <FormSelect
             label="Centre"
             required
@@ -372,6 +375,9 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             placeholder="Select type"
             onChange={onPlayerTypeChange}
           />
+        </FormFieldGrid>
+
+        <FormFieldGrid columns={3} isWide={isWide}>
           <FormSelect
             label="Sport"
             required
@@ -392,49 +398,6 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             placeholder="Select level"
             onChange={(v) => setSkillLevel(v as typeof skillLevel)}
           />
-        </FormFieldGrid>
-
-        {coachSportLocked && coachAssignedSport && (
-          <Text style={s.help}>Assigned sport: {coachAssignedSport}</Text>
-        )}
-        {centre === "Harding Park" && (
-          <Text style={s.help}>Harding Park allows Daily players only.</Text>
-        )}
-        {playerType && (
-          <Text style={s.help}>
-            {playerType === "Daily" && "Attends training only — no hostel or boarding."}
-            {playerType === "Hostel Only" && "Resides in hostel · attends training · uses hostel facilities."}
-            {playerType === "Day Boarding" && "Stays during the day with meals · returns home evening."}
-            {playerType === "Boarding" && "Full residential · PWS class & section required · ALPHA + PWS fees apply."}
-          </Text>
-        )}
-
-        {isBoardingType && (
-          <FormFieldGrid columns={2} isWide={isWide}>
-            <FormSelect
-              label="Class"
-              required
-              testID="field-boarding-class"
-              value={boardingClass}
-              disabled={readOnly}
-              options={boardingClassOptions}
-              placeholder="Select class"
-              onChange={setBoardingClass}
-            />
-            <FormSelect
-              label="Section"
-              required
-              testID="field-boarding-section"
-              value={boardingSectionLetter}
-              disabled={readOnly || !boardingClass}
-              options={boardingSectionOptions}
-              placeholder="Select section"
-              onChange={setBoardingSectionLetter}
-            />
-          </FormFieldGrid>
-        )}
-
-        <FormFieldGrid columns={2} isWide={isWide}>
           <FormSelect
             label="Slot"
             required
@@ -446,170 +409,217 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             onChange={(v) => setSlot(v as typeof slot)}
           />
         </FormFieldGrid>
+
+        {coachSportLocked && coachAssignedSport && (
+          <Text style={s.help}>Assigned sport: {coachAssignedSport}</Text>
+        )}
+        {centre === "Harding Park" && (
+          <Text style={s.help}>Harding Park allows Daily players only.</Text>
+        )}
+        {playerType && (
+          <View style={s.typeHintBox}>
+            <Feather name="info" size={14} color={colors.primary} />
+            <Text style={s.typeHintText}>
+              {playerType === "Daily" && "Attends training only — no hostel or boarding."}
+              {playerType === "Hostel Only" && "Resides in hostel · attends training · uses hostel facilities."}
+              {playerType === "Day Boarding" && "Stays during the day with meals · returns home evening."}
+              {playerType === "Boarding" && "Full residential · PWS class & section required · ALPHA + PWS fees apply."}
+            </Text>
+          </View>
+        )}
         {slotLockedBoth && (
           <Text style={s.help}>{playerType} players attend Morning & Evening sessions.</Text>
         )}
 
-        <View style={[s.feeGrid, isWide && s.feeGridWide]} testID="fees-config">
-          <View style={[s.feesBox, isWide && s.feesBoxCol]}>
-            <View style={s.feesBoxHeader}>
-              <Feather name="credit-card" size={14} color={colors.primary} />
-              <Text style={s.feesBoxTitle}>
-                Fee structure ({playerType || "Select player type"})
-              </Text>
-            </View>
-            {!playerType || !sport ? (
-              <Text style={s.feesBoxSub}>Pick a Player Type and Sport to see the applicable fee heads.</Text>
-            ) : (
-              <>
-                <View style={s.feesReadonlyBox}>
-                  <Text style={s.feesGroupLabel}>ALPHA Sports Academy</Text>
-                  <View style={s.feesReadonlyRow}>
-                    <Text style={s.feesReadonlyKey}>Registration (one-time)</Text>
-                    <Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text>
-                  </View>
-                  {playerType === "Daily" && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Monthly Coaching</Text>
-                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
-                    </View>
-                  )}
-                  {playerType === "Hostel Only" && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Hostel (Monthly · includes coaching)</Text>
-                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
-                    </View>
-                  )}
-                  {playerType === "Day Boarding" && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Day Boarding (Monthly · includes coaching)</Text>
-                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
-                    </View>
-                  )}
-                  {playerType === "Boarding" && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Boarding (Monthly · hostel + coaching)</Text>
-                      <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
-                    </View>
-                  )}
-                  {isBoardingType && (
-                    <>
-                      <View style={s.feesGroupDivider} />
-                      <Text style={s.feesGroupLabel}>PWS (linked student profile)</Text>
-                      <View style={[s.feesReadonlyRow, s.feesFixedRow]}>
-                        <Text style={s.feesReadonlyKey}>PWS Tuition (Monthly)</Text>
-                        <Text style={s.feesFixedVal}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}</Text>
-                      </View>
-                    </>
-                  )}
-                  {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
-                    <View style={s.feesReadonlyRow}>
-                      <Text style={s.feesReadonlyKey}>Transport (Monthly · ALPHA)</Text>
-                      <Text style={s.feesReadonlyVal}>
-                        ₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                {isBoardingType && (
-                  <Text style={s.feesBoxNote}>
-                    Boarding players are billed default ALPHA sports fees plus a fixed ₹3,000/month PWS tuition linked to their class profile.
-                  </Text>
-                )}
-                {isNew && (
-                  <Text style={s.feesBoxNote}>
-                    These invoices will be auto-created after the player is saved. First-month rule: admission on/before 15th = full; from 16th onward = 50%.
-                  </Text>
-                )}
-              </>
-            )}
-            {!isNew && !isSuper && playerType && sport && (
-              <TouchableOpacity onPress={() => router.push("/fees")} style={s.feeLink} testID="goto-fees-module">
-                <Feather name="external-link" size={12} color={colors.primary} />
-                <Text style={s.feeLinkText}>Edit fees in Fees Module (Super Admin only)</Text>
-              </TouchableOpacity>
-            )}
+        {isBoardingType && (
+          <View style={s.boardingFieldsBox} testID="boarding-class-section">
+            <Text style={s.boardingFieldsLabel}>PWS class & section (required for Boarding)</Text>
+            <FormFieldGrid columns={2} isWide={isWide}>
+              <FormSelect
+                label="Class"
+                required
+                testID="field-boarding-class"
+                value={boardingClass}
+                disabled={readOnly}
+                options={boardingClassOptions}
+                placeholder="Select class"
+                onChange={setBoardingClass}
+              />
+              <FormSelect
+                label="Section"
+                required
+                testID="field-boarding-section"
+                value={boardingSectionLetter}
+                disabled={readOnly || !boardingClass}
+                options={boardingSectionOptions}
+                placeholder="Select section"
+                onChange={setBoardingSectionLetter}
+              />
+            </FormFieldGrid>
+          </View>
+        )}
+      </FormSectionCard>
+
+      <FormSectionCard title="Fees & Financials" testID="fees-config">
+        <View style={s.feesUnifiedCard}>
+          <View style={s.feesUnifiedHeader}>
+            <Feather name="credit-card" size={16} color={colors.primary} />
+            <Text style={s.feesUnifiedTitle}>Fee breakdown & overrides</Text>
           </View>
 
-          {(isNew || isSuper) && (
-            <View style={[s.feesBox, s.overrideBox, isWide && s.feesBoxCol]}>
-              <View style={s.feesBoxHeader}>
-                <Feather name="edit-3" size={14} color="#0F766E" />
-                <Text style={[s.feesBoxTitle, { color: "#0F766E" }]}>Fee overrides & transport</Text>
-              </View>
-              {isBoardingType && (
-                <View style={s.overrideField}>
-                  <Text style={s.overrideHint}>PWS tuition (fixed monthly · linked student profile)</Text>
-                  <View style={s.fixedFeeBadge}>
-                    <Text style={s.fixedFeeBadgeTxt}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}/month</Text>
-                  </View>
-                </View>
-              )}
-              {isSuper && rc && (
+          <View style={[s.feesUnifiedBody, isWide && (isNew || isSuper) && s.feesUnifiedBodyWide]}>
+            <View style={[s.feesPanel, isWide && (isNew || isSuper) && s.feesPanelHalf]}>
+              <Text style={s.feesPanelLabel}>Fee structure{playerType ? ` · ${playerType}` : ""}</Text>
+              {!playerType || !sport ? (
+                <FeesEmptyState />
+              ) : (
                 <>
-                  <View style={s.overrideField}>
-                    <Text style={s.overrideHint}>Registration (default ₹{rc.registration.toLocaleString("en-IN")})</Text>
-                    <TextInput
-                      testID="field-reg-fee-override"
-                      value={registrationFeeOverride}
-                      onChangeText={setRegistrationFeeOverride}
-                      keyboardType="numeric"
-                      placeholder={`Default ₹${rc.registration}`}
-                      placeholderTextColor={colors.hint}
-                      style={s.input}
-                    />
+                  <View style={s.feesReadonlyBox}>
+                    <Text style={s.feesGroupLabel}>ALPHA Sports Academy</Text>
+                    <View style={s.feesReadonlyRow}>
+                      <Text style={s.feesReadonlyKey}>Registration (one-time)</Text>
+                      <Text style={s.feesReadonlyVal}>₹{regEff.toLocaleString("en-IN")}</Text>
+                    </View>
+                    {playerType === "Daily" && (
+                      <View style={s.feesReadonlyRow}>
+                        <Text style={s.feesReadonlyKey}>Monthly Coaching</Text>
+                        <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
+                      </View>
+                    )}
+                    {playerType === "Hostel Only" && (
+                      <View style={s.feesReadonlyRow}>
+                        <Text style={s.feesReadonlyKey}>Hostel (Monthly · includes coaching)</Text>
+                        <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
+                      </View>
+                    )}
+                    {playerType === "Day Boarding" && (
+                      <View style={s.feesReadonlyRow}>
+                        <Text style={s.feesReadonlyKey}>Day Boarding (Monthly · includes coaching)</Text>
+                        <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
+                      </View>
+                    )}
+                    {playerType === "Boarding" && (
+                      <View style={s.feesReadonlyRow}>
+                        <Text style={s.feesReadonlyKey}>Boarding (Monthly · hostel + coaching)</Text>
+                        <Text style={s.feesReadonlyVal}>₹{alphaMonEff.toLocaleString("en-IN")}</Text>
+                      </View>
+                    )}
+                    {isBoardingType && (
+                      <>
+                        <View style={s.feesGroupDivider} />
+                        <Text style={s.feesGroupLabel}>PWS (linked student profile)</Text>
+                        <View style={[s.feesReadonlyRow, s.feesFixedRow]}>
+                          <Text style={s.feesReadonlyKey}>PWS Tuition (Monthly)</Text>
+                          <Text style={s.feesFixedVal}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")}</Text>
+                        </View>
+                      </>
+                    )}
+                    {transportFeeMonthly && parseInt(transportFeeMonthly, 10) > 0 && (
+                      <View style={s.feesReadonlyRow}>
+                        <Text style={s.feesReadonlyKey}>Transport (Monthly · ALPHA)</Text>
+                        <Text style={s.feesReadonlyVal}>
+                          ₹{parseInt(transportFeeMonthly, 10).toLocaleString("en-IN")}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                  <View style={s.overrideField}>
-                    <Text style={s.overrideHint}>ALPHA monthly (default ₹{rc.monthly.toLocaleString("en-IN")})</Text>
-                    <TextInput
-                      testID="field-monthly-fee-override"
-                      value={monthlyFeeOverride}
-                      onChangeText={setMonthlyFeeOverride}
-                      keyboardType="numeric"
-                      placeholder={`Default ₹${rc.monthly}`}
-                      placeholderTextColor={colors.hint}
-                      style={s.input}
-                    />
-                  </View>
+                  {isBoardingType && (
+                    <Text style={s.feesBoxNote}>
+                      Boarding players are billed default ALPHA sports fees plus a fixed ₹3,000/month PWS tuition linked to their class profile.
+                    </Text>
+                  )}
+                  {isNew && (
+                    <Text style={s.feesBoxNote}>
+                      These invoices will be auto-created after the player is saved. First-month rule: admission on/before 15th = full; from 16th onward = 50%.
+                    </Text>
+                  )}
                 </>
               )}
-              {playerType === "Hostel Only" && !isSuper && (
+              {!isNew && !isSuper && playerType && sport && (
+                <TouchableOpacity onPress={() => router.push("/fees")} style={s.feeLink} testID="goto-fees-module">
+                  <Feather name="external-link" size={12} color={colors.primary} />
+                  <Text style={s.feeLinkText}>Edit fees in Fees Module (Super Admin only)</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {(isNew || isSuper) && (
+              <View style={[s.feesPanel, s.feesPanelOverrides, isWide && s.feesPanelHalf]}>
+                <Text style={s.feesPanelLabel}>Overrides & transport</Text>
+                {isBoardingType && (
+                  <View style={s.overrideField}>
+                    <Text style={s.overrideHint}>PWS tuition (fixed monthly · linked student profile)</Text>
+                    <View style={[s.input, s.inputReadonly, s.fixedFeeInput]}>
+                      <Text style={s.fixedFeeInputTxt}>₹{BOARDING_FLAT_MONTHLY_FEE.toLocaleString("en-IN")} / month</Text>
+                    </View>
+                  </View>
+                )}
+                {isSuper && rc && (
+                  <>
+                    <View style={s.overrideField}>
+                      <Text style={s.overrideHint}>Registration (default ₹{rc.registration.toLocaleString("en-IN")})</Text>
+                      <TextInput
+                        testID="field-reg-fee-override"
+                        value={registrationFeeOverride}
+                        onChangeText={setRegistrationFeeOverride}
+                        keyboardType="numeric"
+                        placeholder={`Default ₹${rc.registration}`}
+                        placeholderTextColor={colors.hint}
+                        style={s.input}
+                      />
+                    </View>
+                    <View style={s.overrideField}>
+                      <Text style={s.overrideHint}>ALPHA monthly (default ₹{rc.monthly.toLocaleString("en-IN")})</Text>
+                      <TextInput
+                        testID="field-monthly-fee-override"
+                        value={monthlyFeeOverride}
+                        onChangeText={setMonthlyFeeOverride}
+                        keyboardType="numeric"
+                        placeholder={`Default ₹${rc.monthly}`}
+                        placeholderTextColor={colors.hint}
+                        style={s.input}
+                      />
+                    </View>
+                  </>
+                )}
+                {playerType === "Hostel Only" && !isSuper && (
+                  <View style={s.overrideField}>
+                    <Text style={s.overrideHint}>Hostel fee override (₹/month)</Text>
+                    <TextInput
+                      testID="field-hostel-fee"
+                      value={hostelFeeOverride}
+                      onChangeText={setHostelFeeOverride}
+                      keyboardType="numeric"
+                      placeholder="Leave blank for rate-card default"
+                      placeholderTextColor={colors.hint}
+                      style={s.input}
+                    />
+                  </View>
+                )}
                 <View style={s.overrideField}>
-                  <Text style={s.overrideHint}>Hostel fee override (₹/month)</Text>
+                  <Text style={s.overrideHint}>Transport fee (₹/month — optional)</Text>
                   <TextInput
-                    testID="field-hostel-fee"
-                    value={hostelFeeOverride}
-                    onChangeText={setHostelFeeOverride}
+                    testID="field-transport-fee"
+                    value={transportFeeMonthly}
+                    onChangeText={setTransportFeeMonthly}
                     keyboardType="numeric"
-                    placeholder="Leave blank for rate-card default"
+                    placeholder="0 = no transport"
                     placeholderTextColor={colors.hint}
                     style={s.input}
                   />
                 </View>
-              )}
-              <View style={s.overrideField}>
-                <Text style={s.overrideHint}>Transport fee (₹/month — optional)</Text>
-                <TextInput
-                  testID="field-transport-fee"
-                  value={transportFeeMonthly}
-                  onChangeText={setTransportFeeMonthly}
-                  keyboardType="numeric"
-                  placeholder="0 = no transport"
-                  placeholderTextColor={colors.hint}
-                  style={s.input}
-                />
+                {parseInt(transportFeeMonthly || "0", 10) > 0 && (
+                  <Text style={s.feesBoxNote}>Transport fee recurs monthly with the sports fee due-date.</Text>
+                )}
+                {!isNew && isSuper && (
+                  <TouchableOpacity onPress={() => router.push("/fees")} style={s.feeLink} testID="goto-fees-module-overrides">
+                    <Feather name="external-link" size={12} color={colors.primary} />
+                    <Text style={s.feeLinkText}>Edit fees in Fees Module</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              {parseInt(transportFeeMonthly || "0", 10) > 0 && (
-                <Text style={s.feesBoxNote}>Transport fee recurs monthly with the sports fee due-date.</Text>
-              )}
-              {!isNew && isSuper && (
-                <TouchableOpacity onPress={() => router.push("/fees")} style={s.feeLink} testID="goto-fees-module">
-                  <Feather name="external-link" size={12} color={colors.primary} />
-                  <Text style={s.feeLinkText}>Edit fees in Fees Module</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            )}
+          </View>
         </View>
 
         {isNew && isSuper && (
@@ -784,42 +794,126 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
 const s = StyleSheet.create({
   field: { flex: 1, minWidth: 0 },
   label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
+  requiredMark: { color: colors.primary },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
     paddingHorizontal: 14,
+    minHeight: 46,
     paddingVertical: 12,
     fontSize: 15,
     color: colors.ink,
   },
   inputReadonly: { backgroundColor: colors.surface2, color: colors.muted2 },
-  autoIdBox: { justifyContent: "center", minHeight: 44 },
+  autoIdBox: { justifyContent: "center", minHeight: 46 },
   autoIdTxt: { fontSize: 13, color: colors.muted2, fontWeight: "600" },
-  help: { fontSize: 12, color: colors.muted2, marginTop: 4 },
+  help: { fontSize: 12, color: colors.muted2, marginTop: 6, lineHeight: 17 },
   dobHelp: { fontSize: 12, color: "#0F766E", marginTop: 6, fontWeight: "600" },
-  orgLocked: {
-    alignSelf: "stretch",
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: "#93C5FD",
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  orgLockedText: { color: colors.primary, fontWeight: "700", fontSize: 15 },
-  feeGrid: { gap: 12 },
-  feeGridWide: { flexDirection: "row", alignItems: "flex-start" },
-  feesBox: {
+  typeHintBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
     backgroundColor: colors.primarySofter,
     borderWidth: 1,
     borderColor: "#BFDBFE",
     borderRadius: radii.md,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  feesBoxCol: { flex: 1, minWidth: 0 },
-  overrideBox: { backgroundColor: "#F0FDFA", borderColor: "#A7F3D0" },
+  typeHintText: { flex: 1, fontSize: 12, color: colors.primary, lineHeight: 18, fontWeight: "600" },
+  boardingFieldsBox: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  boardingFieldsLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#92400E",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  feesUnifiedCard: {
+    backgroundColor: colors.primarySofter,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: radii.lg,
+    overflow: "hidden",
+  },
+  feesUnifiedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: "#BFDBFE",
+    backgroundColor: colors.surface,
+  },
+  feesUnifiedTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.ink,
+    letterSpacing: -0.1,
+  },
+  feesUnifiedBody: { padding: spacing.md, gap: spacing.md },
+  feesUnifiedBodyWide: { flexDirection: "row", alignItems: "stretch" },
+  feesPanel: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    flex: 1,
+    minHeight: 220,
+  },
+  feesPanelHalf: { flex: 1, minWidth: 0 },
+  feesPanelOverrides: { borderColor: "#A7F3D0", backgroundColor: "#FAFFFE" },
+  feesPanelLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.muted2,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  feesEmptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    minHeight: 160,
+  },
+  feesEmptyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySofter,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  feesEmptyTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.ink,
+    textAlign: "center",
+  },
+  feesEmptySub: {
+    fontSize: 12,
+    color: colors.muted2,
+    textAlign: "center",
+    lineHeight: 18,
+    maxWidth: 280,
+  },
   feesBoxHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
   feesBoxTitle: {
     fontSize: 12,
@@ -828,8 +922,8 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
-  feesBoxSub: { fontSize: 11, color: colors.muted, marginTop: 8 },
-  feesReadonlyBox: { backgroundColor: colors.surface, padding: 10, borderRadius: radii.sm, marginTop: 8 },
+  feesBoxSub: { fontSize: 12, color: colors.muted, lineHeight: 18 },
+  feesReadonlyBox: { backgroundColor: colors.surface2, padding: 12, borderRadius: radii.sm, marginTop: 4 },
   feesGroupLabel: {
     fontSize: 10,
     fontWeight: "800",
@@ -839,33 +933,26 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   feesGroupDivider: { height: 1, backgroundColor: colors.borderSoft, marginVertical: 10 },
-  feesReadonlyRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
-  feesReadonlyKey: { fontSize: 12, color: colors.muted2, fontWeight: "600" },
+  feesReadonlyRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 5 },
+  feesReadonlyKey: { fontSize: 12, color: colors.muted2, fontWeight: "600", flex: 1, paddingRight: 8 },
   feesReadonlyVal: { fontSize: 12, color: colors.ink, fontWeight: "800" },
   feesFixedRow: { backgroundColor: "#ECFDF5", marginHorizontal: -4, paddingHorizontal: 4, borderRadius: radii.sm },
   feesFixedVal: { fontSize: 12, color: "#047857", fontWeight: "800" },
-  fixedFeeBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#ECFDF5",
-    borderWidth: 1,
-    borderColor: "#A7F3D0",
-    borderRadius: radii.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  fixedFeeBadgeTxt: { fontSize: 14, fontWeight: "800", color: "#047857" },
-  feesBoxNote: { fontSize: 11, color: colors.primary, marginTop: 8, fontStyle: "italic" },
+  fixedFeeInput: { justifyContent: "center" },
+  fixedFeeInputTxt: { fontSize: 15, fontWeight: "700", color: "#047857" },
+  feesBoxNote: { fontSize: 11, color: colors.primary, marginTop: 4, fontStyle: "italic", lineHeight: 16 },
   feeLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 },
   feeLinkText: { color: colors.primary, fontWeight: "700", fontSize: 12 },
-  overrideField: { marginTop: 10 },
-  overrideHint: { fontSize: 12, color: colors.muted2, marginBottom: 6 },
+  overrideField: { marginTop: 4 },
+  overrideHint: { fontSize: 12, color: colors.muted2, marginBottom: 6, fontWeight: "600" },
   adhocBox: {
     backgroundColor: "#F0FDFA",
     borderWidth: 1,
     borderColor: "#A7F3D0",
     borderRadius: radii.md,
-    padding: 12,
-    gap: 10,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   adhocRow: {
     padding: 10,
@@ -899,6 +986,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     gap: 12,
+    marginTop: spacing.md,
   },
   statusLabel: { fontSize: 12, fontWeight: "700", color: colors.muted2, letterSpacing: 0.5 },
   statusPill: {
