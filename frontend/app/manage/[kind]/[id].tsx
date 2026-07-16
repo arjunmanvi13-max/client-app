@@ -30,8 +30,8 @@ import {
   parseToISO,
   toISODate,
 } from "../../../src/dateFormat";
-import { StudentRosterFormFields } from "../../../src/StudentRosterFormFields";
-import { PlayerRosterFormFields, type PlayerType } from "../../../src/PlayerRosterFormFields";
+import { StudentRosterFormFields, resolveSectionMatch } from "../../../src/StudentRosterFormFields";
+import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
 import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
 import { formColors } from "../../../src/theme";
@@ -241,6 +241,8 @@ export default function ManageEdit() {
   const [assignedCoachId, setAssignedCoachId] = useState<string | null>(null);
   const [centre, setCentre] = useState<"Balua" | "Harding Park" | "">("");
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
+  const [boardingClass, setBoardingClass] = useState("");
+  const [boardingSectionLetter, setBoardingSectionLetter] = useState("");
   const [dateOfAdmission, setDateOfAdmission] = useState<string>(isNew && isPlayerKind ? formatDate(toISODate()) : "");
   const [dob, setDob] = useState<string>("");
   const [transportFeeMonthly, setTransportFeeMonthly] = useState<string>("");
@@ -404,6 +406,14 @@ export default function ManageEdit() {
             setAssignedCoachId(p.assigned_coach_id || null);
             setCentre(p.centre || "");
             setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
+            if (p.player_type === "Boarding") {
+              setBoardingClass(p.pws_class || "");
+              const sectionMatch = (p.group || "").match(/-([A-F])$/i);
+              setBoardingSectionLetter(sectionMatch ? sectionMatch[1].toUpperCase() : "");
+            } else {
+              setBoardingClass("");
+              setBoardingSectionLetter("");
+            }
             setDob(formatDate(p.dob || ""));
             setTransportFeeMonthly(p.transport_fee_monthly ? String(p.transport_fee_monthly) : "");
             setHostelFeeOverride(p.hostel_fee_override ? String(p.hostel_fee_override) : "");
@@ -421,12 +431,12 @@ export default function ManageEdit() {
   }, [id, kindParam, isNew, isUserKind, isPlayerKind, isRosterPersonKind, user, userTypeKind, typeCatalog]);
 
   useEffect(() => {
-    if (isStudentKind) {
+    if (isStudentKind || isPlayerKind) {
       api.get("/academic/sections").then((r) => {
         setAcademicSections((r.data || []).map((sec: any) => ({ id: sec.id, label: sec.label })));
       }).catch(() => setAcademicSections([]));
     }
-  }, [isStudentKind]);
+  }, [isStudentKind, isPlayerKind]);
 
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -492,6 +502,10 @@ export default function ManageEdit() {
     }
     if (isLoginUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
       Alert.alert("Invalid email", "Email must belong to the @prarambhika.com domain");
+      return;
+    }
+    if (isPlayerKind && playerType === "Boarding" && (!boardingClass.trim() || !boardingSectionLetter.trim())) {
+      Alert.alert("Class and Section are required for Boarding players");
       return;
     }
     if (isPlayerKind && (!skillLevel || !slot || !centre || !playerType)) {
@@ -617,6 +631,20 @@ export default function ManageEdit() {
         if (isSuper) {
           body.monthly_fee_override = monthlyFeeOverride ? parseInt(monthlyFeeOverride, 10) : null;
           body.registration_fee_override = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : null;
+        }
+        if (playerType === "Boarding") {
+          // Boarding players carry PWS student attributes (class/section) — synced with the PWS Student List roster.
+          body.pws_class = boardingClass;
+          body.pws_student_type = "Boarding";
+          const { id: boardingSectionId, label: boardingGroup } = resolveSectionMatch(
+            boardingClass,
+            boardingSectionLetter,
+            academicSections,
+          );
+          if (boardingSectionId) body.section_id = boardingSectionId;
+          body.group = boardingGroup;
+          body.monthly_fee_override = BOARDING_FLAT_MONTHLY_FEE;
+          body.hostel_fee_override = null;
         }
         // assigned_coach_id removed — players are centre-based
         if (isNew) {
@@ -862,6 +890,10 @@ export default function ManageEdit() {
               coachAssignedSport={coachScope.assignedSport}
               status={status}
               setStatus={setStatus}
+              boardingClass={boardingClass}
+              setBoardingClass={setBoardingClass}
+              boardingSectionLetter={boardingSectionLetter}
+              setBoardingSectionLetter={setBoardingSectionLetter}
             />
           )}
 
