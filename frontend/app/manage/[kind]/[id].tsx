@@ -114,6 +114,34 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   }
 }
 
+function confirmCoachDeactivation(onConfirm: () => void | Promise<void>) {
+  const message = "Are you sure you want to deactivate?";
+  if (Platform.OS === "web") {
+    // eslint-disable-next-line no-undef
+    if (typeof window !== "undefined" && window.confirm(message)) {
+      void onConfirm();
+    }
+  } else {
+    Alert.alert("", message, [
+      { text: "No", style: "cancel" },
+      { text: "Yes", style: "destructive", onPress: () => { void onConfirm(); } },
+    ]);
+  }
+}
+
+function navigateToAlphaCoachesList(router: ReturnType<typeof useRouter>) {
+  const href = "/manage/alpha_coach";
+  const go = () => {
+    router.replace(href);
+  };
+  // Defer on web so navigation runs after the confirm dialog closes.
+  if (Platform.OS === "web") {
+    setTimeout(go, 0);
+    return;
+  }
+  go();
+}
+
 function showError(title: string, message: string) {
   if (Platform.OS === "web") {
     // eslint-disable-next-line no-undef
@@ -805,15 +833,30 @@ export default function ManageEdit() {
               setPermMap={setPermMap}
               userStatus={userStatus}
               onToggleUserStatus={!isNew && isSuper ? () => {
-                const next = userStatus === "active" ? "deactivated" : "active";
-                const verb = next === "active" ? "Reactivate" : "Deactivate";
-                confirmAction(`${verb} ${displayTitle}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
-                  try {
-                    await api.post(`/users/${id}/${next === "active" ? "activate" : "deactivate"}`);
-                    setUserStatus(next);
-                    Alert.alert("Done", `Coach ${next === "active" ? "reactivated" : "deactivated"}.`);
-                  } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
-                });
+                if (userStatus === "active") {
+                  confirmCoachDeactivation(async () => {
+                    try {
+                      await api.post(`/users/${id}/deactivate`);
+                      navigateToAlphaCoachesList(router);
+                    } catch (e: any) {
+                      showError("Error", e?.response?.data?.detail || "Failed to deactivate coach");
+                    }
+                  });
+                  return;
+                }
+                confirmAction(
+                  `Reactivate ${displayTitle}?`,
+                  "Reactivate this account. Login restored; user will appear in lists again.",
+                  async () => {
+                    try {
+                      await api.post(`/users/${id}/activate`);
+                      setUserStatus("active");
+                      Alert.alert("Done", "Coach reactivated.");
+                    } catch (e: any) {
+                      showError("Error", e?.response?.data?.detail || "Failed to reactivate coach");
+                    }
+                  },
+                );
               } : undefined}
               resetPwdVal={resetPwdVal}
               setResetPwdVal={setResetPwdVal}
