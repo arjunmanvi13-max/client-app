@@ -9,7 +9,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../../../src/rbac";
 
-type Tab = "teacher" | "review";
+type Tab = "teacher" | "review" | "list";
 
 export default function ReportCardsAdmin() {
   const router = useRouter();
@@ -23,6 +23,8 @@ export default function ReportCardsAdmin() {
   const [studentId, setStudentId] = useState<string | null>(null);
   const [remark, setRemark] = useState("");
   const [coachRemark, setCoachRemark] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
   const [selected, setSelected] = useState<any | null>(null);
 
   const isAdmin = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
@@ -35,9 +37,13 @@ export default function ReportCardsAdmin() {
       const yearsRes = await api.get("/academic/years");
       const openYear = yearsRes.data.find((y: any) => y.status === "open") || yearsRes.data[0];
       if (!openYear) return;
+      const listParams: Record<string, string> = {};
+      if (tab === "review") listParams.status = "review";
+      if (tab === "list" && statusFilter) listParams.status = statusFilter;
+      if (tab === "list" && search.trim()) listParams.search = search.trim();
       const [tRes, cRes] = await Promise.all([
         api.get("/marks/exam-terms", { params: { academic_year_id: openYear.id } }),
-        api.get("/report-cards", { params: tab === "review" ? { status: "review" } : {} }),
+        api.get("/report-cards", { params: listParams }),
       ]);
       setTerms(tRes.data);
       setCards(cRes.data);
@@ -67,7 +73,7 @@ export default function ReportCardsAdmin() {
     } finally {
       setLoading(false);
     }
-  }, [tab, termId, studentId, isAdmin, user?.role]);
+  }, [tab, termId, studentId, isAdmin, user?.role, search, statusFilter]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -78,7 +84,7 @@ export default function ReportCardsAdmin() {
       setSelected(data);
       setRemark(data.teacher_remark || "");
       Alert.alert("Built", "Report card refreshed from saved marks and attendance.");
-      await load();
+      router.push(`/admin/report-cards/${data.id}`);
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Build failed");
     }
@@ -133,6 +139,11 @@ export default function ReportCardsAdmin() {
         {isTeacher && (
           <TouchableOpacity style={[s.tab, tab === "teacher" && s.tabOn]} onPress={() => setTab("teacher")}>
             <Text style={[s.tabTxt, tab === "teacher" && s.tabTxtOn]}>Teacher remarks</Text>
+          </TouchableOpacity>
+        )}
+        {isAdmin && (
+          <TouchableOpacity style={[s.tab, tab === "list" && s.tabOn]} onPress={() => setTab("list")}>
+            <Text style={[s.tabTxt, tab === "list" && s.tabTxtOn]}>All report cards</Text>
           </TouchableOpacity>
         )}
         {isAdmin && (
@@ -209,6 +220,48 @@ export default function ReportCardsAdmin() {
             </>
           )}
 
+          {tab === "list" && isAdmin && (
+            <>
+              <TextInput
+                style={s.search}
+                placeholder="Search student, admission no., term…"
+                value={search}
+                onChangeText={setSearch}
+                onSubmitEditing={load}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.row}>
+                {["", "draft", "review", "finalized", "published"].map((st) => (
+                  <TouchableOpacity
+                    key={st || "all"}
+                    style={[s.chip, statusFilter === st && s.chipOn]}
+                    onPress={() => { setStatusFilter(st); }}
+                  >
+                    <Text style={[s.chipTxt, statusFilter === st && s.chipTxtOn]}>{st || "All"}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={s.secondaryBtn} onPress={load}>
+                <Text style={s.secondaryBtnTxt}>Apply filters</Text>
+              </TouchableOpacity>
+              {cards.length === 0 ? (
+                <Text style={s.empty}>No report cards match your filters.</Text>
+              ) : cards.map((c) => (
+                <TouchableOpacity key={c.id} style={s.listRow} onPress={() => router.push(`/admin/report-cards/${c.id}`)}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.rowTitle}>{c.person_name}</Text>
+                    <Text style={s.meta}>
+                      {c.exam_term_name} · {c.academic_year_name} · {c.status}
+                      {c.percentage != null ? ` · ${c.percentage}%` : ""}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => openCard(c)}>
+                    <Feather name="eye" size={18} color="#1E40AF" />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
           {tab === "review" && isAdmin && (
             <>
               <Text style={s.section}>Awaiting publication</Text>
@@ -233,9 +286,9 @@ export default function ReportCardsAdmin() {
                       onChangeText={setCoachRemark}
                     />
                   )}
-                  <TouchableOpacity style={s.primaryBtn} onPress={() => publish(c)}>
-                    <Feather name="check-circle" size={16} color="#fff" />
-                    <Text style={s.primaryBtnTxt}>Publish report card</Text>
+                  <TouchableOpacity style={s.primaryBtn} onPress={() => router.push(`/admin/report-cards/${c.id}`)}>
+                    <Feather name="edit-2" size={16} color="#fff" />
+                    <Text style={s.primaryBtnTxt}>Review & finalize</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -276,4 +329,23 @@ const s = StyleSheet.create({
   listRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#E2E8F0" },
   rowTitle: { fontSize: 14, fontWeight: "600", color: "#0F172A" },
   empty: { color: "#94A3B8", fontSize: 13 },
+  search: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: "#fff",
+    marginBottom: 8,
+  },
+  secondaryBtn: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+    marginBottom: 8,
+  },
+  secondaryBtnTxt: { color: "#1E40AF", fontWeight: "700", fontSize: 13 },
 });
