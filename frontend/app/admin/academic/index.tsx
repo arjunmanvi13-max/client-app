@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl,
@@ -9,12 +9,21 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, parseToISO } from "../../../src/dateFormat";
+import {
+  DEFAULT_PWS_STANDARDS,
+  DEFAULT_PWS_SUBJECTS,
+  newTeacherAssignRow,
+  stdLabel,
+  type TeacherAssignRow,
+} from "../../../src/academicStructure";
+import { FormSelect } from "../../../src/components/forms/FormSelect";
+import { FormMultiSelect } from "../../../src/components/forms/FormMultiSelect";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
 
 const TABS: { key: Tab; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: "years", label: "Years", icon: "calendar" },
-  { key: "structure", label: "Grades & Sections", icon: "layers" },
+  { key: "structure", label: "Std & Sections", icon: "layers" },
   { key: "subjects", label: "Subjects", icon: "book" },
   { key: "assignments", label: "Teacher Assignments", icon: "users" },
 ];
@@ -24,6 +33,16 @@ const STATUS_COLORS: Record<string, string> = {
   closed: "#64748B",
   archived: "#94A3B8",
 };
+
+function gradeNamesForSubject(sub: any, grades: any[]): string {
+  const ids = sub.grade_ids || [];
+  if (!ids.length) return "all";
+  return ids
+    .map((gid: string) => grades.find((g) => g.id === gid)?.name)
+    .filter(Boolean)
+    .map((name) => stdLabel(String(name)))
+    .join(", ") || "all";
+}
 
 export default function AcademicAdmin() {
   const router = useRouter();
@@ -48,11 +67,10 @@ export default function AcademicAdmin() {
   const [sectionName, setSectionName] = useState("");
   const [subjectName, setSubjectName] = useState("");
   const [subjectGradeIds, setSubjectGradeIds] = useState<string[]>([]);
-  const [subjectSectionIds, setSubjectSectionIds] = useState<string[]>([]);
   const [assignTeacherId, setAssignTeacherId] = useState<string | null>(null);
-  const [assignGradeId, setAssignGradeId] = useState<string | null>(null);
-  const [assignSectionId, setAssignSectionId] = useState<string | null>(null);
-  const [assignSubjectId, setAssignSubjectId] = useState<string | null>(null);
+  const [assignRows, setAssignRows] = useState<TeacherAssignRow[]>([newTeacherAssignRow()]);
+  const [seedingSubjects, setSeedingSubjects] = useState(false);
+  const [seedingStandards, setSeedingStandards] = useState(false);
 
   const canManage = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS);
@@ -60,37 +78,112 @@ export default function AcademicAdmin() {
   const selectedYear = years.find((y) => y.id === selectedYearId) || years.find((y) => y.status === "open") || years[0];
   const isReadOnly = selectedYear?.status === "archived";
 
+  const subjectOptions = useMemo(
+    () => subjects.map((sub) => ({ value: sub.id, label: sub.name })),
+    [subjects],
+  );
+
+  const sectionOptions = useMemo(
+    () => sections.map((sec) => ({ value: sec.id, label: sec.label })),
+    [sections],
+  );
+
+  const missingDefaultSubjects = useMemo(
+    () => DEFAULT_PWS_SUBJECTS.filter(
+      (def) => !subjects.some((s) => s.name.toLowerCase() === def.name.toLowerCase()),
+    ),
+    [subjects],
+  );
+
+  const missingDefaultStandards = useMemo(
+    () => DEFAULT_PWS_STANDARDS.filter(
+      (def) => !grades.some((g) => g.name.toLowerCase() === def.name.toLowerCase()),
+    ),
+    [grades],
+  );
+
+  const visibleSections = useMemo(
+    () => (sectionGradeId ? sections.filter((sec) => sec.grade_id === sectionGradeId) : sections),
+    [sections, sectionGradeId],
+  );
+
+  const groupedAssignments = useMemo(() => {
+    const map = new Map<string, {
+      teacher: any;
+      rows: { sectionLabel: string; stdName: string; subjects: string; ids: string[] }[];
+    }>();
+    for (const a of classAssignments) {
+      const tid = a.teacher_user_id;
+      if (!map.has(tid)) {
+        map.set(tid, { teacher: a.teacher, rows: [] });
+      }
+      const entry = map.get(tid)!;
+      const sectionLabel = a.section?.label || a.section_id?.slice(0, 8) || "—";
+      const stdName = a.grade?.name || a.section?.grade_name || "—";
+      const existing = entry.rows.find((r) => r.sectionLabel === sectionLabel);
+      if (existing) {
+        const names = existing.subjects.split(", ").filter(Boolean);
+        if (a.subject?.name && !names.includes(a.subject.name)) {
+          names.push(a.subject.name);
+          existing.subjects = names.join(", ");
+        }
+        existing.ids.push(a.id);
+      } else {
+        entry.rows.push({
+          sectionLabel,
+          stdName,
+          subjects: a.subject?.name || "—",
+          ids: [a.id],
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [classAssignments]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [yearsRes, usersRes] = await Promise.all([
         api.get("/academic/years"),
-        api.get("/users/directory", { params: { role: "teacher" } }),
+        api.get("/users/directory", { params: { role: "teacher" } }).catch(() => ({ data: [] })),
       ]);
       setYears(yearsRes.data);
       setTeachers(usersRes.data);
       const yid = selectedYearId || yearsRes.data.find((y: any) => y.status === "open")?.id || yearsRes.data[0]?.id;
       if (yid && !selectedYearId) setSelectedYearId(yid);
       if (yid) {
-        const [g, s, sub, ca] = await Promise.all([
+        const results = await Promise.allSettled([
           api.get("/academic/grades", { params: { academic_year_id: yid } }),
           api.get("/academic/sections", { params: { academic_year_id: yid } }),
           api.get("/academic/subjects", { params: { academic_year_id: yid } }),
           api.get("/academic/class-assignments", { params: { academic_year_id: yid } }),
         ]);
-        setGrades(g.data);
-        setSections(s.data);
-        setSubjects(sub.data);
-        setClassAssignments(ca.data);
-        if (g.data[0] && !sectionGradeId) setSectionGradeId(g.data[0].id);
-        if (g.data[0] && !assignGradeId) setAssignGradeId(g.data[0].id);
+        const pick = <T,>(idx: number, fallback: T): T => {
+          const r = results[idx];
+          return r.status === "fulfilled" ? r.value.data : fallback;
+        };
+        setGrades(pick(0, []));
+        setSections(pick(1, []));
+        setSubjects(pick(2, []));
+        setClassAssignments(pick(3, []));
+        const failed = results.filter((r) => r.status === "rejected");
+        if (failed.length === results.length) {
+          throw (failed[0] as PromiseRejectedResult).reason;
+        }
       }
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Failed to load academic data");
     } finally {
       setLoading(false);
     }
-  }, [selectedYearId, sectionGradeId, assignGradeId]);
+  }, [selectedYearId]);
+
+  useEffect(() => {
+    if (!grades.length) return;
+    if (!sectionGradeId || !grades.some((g) => g.id === sectionGradeId)) {
+      setSectionGradeId(grades[0].id);
+    }
+  }, [grades, sectionGradeId]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -136,7 +229,7 @@ export default function AcademicAdmin() {
       setGradeName("");
       load();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "Failed to add grade");
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to add standard");
     }
   };
 
@@ -156,38 +249,120 @@ export default function AcademicAdmin() {
     }
   };
 
-  const addSubject = async () => {
-    if (!subjectName.trim() || !selectedYear || isReadOnly) return;
+  const addSubject = async (name?: string, code?: string) => {
+    const subject = (name || subjectName).trim();
+    if (!subject || !selectedYear || isReadOnly) return;
     try {
       await api.post("/academic/subjects", {
         academic_year_id: selectedYear.id,
-        name: subjectName.trim(),
+        name: subject,
+        code: code || undefined,
         grade_ids: subjectGradeIds,
-        section_ids: subjectSectionIds,
+        section_ids: [],
         entity_id: "pws",
       });
-      setSubjectName("");
-      setSubjectGradeIds([]);
-      setSubjectSectionIds([]);
+      if (!name) setSubjectName("");
       load();
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Failed to add subject");
     }
   };
 
-  const assignClass = async () => {
-    if (!assignTeacherId || !assignGradeId || !assignSectionId || !assignSubjectId || !selectedYear || isReadOnly) return;
+  const seedDefaultStandards = async () => {
+    if (!selectedYear || isReadOnly || missingDefaultStandards.length === 0) return;
+    setSeedingStandards(true);
+    let added = 0;
     try {
-      await api.post("/academic/class-assignments", {
-        teacher_user_id: assignTeacherId,
-        academic_year_id: selectedYear.id,
-        grade_id: assignGradeId,
-        section_id: assignSectionId,
-        subject_id: assignSubjectId,
-      });
+      for (const def of missingDefaultStandards) {
+        try {
+          await api.post("/academic/grades", {
+            academic_year_id: selectedYear.id,
+            name: def.name,
+            sort_order: def.sort,
+            entity_id: "pws",
+          });
+          added++;
+        } catch {
+          // skip duplicates
+        }
+      }
+      await load();
+      Alert.alert("Standards updated", added ? `${added} standard(s) added.` : "No new standards were added.");
+    } finally {
+      setSeedingStandards(false);
+    }
+  };
+
+  const seedDefaultSubjects = async () => {
+    if (!selectedYear || isReadOnly || missingDefaultSubjects.length === 0) return;
+    setSeedingSubjects(true);
+    let added = 0;
+    try {
+      for (const def of missingDefaultSubjects) {
+        try {
+          await api.post("/academic/subjects", {
+            academic_year_id: selectedYear.id,
+            name: def.name,
+            code: def.code,
+            grade_ids: subjectGradeIds,
+            section_ids: [],
+            entity_id: "pws",
+          });
+          added++;
+        } catch {
+          // skip duplicates or validation errors
+        }
+      }
+      await load();
+      Alert.alert("Subjects updated", added ? `${added} subject(s) added.` : "No new subjects were added.");
+    } finally {
+      setSeedingSubjects(false);
+    }
+  };
+
+  const updateAssignRow = (key: string, patch: Partial<TeacherAssignRow>) => {
+    setAssignRows((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  };
+
+  const assignClasses = async () => {
+    if (!assignTeacherId || !selectedYear || isReadOnly) {
+      Alert.alert("Missing info", "Select a teacher and add at least one class with subjects.");
+      return;
+    }
+    const validRows = assignRows.filter((r) => r.sectionId && r.subjectIds.length > 0);
+    if (!validRows.length) {
+      Alert.alert("Missing info", "Add at least one class with one or more subjects.");
+      return;
+    }
+    let created = 0;
+    let skipped = 0;
+    try {
+      for (const row of validRows) {
+        const section = sections.find((sec) => sec.id === row.sectionId);
+        if (!section) continue;
+        for (const subjectId of row.subjectIds) {
+          try {
+            await api.post("/academic/class-assignments", {
+              teacher_user_id: assignTeacherId,
+              academic_year_id: selectedYear.id,
+              grade_id: section.grade_id,
+              section_id: row.sectionId,
+              subject_id: subjectId,
+            });
+            created++;
+          } catch (e: any) {
+            if (e?.response?.status === 400) skipped++;
+            else throw e;
+          }
+        }
+      }
       setAssignTeacherId(null);
-      setAssignSubjectId(null);
-      load();
+      setAssignRows([newTeacherAssignRow()]);
+      await load();
+      Alert.alert(
+        "Assignments saved",
+        `${created} assignment(s) created${skipped ? `, ${skipped} already existed` : ""}.`,
+      );
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Failed to assign teacher");
     }
@@ -222,7 +397,7 @@ export default function AcademicAdmin() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>Academic Structure</Text>
-          <Text style={s.sub}>PWS — years, grades, sections, subjects & teacher assignments</Text>
+          <Text style={s.sub}>PWS — years, standards, sections, subjects & teacher assignments</Text>
         </View>
       </View>
 
@@ -298,31 +473,76 @@ export default function AcademicAdmin() {
             {tab === "structure" && (
               <>
                 <View style={s.card}>
-                  <Text style={s.cardTitle}>Grades</Text>
+                  <Text style={s.cardTitle}>Std</Text>
+                  {!isReadOnly && missingDefaultStandards.length > 0 && (
+                    <TouchableOpacity
+                      testID="btn-seed-standards"
+                      style={[s.secondaryBtn, seedingStandards && { opacity: 0.6 }]}
+                      onPress={seedDefaultStandards}
+                      disabled={seedingStandards}
+                    >
+                      {seedingStandards ? (
+                        <ActivityIndicator size="small" color="#1E40AF" />
+                      ) : (
+                        <Text style={s.secondaryBtnTxt}>
+                          Add missing default standards ({missingDefaultStandards.length})
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                   {!isReadOnly && (
                     <View style={s.row}>
-                      <TextInput testID="input-grade" value={gradeName} onChangeText={setGradeName} placeholder="e.g. 9" style={s.input} placeholderTextColor="#94A3B8" />
+                      <TextInput testID="input-grade" value={gradeName} onChangeText={setGradeName} placeholder="Std e.g. 9" style={s.input} placeholderTextColor="#94A3B8" />
                       <TouchableOpacity testID="btn-add-grade" style={s.btn} onPress={addGrade}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
                     </View>
                   )}
-                  <Text style={s.hint}>{grades.map((g) => `Grade ${g.name}`).join(", ") || "No grades yet"}</Text>
+                  {grades.length === 0 ? (
+                    <Text style={s.hint}>No standards yet. Add manually or use the default catalogue button above.</Text>
+                  ) : (
+                    <View style={s.listWrap}>
+                      {grades.map((g) => (
+                        <View key={g.id} style={s.listRow}>
+                          <Text style={s.listTitle}>{stdLabel(g.name)}</Text>
+                          <Text style={s.listMeta}>Stored as: {g.name}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
                 <View style={s.card}>
                   <Text style={s.cardTitle}>Sections</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                    {grades.map((g) => (
-                      <TouchableOpacity key={g.id} style={[s.chip, sectionGradeId === g.id && s.chipActive]} onPress={() => setSectionGradeId(g.id)}>
-                        <Text style={[s.chipTxt, sectionGradeId === g.id && s.chipTxtActive]}>Grade {g.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  {!isReadOnly && (
-                    <View style={s.row}>
-                      <TextInput testID="input-section" value={sectionName} onChangeText={setSectionName} placeholder="Section e.g. A" style={s.input} placeholderTextColor="#94A3B8" autoCapitalize="characters" />
-                      <TouchableOpacity testID="btn-add-section" style={s.btn} onPress={addSection}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
-                    </View>
+                  {grades.length === 0 ? (
+                    <Text style={s.hint}>Add standards first, then create sections for each std.</Text>
+                  ) : (
+                    <>
+                      <Text style={s.label}>Select std</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                        {grades.map((g) => (
+                          <TouchableOpacity key={g.id} style={[s.chip, sectionGradeId === g.id && s.chipActive]} onPress={() => setSectionGradeId(g.id)}>
+                            <Text style={[s.chipTxt, sectionGradeId === g.id && s.chipTxtActive]}>{stdLabel(g.name)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                      {!isReadOnly && (
+                        <View style={s.row}>
+                          <TextInput testID="input-section" value={sectionName} onChangeText={setSectionName} placeholder="Section e.g. A" style={s.input} placeholderTextColor="#94A3B8" autoCapitalize="characters" />
+                          <TouchableOpacity testID="btn-add-section" style={s.btn} onPress={addSection}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
+                        </View>
+                      )}
+                      {visibleSections.length === 0 ? (
+                        <Text style={s.hint}>No sections for {stdLabel(grades.find((g) => g.id === sectionGradeId)?.name)} yet.</Text>
+                      ) : (
+                        <View style={s.listWrap}>
+                          {visibleSections.map((sec) => (
+                            <View key={sec.id} style={s.listRow}>
+                              <Text style={s.listTitle}>{sec.label}</Text>
+                              <Text style={s.listMeta}>{stdLabel(sec.grade_name || grades.find((g) => g.id === sec.grade_id)?.name)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </>
                   )}
-                  <Text style={s.hint}>{sections.map((x) => x.label).join(", ") || "No sections yet"}</Text>
                 </View>
               </>
             )}
@@ -330,34 +550,56 @@ export default function AcademicAdmin() {
             {tab === "subjects" && (
               <View style={s.card}>
                 <Text style={s.cardTitle}>Subjects</Text>
-                <Text style={s.label}>Assign to grades (optional)</Text>
+                <Text style={s.label}>Assign to std (optional)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
                   {grades.map((g) => (
                     <TouchableOpacity key={g.id} style={[s.chip, subjectGradeIds.includes(g.id) && s.chipActive]} onPress={() => toggleChip(subjectGradeIds, g.id, setSubjectGradeIds)}>
-                      <Text style={[s.chipTxt, subjectGradeIds.includes(g.id) && s.chipTxtActive]}>Grade {g.name}</Text>
+                      <Text style={[s.chipTxt, subjectGradeIds.includes(g.id) && s.chipTxtActive]}>{stdLabel(g.name)}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
-                <Text style={s.label}>Assign to sections (optional)</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                  {sections.map((sec) => (
-                    <TouchableOpacity key={sec.id} style={[s.chip, subjectSectionIds.includes(sec.id) && s.chipActive]} onPress={() => toggleChip(subjectSectionIds, sec.id, setSubjectSectionIds)}>
-                      <Text style={[s.chipTxt, subjectSectionIds.includes(sec.id) && s.chipTxtActive]}>{sec.label}</Text>
+
+                {!isReadOnly && missingDefaultSubjects.length > 0 && (
+                  <>
+                    <Text style={s.label}>Default catalogue</Text>
+                    <View style={s.defaultRow}>
+                      {DEFAULT_PWS_SUBJECTS.map((def) => {
+                        const exists = !missingDefaultSubjects.some((m) => m.name === def.name);
+                        return (
+                          <View key={def.name} style={[s.defaultChip, exists && s.defaultChipDone]}>
+                            <Text style={[s.defaultChipTxt, exists && s.defaultChipTxtDone]}>
+                              {def.name}{def.code ? ` (${def.code})` : ""}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <TouchableOpacity
+                      testID="btn-seed-subjects"
+                      style={[s.secondaryBtn, seedingSubjects && { opacity: 0.6 }]}
+                      onPress={seedDefaultSubjects}
+                      disabled={seedingSubjects}
+                    >
+                      {seedingSubjects ? (
+                        <ActivityIndicator size="small" color="#1E40AF" />
+                      ) : (
+                        <Text style={s.secondaryBtnTxt}>Add missing default subjects ({missingDefaultSubjects.length})</Text>
+                      )}
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  </>
+                )}
+
                 {!isReadOnly && (
                   <View style={s.row}>
                     <TextInput testID="input-subject" value={subjectName} onChangeText={setSubjectName} placeholder="e.g. Mathematics" style={s.input} placeholderTextColor="#94A3B8" />
-                    <TouchableOpacity testID="btn-add-subject" style={s.btn} onPress={addSubject}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
+                    <TouchableOpacity testID="btn-add-subject" style={s.btn} onPress={() => addSubject()}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
                   </View>
                 )}
                 {subjects.map((sub) => (
                   <View key={sub.id} style={s.subjectRow}>
                     <Text style={s.subjectName}>{sub.name} ({sub.code})</Text>
                     <Text style={s.subjectMeta}>
-                      Grades: {(sub.grade_ids || []).map((gid: string) => grades.find((g) => g.id === gid)?.name).filter(Boolean).join(", ") || "all"}
-                      {" · "}Sections: {(sub.section_ids || []).map((sid: string) => sections.find((x) => x.id === sid)?.label).filter(Boolean).join(", ") || "all"}
+                      Std: {gradeNamesForSubject(sub, grades)}
                     </Text>
                   </View>
                 ))}
@@ -366,7 +608,7 @@ export default function AcademicAdmin() {
 
             {tab === "assignments" && (
               <View style={s.card}>
-                <Text style={s.cardTitle}>Teacher · year · grade · section · subject</Text>
+                <Text style={s.cardTitle}>Teacher · class · subjects</Text>
                 {!isReadOnly && (
                   <>
                     <Text style={s.label}>Teacher</Text>
@@ -377,50 +619,68 @@ export default function AcademicAdmin() {
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
-                    <Text style={s.label}>Grade</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                      {grades.map((g) => (
-                        <TouchableOpacity key={g.id} style={[s.chip, assignGradeId === g.id && s.chipActive]} onPress={() => { setAssignGradeId(g.id); setAssignSectionId(null); }}>
-                          <Text style={[s.chipTxt, assignGradeId === g.id && s.chipTxtActive]}>Grade {g.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                    <Text style={s.label}>Section</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                      {sections.filter((sec) => !assignGradeId || sec.grade_id === assignGradeId).map((sec) => (
-                        <TouchableOpacity key={sec.id} style={[s.chip, assignSectionId === sec.id && s.chipActive]} onPress={() => setAssignSectionId(sec.id)}>
-                          <Text style={[s.chipTxt, assignSectionId === sec.id && s.chipTxtActive]}>{sec.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                    <Text style={s.label}>Subject</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                      {subjects.map((sub) => (
-                        <TouchableOpacity key={sub.id} style={[s.chip, assignSubjectId === sub.id && s.chipActive]} onPress={() => setAssignSubjectId(sub.id)}>
-                          <Text style={[s.chipTxt, assignSubjectId === sub.id && s.chipTxtActive]}>{sub.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                    <TouchableOpacity testID="btn-assign-class" style={[s.btn, { alignSelf: "flex-start", marginTop: 10 }]} onPress={assignClass}>
-                      <Text style={s.btnTxt}>Assign</Text>
+
+                    <Text style={[s.label, { marginTop: 12 }]}>Class assignments</Text>
+                    <Text style={s.fieldHelp}>Map one or more classes; for each class, select the subjects the teacher handles.</Text>
+                    {assignRows.map((row, idx) => (
+                      <View key={row.key} style={s.assignFormRow}>
+                        <View style={s.assignFormHeader}>
+                          <Text style={s.assignFormTitle}>Class {idx + 1}</Text>
+                          {assignRows.length > 1 && (
+                            <TouchableOpacity onPress={() => setAssignRows((rows) => rows.filter((r) => r.key !== row.key))}>
+                              <Feather name="trash-2" size={16} color="#EF4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <FormSelect
+                          label="Class / section"
+                          value={row.sectionId}
+                          options={sectionOptions}
+                          onChange={(sectionId) => updateAssignRow(row.key, { sectionId })}
+                          placeholder="Select class…"
+                          testID={`assign-section-${idx}`}
+                        />
+                        <FormMultiSelect
+                          label="Subjects"
+                          values={row.subjectIds}
+                          options={subjectOptions}
+                          onChange={(subjectIds) => updateAssignRow(row.key, { subjectIds })}
+                          placeholder="Select one or more subjects…"
+                          searchPlaceholder="Search subjects…"
+                          testID={`assign-subjects-${idx}`}
+                        />
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      style={s.secondaryBtn}
+                      onPress={() => setAssignRows((rows) => [...rows, newTeacherAssignRow()])}
+                    >
+                      <Text style={s.secondaryBtnTxt}>+ Add another class</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity testID="btn-assign-class" style={[s.btn, { alignSelf: "flex-start", marginTop: 10 }]} onPress={assignClasses}>
+                      <Text style={s.btnTxt}>Save assignments</Text>
                     </TouchableOpacity>
                   </>
                 )}
-                {classAssignments.length === 0 ? (
+                {groupedAssignments.length === 0 ? (
                   <Text style={s.hint}>No class assignments yet.</Text>
-                ) : classAssignments.map((a) => (
-                  <View key={a.id} style={s.assignRow} testID={`class-assignment-${a.id}`}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.assignName}>{a.teacher?.name}</Text>
-                      <Text style={s.assignMeta}>
-                        {a.section?.label} · {a.subject?.name} · Grade {a.grade?.name || a.grade_id?.slice(0, 6)}
-                      </Text>
-                    </View>
-                    {!isReadOnly && (
-                      <TouchableOpacity onPress={() => removeAssignment(a.id)}>
-                        <Feather name="trash-2" size={16} color="#EF4444" />
-                      </TouchableOpacity>
-                    )}
+                ) : groupedAssignments.map((group) => (
+                  <View key={group.teacher?.id || group.teacher?.name} style={s.teacherGroup}>
+                    <Text style={s.assignName}>{group.teacher?.name || "Teacher"}</Text>
+                    {group.rows.map((row) => (
+                      <View key={`${row.sectionLabel}-${row.subjects}`} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.assignMeta}>
+                            {row.sectionLabel} · {stdLabel(row.stdName)} · {row.subjects}
+                          </Text>
+                        </View>
+                        {!isReadOnly && row.ids.map((id) => (
+                          <TouchableOpacity key={id} onPress={() => removeAssignment(id)} style={{ marginLeft: 8 }}>
+                            <Feather name="trash-2" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ))}
                   </View>
                 ))}
               </View>
@@ -455,6 +715,7 @@ const s = StyleSheet.create({
   btnTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
   hint: { fontSize: 12, color: "#64748B", marginTop: 8 },
   label: { fontSize: 12, fontWeight: "700", color: "#64748B", marginBottom: 6, marginTop: 4 },
+  fieldHelp: { fontSize: 11, color: "#94A3B8", marginBottom: 10, lineHeight: 16 },
   chipScroll: { flexGrow: 0, marginBottom: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#E2E8F0", marginRight: 8, backgroundColor: "#fff" },
   chipActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
@@ -471,8 +732,44 @@ const s = StyleSheet.create({
   subjectRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
   subjectName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
   subjectMeta: { fontSize: 11, color: "#64748B", marginTop: 2 },
-  assignRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
-  assignName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
-  assignMeta: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  listWrap: { marginTop: 4 },
+  listRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  listTitle: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
+  listMeta: { fontSize: 11, color: "#64748B", marginTop: 2 },
+  defaultRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  defaultChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: "#CBD5E1", backgroundColor: "#F8FAFC" },
+  defaultChipDone: { borderColor: "#BBF7D0", backgroundColor: "#F0FDF4" },
+  defaultChipTxt: { fontSize: 11, fontWeight: "600", color: "#475569" },
+  defaultChipTxtDone: { color: "#15803D" },
+  secondaryBtn: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+    marginBottom: 8,
+  },
+  secondaryBtnTxt: { color: "#1E40AF", fontWeight: "700", fontSize: 13 },
+  assignFormRow: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: "#F8FAFC",
+    gap: 8,
+  },
+  assignFormHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  assignFormTitle: { fontSize: 13, fontWeight: "800", color: "#0F172A" },
+  teacherGroup: { marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
+  assignRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+  assignName: { fontSize: 14, fontWeight: "700", color: "#0F172A", marginBottom: 4 },
+  assignMeta: { fontSize: 12, color: "#64748B" },
   denied: { padding: 24, color: "#64748B", textAlign: "center" },
 });

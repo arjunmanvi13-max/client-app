@@ -20,6 +20,7 @@ import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect
 import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
 import { CLASS_PREFIX, resolveSectionMatch } from "./StudentRosterFormFields";
+import { DEFAULT_PWS_SUBJECT_OPTIONS } from "./academicStructure";
 
 export type TeacherDesignation = "CLASS_TEACHER" | "TEACHER";
 
@@ -55,17 +56,7 @@ export const TEACHER_SECTION_OPTIONS: FormSelectOption[] = [
   "A", "B", "C", "D", "E", "F", "G",
 ].map((letter) => ({ value: letter, label: letter }));
 
-export const TEACHER_SUBJECT_OPTIONS: FormSelectOption[] = [
-  "Social Science",
-  "IT",
-  "Sanskrit",
-  "Drawing",
-  "PT",
-  "Music",
-  "Chemistry",
-  "Biology",
-  "Physics",
-].map((name) => ({ value: name, label: name }));
+export const TEACHER_SUBJECT_OPTIONS: FormSelectOption[] = DEFAULT_PWS_SUBJECT_OPTIONS;
 
 const CLASS_NAME_BY_GRADE: Record<string, string> = Object.fromEntries(
   Object.entries(CLASS_PREFIX).map(([className, gradeName]) => [gradeName, className]),
