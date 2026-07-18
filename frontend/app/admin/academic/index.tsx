@@ -12,12 +12,15 @@ import { formatDate, DATE_PLACEHOLDER, parseToISO } from "../../../src/dateForma
 import {
   DEFAULT_PWS_STANDARDS,
   DEFAULT_PWS_SUBJECTS,
+  buildTeacherAssignmentPayload,
   newTeacherAssignRow,
   stdLabel,
+  validateTeacherAssignments,
   type TeacherAssignRow,
 } from "../../../src/academicStructure";
 import { FormSelect } from "../../../src/components/forms/FormSelect";
 import { FormMultiSelect } from "../../../src/components/forms/FormMultiSelect";
+import { FormSearchSelect } from "../../../src/components/forms/FormSearchSelect";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
 
@@ -86,6 +89,11 @@ export default function AcademicAdmin() {
   const sectionOptions = useMemo(
     () => sections.map((sec) => ({ value: sec.id, label: sec.label })),
     [sections],
+  );
+
+  const teacherOptions = useMemo(
+    () => teachers.map((t) => ({ value: t.id, label: t.name })),
+    [teachers],
   );
 
   const missingDefaultSubjects = useMemo(
@@ -325,28 +333,29 @@ export default function AcademicAdmin() {
   };
 
   const assignClasses = async () => {
-    if (!assignTeacherId || !selectedYear || isReadOnly) {
-      Alert.alert("Missing info", "Select a teacher and add at least one class with subjects.");
+    if (!selectedYear || isReadOnly) return;
+    const validationError = validateTeacherAssignments(assignTeacherId, assignRows);
+    if (validationError) {
+      Alert.alert("Cannot save", validationError);
       return;
     }
-    const validRows = assignRows.filter((r) => r.sectionId && r.subjectIds.length > 0);
-    if (!validRows.length) {
-      Alert.alert("Missing info", "Add at least one class with one or more subjects.");
-      return;
-    }
+    const payload = buildTeacherAssignmentPayload(assignTeacherId!, assignRows);
     let created = 0;
     let skipped = 0;
     try {
-      for (const row of validRows) {
-        const section = sections.find((sec) => sec.id === row.sectionId);
-        if (!section) continue;
-        for (const subjectId of row.subjectIds) {
+      for (const mapping of payload.mappings) {
+        const section = sections.find((sec) => sec.id === mapping.sectionId);
+        if (!section) {
+          Alert.alert("Error", "One or more selected classes are no longer available. Refresh and try again.");
+          return;
+        }
+        for (const subjectId of mapping.subjectIds) {
           try {
             await api.post("/academic/class-assignments", {
-              teacher_user_id: assignTeacherId,
+              teacher_user_id: payload.teacherId,
               academic_year_id: selectedYear.id,
               grade_id: section.grade_id,
-              section_id: row.sectionId,
+              section_id: mapping.sectionId,
               subject_id: subjectId,
             });
             created++;
@@ -611,14 +620,16 @@ export default function AcademicAdmin() {
                 <Text style={s.cardTitle}>Teacher · class · subjects</Text>
                 {!isReadOnly && (
                   <>
-                    <Text style={s.label}>Teacher</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                      {teachers.map((t) => (
-                        <TouchableOpacity key={t.id} style={[s.chip, assignTeacherId === t.id && s.chipActive]} onPress={() => setAssignTeacherId(t.id)}>
-                          <Text style={[s.chipTxt, assignTeacherId === t.id && s.chipTxtActive]}>{t.name}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
+                    <FormSearchSelect
+                      label="Teacher"
+                      value={assignTeacherId || ""}
+                      options={teacherOptions}
+                      onChange={(id) => setAssignTeacherId(id || null)}
+                      placeholder="Search and select teacher…"
+                      searchPlaceholder="Search teachers…"
+                      required
+                      testID="assign-teacher"
+                    />
 
                     <Text style={[s.label, { marginTop: 12 }]}>Class assignments</Text>
                     <Text style={s.fieldHelp}>Map one or more classes; for each class, select the subjects the teacher handles.</Text>
@@ -638,15 +649,17 @@ export default function AcademicAdmin() {
                           options={sectionOptions}
                           onChange={(sectionId) => updateAssignRow(row.key, { sectionId })}
                           placeholder="Select class…"
+                          required
                           testID={`assign-section-${idx}`}
                         />
                         <FormMultiSelect
-                          label="Subjects"
+                          label="Subjects for this class"
                           values={row.subjectIds}
                           options={subjectOptions}
                           onChange={(subjectIds) => updateAssignRow(row.key, { subjectIds })}
                           placeholder="Select one or more subjects…"
                           searchPlaceholder="Search subjects…"
+                          required={!!row.sectionId}
                           testID={`assign-subjects-${idx}`}
                         />
                       </View>

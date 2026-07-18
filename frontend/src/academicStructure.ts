@@ -57,3 +57,37 @@ export function newTeacherAssignRow(): TeacherAssignRow {
     subjectIds: [],
   };
 }
+
+export type TeacherAssignmentPayload = {
+  teacherId: string;
+  mappings: { sectionId: string; subjectIds: string[] }[];
+};
+
+/** Validate teacher class assignment form before submit. Returns error message or null. */
+export function validateTeacherAssignments(
+  teacherId: string | null | undefined,
+  rows: TeacherAssignRow[],
+): string | null {
+  if (!teacherId) return "Select a teacher before saving assignments.";
+  const partial = rows.filter(
+    (r) => (r.sectionId && r.subjectIds.length === 0) || (!r.sectionId && r.subjectIds.length > 0),
+  );
+  if (partial.length) {
+    return "Each class row must include both a class/section and at least one subject.";
+  }
+  const valid = rows.filter((r) => r.sectionId && r.subjectIds.length > 0);
+  if (!valid.length) return "Add at least one class with one or more subjects.";
+  return null;
+}
+
+export function buildTeacherAssignmentPayload(
+  teacherId: string,
+  rows: TeacherAssignRow[],
+): TeacherAssignmentPayload {
+  return {
+    teacherId,
+    mappings: rows
+      .filter((r) => r.sectionId && r.subjectIds.length > 0)
+      .map((r) => ({ sectionId: r.sectionId, subjectIds: r.subjectIds })),
+  };
+}
