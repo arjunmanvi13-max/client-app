@@ -33,6 +33,19 @@ import {
 import { StudentRosterFormFields, resolveSectionMatch } from "../../../src/StudentRosterFormFields";
 import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
+import {
+  TeacherUserFormFields,
+  assignmentsToClassRows,
+  buildTeacherPermissions,
+  expandClassAllocations,
+  isValidIndianMobile,
+  normalizeIndianMobile,
+  type AcademicGrade,
+  type AcademicSection,
+  type AcademicSubject,
+  type TeacherClassAllocationRow,
+  type TeacherDesignation,
+} from "../../../src/TeacherUserFormFields";
 import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
 import { formColors } from "../../../src/theme";
 
@@ -168,6 +181,9 @@ export default function ManageEdit() {
   const isUserKind = isLoginUserKind || isLegacyUserKind;
   const isCoachKind = userTypeKind === UserRole.ALPHA_COACH || kindParam === "coach";
   const isCoachUserForm = isCoachKind && isUserKind;
+  const isTeacherKind = kindParam === "teacher";
+  const isTeacherUserForm = isTeacherKind && isLegacyUserKind;
+  const isStructuredUserForm = isCoachUserForm || isTeacherUserForm;
   const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
   const isPlayerKind = kindParam === "player";
   const isStaffKind = kindParam === "staff";
@@ -296,6 +312,21 @@ export default function ManageEdit() {
   const [userStatus, setUserStatus] = useState<"active" | "deactivated">("active");
   const [coachType, setCoachType] = useState<"head" | "assistant">("head");
 
+  // Teacher profile
+  const [dateOfJoining, setDateOfJoining] = useState("");
+  const [teacherDesignation, setTeacherDesignation] = useState<TeacherDesignation>("TEACHER");
+  const [attendanceAllowed, setAttendanceAllowed] = useState(true);
+  const [marksEntry, setMarksEntry] = useState(true);
+  const [studentAssessment, setStudentAssessment] = useState(true);
+  const [teacherClassRows, setTeacherClassRows] = useState<TeacherClassAllocationRow[]>([
+    { key: "row-initial", gradeId: "", sectionId: "", subjectIds: [] },
+  ]);
+  const [academicYearId, setAcademicYearId] = useState<string | null>(null);
+  const [teacherGrades, setTeacherGrades] = useState<AcademicGrade[]>([]);
+  const [teacherSections, setTeacherSections] = useState<AcademicSection[]>([]);
+  const [teacherSubjects, setTeacherSubjects] = useState<AcademicSubject[]>([]);
+  const [academicLoading, setAcademicLoading] = useState(false);
+
   // Coaches list (for player assignment)
   const [coaches, setCoaches] = useState<any[]>([]);
 
@@ -397,6 +428,16 @@ export default function ManageEdit() {
             setLoadedUserType(u.user_type || kindParam || null);
             setLoadedDesignation(u.designation || null);
             if (u.designation) setDesignation(u.designation);
+            if (isTeacherUserForm) {
+              setMobile(u.mobile || u.phone || "");
+              setAddress(u.address || "");
+              setDateOfJoining(formatDate(u.date_of_joining || ""));
+              setTeacherDesignation((u.teacher_designation as TeacherDesignation) || "TEACHER");
+              const perms = u.permissions || {};
+              setAttendanceAllowed(!!perms.mark_student_attendance);
+              setMarksEntry(!!perms.enter_academic_marks);
+              setStudentAssessment(!!perms.view_academic_marks);
+            }
             if (isCoachKind) setOrganization("ALPHA");
             else if (u.organization) setOrganization(u.organization);
             else if (typeCatalog) setOrganization(typeCatalog.entityScope);
@@ -466,6 +507,82 @@ export default function ManageEdit() {
     }
   }, [isStudentKind, isPlayerKind]);
 
+  useEffect(() => {
+    if (!isTeacherUserForm) return;
+    let cancelled = false;
+    (async () => {
+      setAcademicLoading(true);
+      try {
+        const { data: years } = await api.get("/academic/years");
+        const open = (years || []).find((y: any) => y.status === "open") || (years || [])[0];
+        if (!open || cancelled) return;
+        setAcademicYearId(open.id);
+        const [gradesRes, sectionsRes, subjectsRes] = await Promise.all([
+          api.get("/academic/grades", { params: { academic_year_id: open.id } }),
+          api.get("/academic/sections", { params: { academic_year_id: open.id } }),
+          api.get("/academic/subjects", { params: { academic_year_id: open.id } }),
+        ]);
+        if (cancelled) return;
+        setTeacherGrades(gradesRes.data || []);
+        setTeacherSections(sectionsRes.data || []);
+        setTeacherSubjects(subjectsRes.data || []);
+      } catch {
+        if (!cancelled) {
+          setTeacherGrades([]);
+          setTeacherSections([]);
+          setTeacherSubjects([]);
+        }
+      } finally {
+        if (!cancelled) setAcademicLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isTeacherUserForm]);
+
+  useEffect(() => {
+    if (!isTeacherUserForm || isNew || !id || !academicYearId) return;
+    api.get("/academic/class-assignments", {
+      params: { teacher_user_id: id, academic_year_id: academicYearId },
+    }).then((r) => {
+      const rows = assignmentsToClassRows(r.data || []);
+      if (rows.length) setTeacherClassRows(rows);
+    }).catch(() => {});
+  }, [isTeacherUserForm, isNew, id, academicYearId]);
+
+  const syncTeacherClassAssignments = async (
+    teacherId: string,
+    rows: TeacherClassAllocationRow[],
+    yearId: string,
+  ) => {
+    const desired = expandClassAllocations(rows);
+    const { data: existing } = await api.get("/academic/class-assignments", {
+      params: { teacher_user_id: teacherId, academic_year_id: yearId },
+    });
+    const existingRows = Array.isArray(existing) ? existing : [];
+    const desiredKeys = new Set(desired.map((d) => `${d.gradeId}:${d.sectionId}:${d.subjectId}`));
+    const existingKeys = new Set(
+      existingRows.map((a: any) => `${a.grade_id}:${a.section_id}:${a.subject_id}`),
+    );
+    for (const row of existingRows) {
+      const key = `${row.grade_id}:${row.section_id}:${row.subject_id}`;
+      if (!desiredKeys.has(key)) {
+        await api.delete(`/academic/class-assignments/${row.id}`);
+      }
+    }
+    for (const d of desired) {
+      const key = `${d.gradeId}:${d.sectionId}:${d.subjectId}`;
+      if (!existingKeys.has(key)) {
+        await api.post("/academic/class-assignments", {
+          teacher_user_id: teacherId,
+          academic_year_id: yearId,
+          grade_id: d.gradeId,
+          section_id: d.sectionId,
+          subject_id: d.subjectId,
+        });
+      }
+    }
+  };
+
   const togglePerm = (p: string) => setCanManage((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   const toggleCoachPerm = (p: string) => setCoachPermissions((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
@@ -528,9 +645,27 @@ export default function ManageEdit() {
       showError("Assigned sport required", "Select exactly one sport — Cricket or Football.");
       return;
     }
-    if (isLoginUserKind && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
+    if ((isLoginUserKind || isTeacherUserForm) && email.trim() && !email.trim().toLowerCase().endsWith("@prarambhika.com")) {
       Alert.alert("Invalid email", "Email must belong to the @prarambhika.com domain");
       return;
+    }
+    if (isTeacherUserForm) {
+      if (!dateOfJoining || !isValidDisplayDate(dateOfJoining)) {
+        showError("Invalid date", dateHelpText());
+        return;
+      }
+      if (!mobile.trim() || !isValidIndianMobile(mobile)) {
+        showError("Invalid mobile", "Enter a valid 10-digit Indian mobile number.");
+        return;
+      }
+      if (expandClassAllocations(teacherClassRows).length === 0) {
+        showError("Class allocation required", "Assign at least one class with section and at least one subject.");
+        return;
+      }
+      if (!academicYearId) {
+        showError("Academic year missing", "Set up an open academic year before assigning classes.");
+        return;
+      }
     }
     if (isPlayerKind && playerType === "Boarding" && (!boardingClass.trim() || !boardingSectionLetter.trim())) {
       Alert.alert("Class and Section are required for Boarding players");
@@ -611,16 +746,34 @@ export default function ManageEdit() {
             body.assigned_sport = assignedSports[0] || null;
             body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : [];
             if (isSuper && customizePerms) body.permissions = permMap;
+          } else if (isTeacherUserForm) {
+            body.user_type = UserRole.PWS_TEACHER;
+            body.organization = "PWS";
+            body.mobile = normalizeIndianMobile(mobile);
+            body.date_of_joining = parseToISO(dateOfJoining) || dateOfJoining;
+            body.address = address.trim() || null;
+            body.teacher_designation = teacherDesignation;
+            body.permissions = buildTeacherPermissions(attendanceAllowed, marksEntry, studentAssessment);
           } else {
             body.role = kindParam;
             if (isAdmin && customizePerms) body.permissions = permMap;
             if (isAdmin) body.can_manage = canManage;
           }
-          await api.post("/users", body);
+          const { data: created } = await api.post("/users", body);
+          if (isTeacherUserForm && academicYearId) {
+            await syncTeacherClassAssignments(created.id, teacherClassRows, academicYearId);
+          }
         } else {
           const body: any = { name, organization: isCoachKind ? "ALPHA" : organization, department: department || null, phone: phone || null };
           if (password) body.password = password;
           if (isAdmin && email.trim()) body.email = email.trim().toLowerCase();
+          if (isTeacherUserForm) {
+            body.mobile = normalizeIndianMobile(mobile);
+            body.date_of_joining = parseToISO(dateOfJoining) || dateOfJoining;
+            body.address = address.trim() || null;
+            body.teacher_designation = teacherDesignation;
+            body.permissions = buildTeacherPermissions(attendanceAllowed, marksEntry, studentAssessment);
+          }
           if (isAdmin) {
             body.can_manage = canManage;
             if (kindParam === "coach") {
@@ -632,6 +785,9 @@ export default function ManageEdit() {
             }
           }
           await api.patch(`/users/${id}`, body);
+          if (isTeacherUserForm && academicYearId) {
+            await syncTeacherClassAssignments(id, teacherClassRows, academicYearId);
+          }
         }
       } else if (isPlayerKind) {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
@@ -763,9 +919,9 @@ export default function ManageEdit() {
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
 
   return (
-    <SafeAreaView style={[s.safe, (isStudentKind || isCoachUserForm) && s.safeStudent]} edges={["top"]}>
+    <SafeAreaView style={[s.safe, (isStudentKind || isStructuredUserForm) && s.safeStudent]} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        {!isStudentKind && !isCoachUserForm && (
+        {!isStudentKind && !isStructuredUserForm && (
           <View style={s.header}>
             <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
               <Feather name="x" size={22} color="#0F172A" />
@@ -779,7 +935,7 @@ export default function ManageEdit() {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={(isStudentKind || isCoachUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll}>
+        <ScrollView contentContainerStyle={(isStudentKind || isStructuredUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll}>
           {isCoachUserForm && (
             <FormPageHeader
               breadcrumb="SYSTEM & SETTINGS · ALPHA COACHES"
@@ -876,7 +1032,83 @@ export default function ManageEdit() {
             />
           )}
 
-          {!isStudentKind && !isPlayerKind && !isCoachUserForm && (
+          {isTeacherUserForm && (
+            <FormPageHeader
+              breadcrumb="DIRECTORY · TEACHERS"
+              title={isNew ? "New Teacher" : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
+              onCancel={() => router.back()}
+              onSave={canEdit ? save : undefined}
+              saving={saving}
+              saveLabel={isNew ? "Create" : "Save changes"}
+              readOnly={readOnly}
+            />
+          )}
+
+          {isTeacherUserForm && (
+            <TeacherUserFormFields
+              readOnly={readOnly}
+              isNew={isNew}
+              isSuper={isSuper}
+              displayTitle={displayTitle}
+              userTypeKind={null}
+              entityScope="PWS"
+              name={name}
+              setName={setName}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              dateOfJoining={dateOfJoining}
+              setDateOfJoining={setDateOfJoining}
+              mobile={mobile}
+              setMobile={setMobile}
+              address={address}
+              setAddress={setAddress}
+              teacherDesignation={teacherDesignation}
+              setTeacherDesignation={setTeacherDesignation}
+              attendanceAllowed={attendanceAllowed}
+              setAttendanceAllowed={setAttendanceAllowed}
+              marksEntry={marksEntry}
+              setMarksEntry={setMarksEntry}
+              studentAssessment={studentAssessment}
+              setStudentAssessment={setStudentAssessment}
+              classRows={teacherClassRows}
+              setClassRows={setTeacherClassRows}
+              grades={teacherGrades}
+              sections={teacherSections}
+              subjects={teacherSubjects}
+              academicLoading={academicLoading}
+              userStatus={userStatus}
+              onToggleUserStatus={!isNew && isSuper ? () => {
+                const next = userStatus === "active" ? "deactivated" : "active";
+                const verb = next === "active" ? "Reactivate" : "Deactivate";
+                confirmAction(`${verb} ${displayTitle}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
+                  try {
+                    await api.post(`/users/${id}/${next === "active" ? "activate" : "deactivate"}`);
+                    setUserStatus(next);
+                    Alert.alert("Done", `Teacher ${next === "active" ? "reactivated" : "deactivated"}.`);
+                  } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
+                });
+              } : undefined}
+              resetPwdVal={resetPwdVal}
+              setResetPwdVal={setResetPwdVal}
+              onResetPassword={!isNew && isSuper ? async () => {
+                setResetBusy(true);
+                try {
+                  await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
+                  setResetPwdVal("");
+                  Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
+                  if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
+                } catch (e: any) {
+                  const msg = e?.response?.data?.detail || "Failed";
+                  if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                } finally { setResetBusy(false); }
+              } : undefined}
+              resetBusy={resetBusy}
+            />
+          )}
+
+          {!isStudentKind && !isPlayerKind && !isCoachUserForm && !isTeacherUserForm && (
             <>
               <Text style={s.label}>Name *</Text>
               <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
@@ -1030,7 +1262,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {(isLoginUserKind || isLegacyUserKind) && !isCoachUserForm && (
+          {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && (
             <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
               <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || isSuper} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !isSuper && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
@@ -1329,7 +1561,7 @@ export default function ManageEdit() {
           )}
         </ScrollView>
 
-        {!isStudentKind && !isCoachUserForm && (
+        {!isStudentKind && !isStructuredUserForm && (
         <View style={s.bottomBar}>
           {canEdit && (
             <View style={s.bottomBarInner}>
