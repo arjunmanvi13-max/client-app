@@ -39,6 +39,7 @@ import {
   buildTeacherPermissions,
   expandClassAllocations,
   isValidIndianMobile,
+  isTeacherClassRowComplete,
   normalizeIndianMobile,
   type AcademicGrade,
   type AcademicSection,
@@ -319,7 +320,7 @@ export default function ManageEdit() {
   const [marksEntry, setMarksEntry] = useState(true);
   const [studentAssessment, setStudentAssessment] = useState(true);
   const [teacherClassRows, setTeacherClassRows] = useState<TeacherClassAllocationRow[]>([
-    { key: "row-initial", gradeId: "", sectionId: "", subjectIds: [] },
+    { key: "row-initial", className: "", sectionLetter: "", subjects: [] },
   ]);
   const [academicYearId, setAcademicYearId] = useState<string | null>(null);
   const [teacherGrades, setTeacherGrades] = useState<AcademicGrade[]>([]);
@@ -544,17 +545,17 @@ export default function ManageEdit() {
     api.get("/academic/class-assignments", {
       params: { teacher_user_id: id, academic_year_id: academicYearId },
     }).then((r) => {
-      const rows = assignmentsToClassRows(r.data || []);
+      const rows = assignmentsToClassRows(r.data || [], teacherGrades, teacherSections, teacherSubjects);
       if (rows.length) setTeacherClassRows(rows);
     }).catch(() => {});
-  }, [isTeacherUserForm, isNew, id, academicYearId]);
+  }, [isTeacherUserForm, isNew, id, academicYearId, teacherGrades, teacherSections, teacherSubjects]);
 
   const syncTeacherClassAssignments = async (
     teacherId: string,
     rows: TeacherClassAllocationRow[],
     yearId: string,
   ) => {
-    const desired = expandClassAllocations(rows);
+    const desired = expandClassAllocations(rows, teacherGrades, teacherSections, teacherSubjects);
     const { data: existing } = await api.get("/academic/class-assignments", {
       params: { teacher_user_id: teacherId, academic_year_id: yearId },
     });
@@ -658,8 +659,22 @@ export default function ManageEdit() {
         showError("Invalid mobile", "Enter a valid 10-digit Indian mobile number.");
         return;
       }
-      if (expandClassAllocations(teacherClassRows).length === 0) {
-        showError("Class allocation required", "Assign at least one class with section and at least one subject.");
+      const incomplete = teacherClassRows.some((row) => !isTeacherClassRowComplete(row));
+      if (incomplete) {
+        showError("Class allocation incomplete", "Each class card needs a class, section, and at least one subject.");
+        return;
+      }
+      const resolved = expandClassAllocations(
+        teacherClassRows,
+        teacherGrades,
+        teacherSections,
+        teacherSubjects,
+      );
+      if (resolved.length === 0) {
+        showError(
+          "Class allocation could not be saved",
+          "Selections could not be matched to the academic structure. Ensure grades, sections, and subjects exist under Academic Structure.",
+        );
         return;
       }
       if (!academicYearId) {

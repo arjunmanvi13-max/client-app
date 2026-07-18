@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   Switch,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
 } from "react-native";
 import type { Dispatch, SetStateAction } from "react";
@@ -18,20 +17,75 @@ import { colors, formColors, radii, spacing } from "./theme";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormTextField } from "./components/forms/FormTextField";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
+import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
+import { CLASS_PREFIX, resolveSectionMatch } from "./StudentRosterFormFields";
 
 export type TeacherDesignation = "CLASS_TEACHER" | "TEACHER";
 
 export type TeacherClassAllocationRow = {
   key: string;
-  gradeId: string;
-  sectionId: string;
-  subjectIds: string[];
+  className: string;
+  sectionLetter: string;
+  subjects: string[];
 };
 
 export type AcademicGrade = { id: string; name: string };
 export type AcademicSection = { id: string; label: string; grade_id: string };
 export type AcademicSubject = { id: string; name: string; grade_ids?: string[]; section_ids?: string[] };
+
+/** Canonical class values with display labels per product spec. */
+export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = [
+  { value: "Nursery", label: "Nur" },
+  { value: "LKG", label: "LKG" },
+  { value: "UKG", label: "UKG" },
+  { value: "Class I", label: "Class I" },
+  { value: "Class II", label: "Class II" },
+  { value: "Class III", label: "Class III" },
+  { value: "Class IV", label: "Class IV" },
+  { value: "Class V", label: "Class V" },
+  { value: "Class VI", label: "Class VI" },
+  { value: "Class VII", label: "Class VII" },
+  { value: "Class VIII", label: "Class VIII" },
+  { value: "Class IX", label: "Class IX" },
+  { value: "Class X", label: "Class X" },
+];
+
+export const TEACHER_SECTION_OPTIONS: FormSelectOption[] = [
+  "A", "B", "C", "D", "E", "F", "G",
+].map((letter) => ({ value: letter, label: letter }));
+
+export const TEACHER_SUBJECT_OPTIONS: FormSelectOption[] = [
+  "Social Science",
+  "IT",
+  "Sanskrit",
+  "Drawing",
+  "PT",
+  "Music",
+  "Chemistry",
+  "Biology",
+  "Physics",
+].map((name) => ({ value: name, label: name }));
+
+const CLASS_NAME_BY_GRADE: Record<string, string> = Object.fromEntries(
+  Object.entries(CLASS_PREFIX).map(([className, gradeName]) => [gradeName, className]),
+);
+
+function parseSectionLetter(label: string): string {
+  const m = label.trim().match(/-([A-G])$/i);
+  return m ? m[1].toUpperCase() : "";
+}
+
+function gradeNameForClass(className: string): string {
+  return CLASS_PREFIX[className] || className;
+}
+
+function findGrade(className: string, grades: AcademicGrade[]): AcademicGrade | undefined {
+  const key = gradeNameForClass(className);
+  return grades.find(
+    (g) => g.name === key || g.name === className || g.name.toLowerCase() === key.toLowerCase(),
+  );
+}
 
 const TEACHER_DESIGNATION_OPTIONS: FormSelectOption[] = [
   { value: "CLASS_TEACHER", label: "Class Teacher" },
@@ -82,9 +136,9 @@ type TeacherUserFormFieldsProps = {
 function newClassRow(): TeacherClassAllocationRow {
   return {
     key: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    gradeId: "",
-    sectionId: "",
-    subjectIds: [],
+    className: "",
+    sectionLetter: "",
+    subjects: [],
   };
 }
 
@@ -120,61 +174,79 @@ function PermissionSwitch({
   );
 }
 
-function SubjectChip({
-  label,
-  selected,
-  onPress,
-  disabled,
-  testID,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-  testID?: string;
-}) {
-  return (
-    <TouchableOpacity
-      testID={testID}
-      disabled={disabled}
-      onPress={onPress}
-      style={[s.subjectChip, selected && s.subjectChipActive, disabled && s.subjectChipDisabled]}
-    >
-      <Text style={[s.subjectChipTxt, selected && s.subjectChipTxtActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
+export function resolveTeacherAllocationIds(
+  row: TeacherClassAllocationRow,
+  grades: AcademicGrade[],
+  sections: AcademicSection[],
+  subjects: AcademicSubject[],
+): { gradeId: string; sectionId: string; subjectId: string }[] {
+  if (!row.className || !row.sectionLetter || row.subjects.length === 0) return [];
 
-export function expandClassAllocations(rows: TeacherClassAllocationRow[]) {
+  const grade = findGrade(row.className, grades);
+  if (!grade) return [];
+
+  const gradeSections = sections
+    .filter((sec) => sec.grade_id === grade.id)
+    .map((sec) => ({ id: sec.id, label: sec.label }));
+  const { id: sectionId } = resolveSectionMatch(row.className, row.sectionLetter, gradeSections);
+  if (!sectionId) return [];
+
   const out: { gradeId: string; sectionId: string; subjectId: string }[] = [];
-  for (const row of rows) {
-    for (const subjectId of row.subjectIds) {
-      if (row.gradeId && row.sectionId && subjectId) {
-        out.push({ gradeId: row.gradeId, sectionId: row.sectionId, subjectId });
-      }
-    }
+  for (const subjectName of row.subjects) {
+    const subject = subjects.find(
+      (sub) => sub.name.toLowerCase() === subjectName.toLowerCase(),
+    );
+    if (!subject) continue;
+    if (subject.grade_ids?.length && !subject.grade_ids.includes(grade.id)) continue;
+    if (subject.section_ids?.length && !subject.section_ids.includes(sectionId)) continue;
+    out.push({ gradeId: grade.id, sectionId, subjectId: subject.id });
   }
   return out;
 }
 
-export function assignmentsToClassRows(assignments: any[]): TeacherClassAllocationRow[] {
+export function expandClassAllocations(
+  rows: TeacherClassAllocationRow[],
+  grades: AcademicGrade[],
+  sections: AcademicSection[],
+  subjects: AcademicSubject[],
+) {
+  return rows.flatMap((row) => resolveTeacherAllocationIds(row, grades, sections, subjects));
+}
+
+export function assignmentsToClassRows(
+  assignments: any[],
+  grades: AcademicGrade[],
+  sections: AcademicSection[],
+  subjects: AcademicSubject[],
+): TeacherClassAllocationRow[] {
   const map = new Map<string, TeacherClassAllocationRow>();
   for (const a of assignments) {
-    const groupKey = `${a.grade_id}:${a.section_id}`;
+    const grade = grades.find((g) => g.id === a.grade_id);
+    const section = sections.find((s) => s.id === a.section_id);
+    const subject = subjects.find((s) => s.id === a.subject_id);
+    if (!grade || !section || !subject) continue;
+
+    const className = CLASS_NAME_BY_GRADE[grade.name] || grade.name;
+    const sectionLetter = parseSectionLetter(section.label);
+    const groupKey = `${className}:${sectionLetter}`;
     if (!map.has(groupKey)) {
       map.set(groupKey, {
         key: groupKey,
-        gradeId: a.grade_id,
-        sectionId: a.section_id,
-        subjectIds: [],
+        className,
+        sectionLetter,
+        subjects: [],
       });
     }
     const row = map.get(groupKey)!;
-    if (a.subject_id && !row.subjectIds.includes(a.subject_id)) {
-      row.subjectIds.push(a.subject_id);
+    if (!row.subjects.includes(subject.name)) {
+      row.subjects.push(subject.name);
     }
   }
   return Array.from(map.values());
+}
+
+export function isTeacherClassRowComplete(row: TeacherClassAllocationRow): boolean {
+  return !!(row.className && row.sectionLetter && row.subjects.length > 0);
 }
 
 export function buildTeacherPermissions(
@@ -245,20 +317,15 @@ export function TeacherUserFormFields({
   const { isWide } = useBreakpoint();
   const previewType = userTypeKind || UserRole.PWS_TEACHER;
 
-  const gradeOptions: FormSelectOption[] = useMemo(
-    () => grades.map((g) => ({ value: g.id, label: g.name })),
-    [grades],
+  const unresolvedCount = useMemo(
+    () =>
+      classRows.filter(
+        (row) =>
+          isTeacherClassRowComplete(row) &&
+          resolveTeacherAllocationIds(row, grades, sections, subjects).length === 0,
+      ).length,
+    [classRows, grades, sections, subjects],
   );
-
-  const sectionsForGrade = (gradeId: string) =>
-    sections.filter((sec) => sec.grade_id === gradeId);
-
-  const subjectsForRow = (gradeId: string, sectionId: string) =>
-    subjects.filter((sub) => {
-      if (gradeId && sub.grade_ids?.length && !sub.grade_ids.includes(gradeId)) return false;
-      if (sectionId && sub.section_ids?.length && !sub.section_ids.includes(sectionId)) return false;
-      return true;
-    });
 
   const updateRow = (key: string, patch: Partial<TeacherClassAllocationRow>) => {
     setClassRows((prev) =>
@@ -268,21 +335,6 @@ export function TeacherUserFormFields({
 
   const removeRow = (key: string) => {
     setClassRows((prev) => prev.filter((row) => row.key !== key));
-  };
-
-  const toggleSubject = (rowKey: string, subjectId: string) => {
-    setClassRows((prev) =>
-      prev.map((row) => {
-        if (row.key !== rowKey) return row;
-        const has = row.subjectIds.includes(subjectId);
-        return {
-          ...row,
-          subjectIds: has
-            ? row.subjectIds.filter((id) => id !== subjectId)
-            : [...row.subjectIds, subjectId],
-        };
-      }),
-    );
   };
 
   return (
@@ -425,101 +477,86 @@ export function TeacherUserFormFields({
         <Text style={s.fieldHelp}>
           Assign one or more classes. For each class, select the section and the subjects this teacher will teach.
         </Text>
-        {academicLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} />
-        ) : grades.length === 0 ? (
-          <Text style={s.emptyHint}>
-            No academic structure found. Set up grades, sections, and subjects under Academic Structure first.
-          </Text>
-        ) : (
-          <View style={s.classRows}>
-            {classRows.map((row, index) => {
-              const sectionOptions = sectionsForGrade(row.gradeId).map((sec) => ({
-                value: sec.id,
-                label: sec.label,
-              }));
-              const rowSubjects = subjectsForRow(row.gradeId, row.sectionId);
-              return (
-                <View key={row.key} style={s.classRow} testID={`class-row-${index}`}>
-                  <View style={s.classRowHead}>
-                    <Text style={s.classRowTitle}>Class {index + 1}</Text>
-                    {!readOnly && classRows.length > 1 && (
-                      <TouchableOpacity
-                        testID={`remove-class-row-${index}`}
-                        onPress={() => removeRow(row.key)}
-                        style={s.removeRowBtn}
-                      >
-                        <Feather name="trash-2" size={14} color="#EF4444" />
-                        <Text style={s.removeRowTxt}>Remove</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <View style={[s.classRowFields, isWide && s.classRowFieldsWide]}>
-                    <View style={s.classField}>
-                      <FormSelect
-                        label="Class"
-                        required
-                        testID={`class-grade-${index}`}
-                        value={row.gradeId}
-                        options={gradeOptions}
-                        placeholder="Select class"
-                        disabled={readOnly}
-                        onChange={(gradeId) =>
-                          updateRow(row.key, { gradeId, sectionId: "", subjectIds: [] })
-                        }
-                      />
-                    </View>
-                    <View style={s.classField}>
-                      <FormSelect
-                        label="Section"
-                        required
-                        testID={`class-section-${index}`}
-                        value={row.sectionId}
-                        options={sectionOptions}
-                        placeholder={row.gradeId ? "Select section" : "Select class first"}
-                        disabled={readOnly || !row.gradeId}
-                        onChange={(sectionId) => updateRow(row.key, { sectionId, subjectIds: [] })}
-                      />
-                    </View>
-                  </View>
-                  <View style={s.subjectBlock}>
-                    <Text style={s.fieldLabel}>Subjects *</Text>
-                    {!row.sectionId ? (
-                      <Text style={s.fieldHelp}>Select a section to choose subjects.</Text>
-                    ) : rowSubjects.length === 0 ? (
-                      <Text style={s.fieldHelp}>No subjects mapped to this class/section yet.</Text>
-                    ) : (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.subjectScroll}>
-                        <View style={s.subjectChipRow}>
-                          {rowSubjects.map((sub) => (
-                            <SubjectChip
-                              key={sub.id}
-                              testID={`class-subject-${index}-${sub.id}`}
-                              label={sub.name}
-                              selected={row.subjectIds.includes(sub.id)}
-                              disabled={readOnly}
-                              onPress={() => toggleSubject(row.key, sub.id)}
-                            />
-                          ))}
-                        </View>
-                      </ScrollView>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-            {!readOnly && (
-              <TouchableOpacity
-                testID="add-class-row"
-                style={s.addRowBtn}
-                onPress={() => setClassRows((prev) => [...prev, newClassRow()])}
-              >
-                <Feather name="plus" size={16} color={colors.primary} />
-                <Text style={s.addRowTxt}>Add another class</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+        {academicLoading && (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
         )}
+        {!academicLoading && unresolvedCount > 0 && (
+          <Text style={s.warnHint}>
+            Some selections could not be matched to the academic structure yet. Ensure grades, sections, and subjects exist under Academic Structure.
+          </Text>
+        )}
+        <View style={s.classRows}>
+          {classRows.map((row, index) => (
+            <View key={row.key} style={s.classRow} testID={`class-row-${index}`}>
+              <View style={s.classRowHead}>
+                <Text style={s.classRowTitle}>Class {index + 1}</Text>
+                {!readOnly && classRows.length > 1 && (
+                  <TouchableOpacity
+                    testID={`remove-class-row-${index}`}
+                    onPress={() => removeRow(row.key)}
+                    style={s.removeRowBtn}
+                  >
+                    <Feather name="trash-2" size={14} color="#EF4444" />
+                    <Text style={s.removeRowTxt}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={[s.classRowFields, isWide && s.classRowFieldsWide]}>
+                <View style={s.classField}>
+                  <FormSelect
+                    label="Class"
+                    required
+                    testID={`class-grade-${index}`}
+                    value={row.className}
+                    options={TEACHER_CLASS_OPTIONS}
+                    placeholder="Select class"
+                    disabled={readOnly}
+                    onChange={(className) =>
+                      updateRow(row.key, { className, sectionLetter: "", subjects: [] })
+                    }
+                  />
+                </View>
+                <View style={s.classField}>
+                  <FormSelect
+                    label="Section"
+                    required
+                    testID={`class-section-${index}`}
+                    value={row.sectionLetter}
+                    options={TEACHER_SECTION_OPTIONS}
+                    placeholder={row.className ? "Select section" : "Select class first"}
+                    disabled={readOnly || !row.className}
+                    onChange={(sectionLetter) =>
+                      updateRow(row.key, { sectionLetter, subjects: [] })
+                    }
+                  />
+                </View>
+                <View style={[s.classField, s.subjectField]}>
+                  <FormMultiSelect
+                    label="Subject"
+                    required
+                    testID={`class-subjects-${index}`}
+                    values={row.subjects}
+                    options={TEACHER_SUBJECT_OPTIONS}
+                    placeholder={row.sectionLetter ? "Select subjects" : "Select section first"}
+                    searchPlaceholder="Search subjects…"
+                    disabled={readOnly || !row.sectionLetter}
+                    onChange={(subjects) => updateRow(row.key, { subjects })}
+                  />
+                </View>
+              </View>
+            </View>
+          ))}
+          {!readOnly && (
+            <TouchableOpacity
+              testID="add-class-row"
+              style={s.addRowBtn}
+              onPress={() => setClassRows((prev) => [...prev, newClassRow()])}
+            >
+              <Feather name="plus" size={16} color={colors.primary} />
+              <Text style={s.addRowTxt}>Add another class</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </FormSectionCard>
 
       {!isNew && isSuper && userStatus && onToggleUserStatus && (
@@ -636,23 +673,20 @@ const s = StyleSheet.create({
   removeRowBtn: { flexDirection: "row", alignItems: "center", gap: 4, padding: 4 },
   removeRowTxt: { fontSize: 12, fontWeight: "700", color: "#EF4444" },
   classRowFields: { gap: spacing.md },
-  classRowFieldsWide: { flexDirection: "row" },
-  classField: { flex: 1 },
-  subjectBlock: { gap: 8 },
-  subjectScroll: { flexGrow: 0 },
-  subjectChipRow: { flexDirection: "row", gap: 8, paddingVertical: 4 },
-  subjectChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+  classRowFieldsWide: { flexDirection: "row", alignItems: "flex-start" },
+  classField: { flex: 1, minWidth: 140 },
+  subjectField: { zIndex: 5 },
+  warnHint: {
+    fontSize: 12,
+    color: "#B45309",
+    marginTop: 10,
+    lineHeight: 18,
+    backgroundColor: "#FFFBEB",
+    padding: 10,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: "#FDE68A",
   },
-  subjectChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  subjectChipDisabled: { opacity: 0.7 },
-  subjectChipTxt: { fontSize: 12, fontWeight: "700", color: colors.muted },
-  subjectChipTxtActive: { color: "#fff" },
   addRowBtn: {
     flexDirection: "row",
     alignItems: "center",
