@@ -186,13 +186,13 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES],
       },
       {
-        id: "defaulters",
-        label: "Defaulters",
-        icon: "alert-triangle",
+        id: "finance-reports",
+        label: "Finance Reports",
+        icon: "bar-chart-2",
         href: "/fees?tab=past-due",
         match: (p) =>
           p === "/fees"
-          || (p.startsWith("/fees") && (p.includes("past-due") || p.includes("overdue"))),
+          || (p.startsWith("/fees") && !p.startsWith("/fees/collection") && !p.startsWith("/fees/pws-student")),
         permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES],
       },
       {

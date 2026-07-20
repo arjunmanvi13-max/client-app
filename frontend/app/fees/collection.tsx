@@ -21,8 +21,9 @@ import { PaymentReceiptModal } from "../../src/components/fees/PaymentReceiptMod
 import { BulkReminderBar } from "../../src/components/fees/BulkReminderBar";
 import { inr } from "../../src/components/fees/feesUi";
 import type {
-  CollectionPlayer, CollectionSummary, FeeSort, FeeStatusFilter, Institution, PaymentReceipt,
+  CollectionSummary, FeeSort, FeeStatusFilter, Institution, PaymentReceipt,
 } from "../../src/feesCollectionTypes";
+import { applyCollectionFilters } from "../../src/feesCollectionFilters";
 
 export default function FeesCollection() {
   const { user } = useAuth();
@@ -73,8 +74,8 @@ export default function FeesCollection() {
     try {
       const params: Record<string, string> = {
         institution,
-        status: statusFilter,
-        sort,
+        status: "all",
+        sort: "name",
       };
       if (institution === "ALPHA") {
         if (centre) params.centre = centre;
@@ -90,7 +91,7 @@ export default function FeesCollection() {
     } finally {
       setLoading(false);
     }
-  }, [institution, centre, sport, search, statusFilter, sort]);
+  }, [institution, centre, sport, search]);
 
   useEffect(() => { loadSections(); }, [loadSections]);
   useEffect(() => {
@@ -104,9 +105,16 @@ export default function FeesCollection() {
     setStatusFilter("all");
   }, [institution]);
 
-  const players = summary?.players || [];
-  const totalPlayers = summary?.kpis.total_players || 0;
-  const totalDue = summary?.total_due || 0;
+  const sourcePlayers = summary?.players || [];
+  const players = useMemo(
+    () => applyCollectionFilters(sourcePlayers, statusFilter, sort),
+    [sourcePlayers, statusFilter, sort],
+  );
+  const totalPlayers = summary?.kpis.total_players || sourcePlayers.length;
+  const totalDue = useMemo(
+    () => players.reduce((sum, p) => sum + (p.amount_due || 0), 0),
+    [players],
+  );
   const overdueCount = useMemo(
     () => players.filter((p) => p.fee_status === "overdue").length,
     [players],
@@ -128,7 +136,7 @@ export default function FeesCollection() {
     });
   };
 
-  const title = institution === "PWS" ? "Collect Student Fees" : "Collect Player Fees";
+  const title = "Collect Fees";
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -150,16 +158,10 @@ export default function FeesCollection() {
               <View style={s.titleRow}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.h1}>{title}</Text>
-                  <Text style={s.sub}>Search a player, select months, and record payment.</Text>
+                  <Text style={s.sub}>
+                    Search a {institution === "PWS" ? "student" : "player"}, select months, and record payment.
+                  </Text>
                 </View>
-                <Pressable
-                  onPress={() => { setSelectMode(!selectMode); setSelectedIds(new Set()); }}
-                  style={[s.selectToggle, selectMode && s.selectToggleActive]}
-                  testID="select-mode-toggle"
-                >
-                  <Feather name="check-square" size={13} color={selectMode ? "#fff" : colors.muted} />
-                  <Text style={[s.selectToggleTxt, selectMode && { color: "#fff" }]}>Select</Text>
-                </Pressable>
               </View>
             </View>
           </View>
@@ -197,29 +199,48 @@ export default function FeesCollection() {
               <Text style={s.emptyTitle}>No {institution === "PWS" ? "students" : "players"} match filters</Text>
               <Text style={s.emptySub}>Adjust search or filters to see the fee register.</Text>
             </View>
-          ) : isDesktop ? (
-            <PlayerFeeTable
-              players={players}
-              institution={institution}
-              selectMode={selectMode}
-              selectedIds={selectedIds}
-              onToggleSelect={toggleSelect}
-              onCollect={setDrawerPlayer}
-            />
           ) : (
-            <View style={s.mobileList}>
-              {players.map((p) => (
-                <PlayerFeeRow
-                  key={p.id}
-                  player={p}
+            <>
+              <View style={s.tableToolbar}>
+                <Text style={s.tableToolbarLabel}>
+                  {institution === "PWS" ? "Student register" : "Player register"}
+                </Text>
+                <Pressable
+                  onPress={() => { setSelectMode(!selectMode); setSelectedIds(new Set()); }}
+                  style={[s.selectToggle, selectMode && s.selectToggleActive]}
+                  testID="select-mode-toggle"
+                >
+                  <Feather name="check-square" size={13} color={selectMode ? "#fff" : colors.muted} />
+                  <Text style={[s.selectToggleTxt, selectMode && { color: "#fff" }]}>
+                    {selectMode ? "Cancel select" : "Select"}
+                  </Text>
+                </Pressable>
+              </View>
+              {isDesktop ? (
+                <PlayerFeeTable
+                  players={players}
                   institution={institution}
                   selectMode={selectMode}
-                  selected={selectedIds.has(p.id)}
-                  onToggleSelect={() => toggleSelect(p.id)}
-                  onCollect={() => setDrawerPlayer(p)}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  onCollect={setDrawerPlayer}
                 />
-              ))}
-            </View>
+              ) : (
+                <View style={s.mobileList}>
+                  {players.map((p) => (
+                    <PlayerFeeRow
+                      key={p.id}
+                      player={p}
+                      institution={institution}
+                      selectMode={selectMode}
+                      selected={selectedIds.has(p.id)}
+                      onToggleSelect={() => toggleSelect(p.id)}
+                      onCollect={() => setDrawerPlayer(p)}
+                    />
+                  ))}
+                </View>
+              )}
+            </>
           )}
 
           <View style={{ height: 72 }} />
@@ -268,11 +289,25 @@ const s = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 2 },
   h1: { fontSize: 20, fontWeight: "800", color: colors.ink, letterSpacing: -0.3 },
   sub: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  tableToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 8,
+    marginTop: 2,
+  },
+  tableToolbarLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.muted,
+    letterSpacing: 0.2,
+    textTransform: "uppercase",
+  },
   selectToggle: {
     flexDirection: "row", alignItems: "center", gap: 4,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-    marginTop: 2,
   },
   selectToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   selectToggleTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },

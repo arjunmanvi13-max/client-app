@@ -1,11 +1,17 @@
-import { useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Modal } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { View, Text, TextInput, Pressable, StyleSheet, Platform, type View as RNView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../../theme";
 import type { FeeSort, FeeStatusFilter, Institution } from "../../feesCollectionTypes";
 
 const CENTRES = ["Balua", "Harding Park"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
+const ALL_VALUE = "all";
+
+const INSTITUTION_OPTIONS: { id: Institution; label: string }[] = [
+  { id: "PWS", label: "PWS" },
+  { id: "ALPHA", label: "ALPHA" },
+];
 
 const STATUS_OPTIONS: { id: FeeStatusFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -16,6 +22,7 @@ const STATUS_OPTIONS: { id: FeeStatusFilter; label: string }[] = [
 
 const SORT_OPTIONS: { id: FeeSort; label: string }[] = [
   { id: "amount_due", label: "Amount Due ↓" },
+  { id: "amount_due_asc", label: "Amount Due ↑" },
   { id: "name", label: "Name A–Z" },
   { id: "overdue_days", label: "Overdue Days ↓" },
 ];
@@ -37,6 +44,14 @@ type Props = {
   sections: string[];
 };
 
+function nullableSelectValue(value: string | null): string {
+  return value || ALL_VALUE;
+}
+
+function nullableSelectChange(id: string): string | null {
+  return id === ALL_VALUE ? null : id;
+}
+
 export function CompactFilterBar(props: Props) {
   const {
     institution, onInstitution, showInstitutionSwitch,
@@ -44,33 +59,35 @@ export function CompactFilterBar(props: Props) {
     centre, onCentre, sport, onSport, sections,
   } = props;
 
-  const statusLabel = STATUS_OPTIONS.find((o) => o.id === status)?.label ?? "All";
-  const sortLabel = SORT_OPTIONS.find((o) => o.id === sort)?.label ?? "Amount Due ↓";
+  const centreOptions = [
+    { id: ALL_VALUE, label: "All Centres" },
+    ...CENTRES.map((c) => ({ id: c, label: c })),
+  ];
+
+  const sportOptions = [
+    { id: ALL_VALUE, label: "All Sports" },
+    ...SPORTS.map((sp) => ({ id: sp, label: sp })),
+  ];
+
+  const sectionOptions = [
+    { id: ALL_VALUE, label: "All Sections" },
+    ...sections.map((sec) => ({ id: sec, label: sec })),
+  ];
 
   return (
     <View style={s.card} testID="compact-filter-bar">
       <View style={s.row1}>
         {showInstitutionSwitch ? (
-          <View style={s.instGroup}>
-            {(["PWS", "ALPHA"] as const).map((inst) => {
-              const active = institution === inst;
-              return (
-                <Pressable
-                  key={inst}
-                  testID={`inst-${inst}`}
-                  onPress={() => onInstitution(inst)}
-                  style={[s.instBtn, active && s.instBtnActive]}
-                >
-                  <Text style={[s.instTxt, active && s.instTxtActive]}>
-                    {inst === "PWS" ? "PWS" : "ALPHA"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <CompactDropdown
+            testID="entity-dropdown"
+            prefix="Entity"
+            options={INSTITUTION_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+            value={institution}
+            onChange={(id) => onInstitution(id as Institution)}
+          />
         ) : (
-          <View style={s.instLocked}>
-            <Text style={s.instLockedTxt}>{institution === "PWS" ? "PWS School" : "ALPHA Sports"}</Text>
+          <View style={s.lockedFilter}>
+            <Text style={s.lockedFilterTxt}>Entity: {institution === "PWS" ? "PWS" : "ALPHA"}</Text>
           </View>
         )}
 
@@ -93,7 +110,7 @@ export function CompactFilterBar(props: Props) {
 
         <CompactDropdown
           testID="status-dropdown"
-          label={`Status: ${statusLabel}`}
+          prefix="Status"
           options={STATUS_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
           value={status}
           onChange={(id) => onStatus(id as FeeStatusFilter)}
@@ -103,34 +120,36 @@ export function CompactFilterBar(props: Props) {
       <View style={s.row2}>
         {institution === "ALPHA" ? (
           <>
-            <ChipGroup
-              label="Centre"
-              testPrefix="centre"
-              options={[null, ...CENTRES]}
-              value={centre}
-              onChange={onCentre}
+            <CompactDropdown
+              testID="centre-dropdown"
+              prefix="Centre"
+              options={centreOptions}
+              value={nullableSelectValue(centre)}
+              onChange={(id) => onCentre(nullableSelectChange(id))}
             />
-            <ChipGroup
-              label="Sport"
-              testPrefix="sport"
-              options={[null, ...SPORTS]}
-              value={sport}
-              onChange={onSport}
+            <CompactDropdown
+              testID="sport-dropdown"
+              prefix="Sport"
+              options={sportOptions}
+              value={nullableSelectValue(sport)}
+              onChange={(id) => onSport(nullableSelectChange(id))}
             />
           </>
         ) : (
-          <ChipGroup
-            label="Section"
-            testPrefix="section"
-            options={[null, ...sections]}
-            value={centre}
-            onChange={onCentre}
+          <CompactDropdown
+            testID="section-dropdown"
+            prefix="Section"
+            options={sectionOptions}
+            value={nullableSelectValue(centre)}
+            onChange={(id) => onCentre(nullableSelectChange(id))}
           />
         )}
-        <View style={{ flex: 1 }} />
+
+        <View style={s.rowSpacer} />
+
         <CompactDropdown
           testID="sort-dropdown"
-          label={`Sort: ${sortLabel}`}
+          prefix="Sort"
           options={SORT_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
           value={sort}
           onChange={(id) => onSort(id as FeeSort)}
@@ -141,41 +160,10 @@ export function CompactFilterBar(props: Props) {
   );
 }
 
-function ChipGroup<T extends string | null>({
-  label, testPrefix, options, value, onChange,
-}: {
-  label: string;
-  testPrefix: string;
-  options: readonly T[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <View style={s.chipGroup}>
-      <Text style={s.chipLabel}>{label}</Text>
-      <View style={s.chips}>
-        {options.map((opt) => {
-          const active = (opt ?? "all") === (value ?? "all");
-          return (
-            <Pressable
-              key={String(opt)}
-              testID={`${testPrefix}-${opt ?? "all"}`}
-              onPress={() => onChange(opt)}
-              style={[s.chip, active && s.chipActive]}
-            >
-              <Text style={[s.chipTxt, active && s.chipTxtActive]}>{opt ?? "All"}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 function CompactDropdown({
-  label, options, value, onChange, testID, align = "left",
+  prefix, options, value, onChange, testID, align = "left",
 }: {
-  label: string;
+  prefix: string;
   options: { id: string; label: string }[];
   value: string;
   onChange: (id: string) => void;
@@ -183,29 +171,66 @@ function CompactDropdown({
   align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Pressable testID={testID} onPress={() => setOpen(true)} style={s.dropdownBtn}>
-        <Text style={s.dropdownTxt} numberOfLines={1}>{label}</Text>
-        <Feather name="chevron-down" size={14} color={colors.muted} />
-      </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable style={s.menuBackdrop} onPress={() => setOpen(false)}>
-          <View style={[s.menu, align === "right" && { alignSelf: "flex-end", marginRight: 16 }]}>
+  const rootRef = useRef<RNView>(null);
+  const selectedLabel = options.find((o) => o.id === value)?.label ?? value;
+
+  useEffect(() => {
+    if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
+    const onDocClick = (e: MouseEvent) => {
+      const node = rootRef.current as unknown as HTMLElement | null;
+      if (node && !node.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  if (Platform.OS === "web") {
+    return (
+      <View style={[s.dropdownWrap, align === "right" && s.dropdownWrapRight]}>
+        <View style={s.dropdownBtn}>
+          <Text style={s.dropdownPrefix} numberOfLines={1}>{prefix}:</Text>
+          <select
+            data-testid={testID}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={s.webSelect}
+          >
             {options.map((opt) => (
-              <Pressable
-                key={opt.id}
-                testID={`${testID}-${opt.id}`}
-                onPress={() => { onChange(opt.id); setOpen(false); }}
-                style={[s.menuItem, value === opt.id && s.menuItemActive]}
-              >
-                <Text style={[s.menuTxt, value === opt.id && s.menuTxtActive]}>{opt.label}</Text>
-              </Pressable>
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
             ))}
-          </View>
-        </Pressable>
-      </Modal>
-    </>
+          </select>
+          <Feather name="chevron-down" size={14} color={colors.muted} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      ref={rootRef}
+      style={[s.dropdownWrap, { zIndex: open ? 50 : 1 }, align === "right" && s.dropdownWrapRight]}
+    >
+      <Pressable testID={testID} onPress={() => setOpen((v) => !v)} style={s.dropdownBtn}>
+        <Text style={s.dropdownTxt} numberOfLines={1}>{prefix}: {selectedLabel}</Text>
+        <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color={colors.muted} />
+      </Pressable>
+      {open && (
+        <View style={[s.menu, align === "right" && s.menuRight]}>
+          {options.map((opt) => (
+            <Pressable
+              key={opt.id}
+              testID={`${testID}-${opt.id}`}
+              onPress={() => { onChange(opt.id); setOpen(false); }}
+              style={[s.menuItem, value === opt.id && s.menuItemActive]}
+            >
+              <Text style={[s.menuTxt, value === opt.id && s.menuTxtActive]}>{opt.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -218,28 +243,36 @@ const s = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     gap: 10,
+    overflow: "visible",
   },
-  row1: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
-  row2: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 12 },
-  instGroup: {
+  row1: {
     flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    overflow: "visible",
+  },
+  row2: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+    overflow: "visible",
+  },
+  rowSpacer: { flex: 1, minWidth: 8 },
+  lockedFilter: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: "hidden",
+    backgroundColor: colors.surface2,
+    flexShrink: 0,
   },
-  instBtn: { paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.surface2 },
-  instBtnActive: { backgroundColor: colors.primary },
-  instTxt: { fontSize: 11, fontWeight: "800", color: colors.muted },
-  instTxtActive: { color: "#fff" },
-  instLocked: {
-    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8,
-    backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border,
-  },
-  instLockedTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },
+  lockedFilterTxt: { fontSize: 12, fontWeight: "600", color: colors.muted },
   searchWrap: {
     flex: 1,
-    minWidth: 160,
+    minWidth: 180,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -251,43 +284,66 @@ const s = StyleSheet.create({
     paddingVertical: 7,
   },
   searchInput: { flex: 1, fontSize: 13, color: colors.ink, outlineStyle: "none" as any, padding: 0 },
+  dropdownWrap: { position: "relative", flexShrink: 0 },
+  dropdownWrapRight: { marginLeft: "auto" },
   dropdownBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
+    gap: 6,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface2,
-    maxWidth: 180,
+    flexShrink: 0,
+    minWidth: 148,
+    maxWidth: 220,
   },
+  dropdownPrefix: { fontSize: 12, fontWeight: "600", color: colors.ink, flexShrink: 0 },
   dropdownTxt: { fontSize: 12, fontWeight: "600", color: colors.ink, flexShrink: 1 },
-  chipGroup: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  chipLabel: { fontSize: 11, fontWeight: "700", color: colors.hint },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  chip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface2,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },
-  chipTxtActive: { color: "#fff" },
-  menuBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.25)", justifyContent: "flex-start", paddingTop: 120, paddingHorizontal: 16 },
+  webSelect: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 0,
+    borderStyle: "solid",
+    backgroundColor: "transparent",
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.ink,
+    outlineStyle: "none",
+    cursor: "pointer",
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    padding: 0,
+    margin: 0,
+  } as object,
   menu: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    marginTop: 4,
     backgroundColor: colors.surface,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 4,
-    minWidth: 200,
-    maxWidth: 280,
+    minWidth: 220,
+    maxWidth: 320,
+    zIndex: 100,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      default: {
+        shadowColor: "#0F172A",
+        shadowOpacity: 0.12,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 12,
+      },
+    }),
   },
+  menuRight: { left: undefined, right: 0 },
   menuItem: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 },
   menuItemActive: { backgroundColor: colors.primarySofter },
   menuTxt: { fontSize: 13, color: colors.ink, fontWeight: "500" },

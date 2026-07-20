@@ -2,7 +2,7 @@ export type Institution = "PWS" | "ALPHA";
 
 export type FeeStatusFilter = "all" | "overdue" | "due_this_month" | "paid_ahead";
 
-export type FeeSort = "amount_due" | "name" | "overdue_days";
+export type FeeSort = "amount_due" | "amount_due_asc" | "name" | "overdue_days";
 
 export type PaymentMode = "Cash" | "UPI" | "Online";
 
