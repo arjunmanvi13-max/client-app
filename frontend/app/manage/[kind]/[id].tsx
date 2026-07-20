@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter, usePathname } from "expo-router";
+import { useLocalSearchParams, useRouter, usePathname, useNavigation } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
 import {
@@ -49,6 +50,14 @@ import {
   type TeacherDesignation,
 } from "../../../src/TeacherUserFormFields";
 import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
+import { UnsavedChangesModal } from "../../../src/components/forms/UnsavedChangesModal";
+import { TeacherProfilePdfModal } from "../../../src/components/forms/TeacherProfilePdfModal";
+import {
+  buildTeacherFormSnapshot,
+  isTeacherFormDirty,
+  type TeacherFormSnapshot,
+} from "../../../src/teachers/teacherFormState";
+import { setManageDirectoryToast } from "../../../src/manageDirectoryToast";
 import { formColors } from "../../../src/theme";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
@@ -144,6 +153,16 @@ function confirmCoachDeactivation(onConfirm: () => void | Promise<void>) {
   }
 }
 
+function navigateToTeachersList(router: ReturnType<typeof useRouter>) {
+  const href = "/manage/teacher";
+  const go = () => router.replace(href);
+  if (Platform.OS === "web") {
+    setTimeout(go, 0);
+    return;
+  }
+  go();
+}
+
 function navigateToAlphaCoachesList(router: ReturnType<typeof useRouter>) {
   const href = "/manage/alpha_coach";
   const go = () => {
@@ -173,6 +192,7 @@ export default function ManageEdit() {
   const id = resolveRouteParam(idRaw);
   const { user } = useAuth();
   const router = useRouter();
+  const navigation = useNavigation();
   const isNew = id === "new";
   const userTypeKind = isApprovedLoginUserType(kindParam) ? (kindParam as LoginUserType) : null;
   const rosterMeta = getManageListMeta(kindParam);
@@ -199,6 +219,10 @@ export default function ManageEdit() {
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canManageTeachers = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
+    || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
+  const canToggleTeacherStatus = isSuper || canManageTeachers;
+  const canDeleteTeacher = isTeacherUserForm && isSuper && !isNew;
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
@@ -213,6 +237,7 @@ export default function ManageEdit() {
       if (isAdmin) return true;
       if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
       if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
+      if (isTeacherUserForm) return isSuper || canManageTeachers;
       if (isLegacyUserKind) return (user?.can_manage || []).includes(kindParam);
       return (user?.can_manage || []).includes(kindParam);
     }
@@ -223,10 +248,12 @@ export default function ManageEdit() {
       return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
         || (user?.role === "coach" && (user?.coach_permissions || []).includes("edit_players"));
     }
+    if (isTeacherUserForm) return isSuper || canManageTeachers;
     if (isLegacyUserKind) return isAdmin;
     return (user?.can_manage || []).includes(kindParam);
   })();
-  const canDelete = canEdit && !isNew && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
+  const canDelete = canEdit && !isNew && !isTeacherUserForm
+    && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
   const readOnly = !isNew && !canEdit;
 
   const [loading, setLoading] = useState(!isNew);
@@ -328,6 +355,13 @@ export default function ManageEdit() {
   const [teacherSections, setTeacherSections] = useState<AcademicSection[]>([]);
   const [teacherSubjects, setTeacherSubjects] = useState<AcademicSubject[]>([]);
   const [academicLoading, setAcademicLoading] = useState(false);
+  const [teacherBaseline, setTeacherBaseline] = useState<TeacherFormSnapshot | null>(null);
+  const [teacherAssignmentsReady, setTeacherAssignmentsReady] = useState(false);
+  const [unsavedModalVisible, setUnsavedModalVisible] = useState(false);
+  const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
+  const [pdfPreviewVisible, setPdfPreviewVisible] = useState(false);
+  const [savedTeacherId, setSavedTeacherId] = useState<string | null>(null);
+  const skipDirtyGuard = useRef(false);
 
   // Coaches list (for player assignment)
   const [coaches, setCoaches] = useState<any[]>([]);
@@ -542,14 +576,111 @@ export default function ManageEdit() {
   }, [isTeacherUserForm]);
 
   useEffect(() => {
-    if (!isTeacherUserForm || isNew || !id || !academicYearId) return;
+    if (!isTeacherUserForm || isNew || !id || !academicYearId) {
+      if (isTeacherUserForm && isNew) setTeacherAssignmentsReady(true);
+      return;
+    }
+    setTeacherAssignmentsReady(false);
     api.get("/academic/class-assignments", {
       params: { teacher_user_id: id, academic_year_id: academicYearId },
     }).then((r) => {
       const rows = assignmentsToClassRows(r.data || [], teacherGrades, teacherSections, teacherSubjects);
       if (rows.length) setTeacherClassRows(rows);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setTeacherAssignmentsReady(true));
   }, [isTeacherUserForm, isNew, id, academicYearId, teacherGrades, teacherSections, teacherSubjects]);
+
+  const teacherCurrentSnapshot = useMemo((): TeacherFormSnapshot => ({
+    name,
+    dateOfJoining,
+    mobile,
+    address,
+    email,
+    password,
+    teacherDesignation,
+    attendanceAllowed,
+    marksEntry,
+    studentAssessment,
+    classRows: teacherClassRows,
+  }), [
+    name, dateOfJoining, mobile, address, email, password, teacherDesignation,
+    attendanceAllowed, marksEntry, studentAssessment, teacherClassRows,
+  ]);
+
+  const teacherFormDirty = isTeacherUserForm && !readOnly
+    && isTeacherFormDirty(teacherBaseline, teacherCurrentSnapshot);
+
+  const captureTeacherBaseline = useCallback(() => {
+    setTeacherBaseline(buildTeacherFormSnapshot({
+      name,
+      dateOfJoining,
+      mobile,
+      address,
+      email,
+      password: "",
+      teacherDesignation,
+      attendanceAllowed,
+      marksEntry,
+      studentAssessment,
+      classRows: teacherClassRows,
+    }));
+  }, [
+    name, dateOfJoining, mobile, address, email, teacherDesignation,
+    attendanceAllowed, marksEntry, studentAssessment, teacherClassRows,
+  ]);
+
+  useEffect(() => {
+    if (!isTeacherUserForm || isNew || loading || !teacherAssignmentsReady || teacherBaseline) return;
+    captureTeacherBaseline();
+  }, [
+    isTeacherUserForm, isNew, loading, teacherAssignmentsReady, teacherBaseline, captureTeacherBaseline,
+  ]);
+
+  useEffect(() => {
+    if (!isTeacherUserForm || !teacherFormDirty || Platform.OS !== "web") return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (skipDirtyGuard.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isTeacherUserForm, teacherFormDirty]);
+
+  usePreventRemove(isTeacherUserForm && teacherFormDirty && !skipDirtyGuard.current, ({ data }) => {
+    setPendingLeaveAction(() => () => {
+      skipDirtyGuard.current = true;
+      navigation.dispatch(data.action);
+    });
+    setUnsavedModalVisible(true);
+  });
+
+  const confirmLeaveIfDirty = (leave: () => void) => {
+    if (!isTeacherUserForm || !teacherFormDirty || skipDirtyGuard.current) {
+      leave();
+      return;
+    }
+    setPendingLeaveAction(() => leave);
+    setUnsavedModalVisible(true);
+  };
+
+  const onTeacherCancel = () => confirmLeaveIfDirty(() => router.back());
+
+  const onUnsavedNo = () => {
+    setUnsavedModalVisible(false);
+    const action = pendingLeaveAction;
+    setPendingLeaveAction(null);
+    if (action) {
+      skipDirtyGuard.current = true;
+      action();
+    }
+  };
+
+  const onUnsavedYes = () => {
+    const action = pendingLeaveAction;
+    setUnsavedModalVisible(false);
+    setPendingLeaveAction(null);
+    void save({ afterSave: action || undefined });
+  };
 
   const syncTeacherClassAssignments = async (
     teacherId: string,
@@ -639,7 +770,7 @@ export default function ManageEdit() {
     return !!permMap[key];
   };
 
-  const save = async () => {
+  const save = async (options?: { afterSave?: () => void }) => {
     if (!isLoginUserKind && !isRosterPersonKind && !isLegacyUserKind) {
       showError("Invalid record type", "This form is not for a supported manage route.");
       return;
@@ -948,6 +1079,17 @@ export default function ManageEdit() {
         if (isNew) await api.post("/people", body);
         else { delete body.kind; await api.patch(`/people/${id}`, body); }
       }
+      if (isTeacherUserForm && !isNew) {
+        skipDirtyGuard.current = true;
+        setTeacherBaseline(buildTeacherFormSnapshot({
+          ...teacherCurrentSnapshot,
+          password: "",
+        }));
+        setSavedTeacherId(id);
+        if (options?.afterSave) setPendingLeaveAction(options.afterSave);
+        setPdfPreviewVisible(true);
+        return;
+      }
       router.back();
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
@@ -963,6 +1105,7 @@ export default function ManageEdit() {
 
   const onDelete = () => {
     if (isNew) return;
+    if (isTeacherUserForm) return;
     confirmAction("Delete?", `This ${displayTitle} account will be permanently removed.`, async () => {
       try {
         if (isUserKind) await api.delete(`/users/${id}`);
@@ -970,6 +1113,34 @@ export default function ManageEdit() {
         router.back();
       } catch (e: any) { Alert.alert("Error", e?.response?.data?.detail || "Failed"); }
     });
+  };
+
+  const onDeleteTeacher = () => {
+    if (!canDeleteTeacher || isNew || !isSuper) return;
+    confirmAction(
+      "Delete teacher?",
+      "This teacher account will be permanently removed.",
+      async () => {
+        try {
+          await api.delete(`/users/${id}`);
+          setManageDirectoryToast("Teacher deleted successfully.");
+          skipDirtyGuard.current = true;
+          navigateToTeachersList(router);
+        } catch (e: any) {
+          showError("Error", e?.response?.data?.detail || "Failed to delete teacher");
+        }
+      },
+    );
+  };
+
+  const onPdfPreviewDone = () => {
+    setPdfPreviewVisible(false);
+    const action = pendingLeaveAction;
+    setPendingLeaveAction(null);
+    if (action) {
+      skipDirtyGuard.current = true;
+      action();
+    }
   };
 
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
@@ -1092,8 +1263,8 @@ export default function ManageEdit() {
             <FormPageHeader
               breadcrumb="DIRECTORY · TEACHERS"
               title={isNew ? "New Teacher" : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
-              onCancel={() => router.back()}
-              onSave={canEdit ? save : undefined}
+              onCancel={onTeacherCancel}
+              onSave={canEdit ? () => save() : undefined}
               saving={saving}
               saveLabel={isNew ? "Create" : "Save changes"}
               readOnly={readOnly}
@@ -1105,6 +1276,9 @@ export default function ManageEdit() {
               readOnly={readOnly}
               isNew={isNew}
               isSuper={isSuper}
+              canToggleStatus={canToggleTeacherStatus}
+              canDeleteTeacher={canDeleteTeacher}
+              onDeleteTeacher={canDeleteTeacher ? onDeleteTeacher : undefined}
               displayTitle={displayTitle}
               userTypeKind={null}
               entityScope="PWS"
@@ -1135,7 +1309,7 @@ export default function ManageEdit() {
               subjects={teacherSubjects}
               academicLoading={academicLoading}
               userStatus={userStatus}
-              onToggleUserStatus={!isNew && isSuper ? () => {
+              onToggleUserStatus={!isNew && canToggleTeacherStatus ? () => {
                 const next = userStatus === "active" ? "deactivated" : "active";
                 const verb = next === "active" ? "Reactivate" : "Deactivate";
                 confirmAction(`${verb} ${displayTitle}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
@@ -1641,6 +1815,21 @@ export default function ManageEdit() {
         </View>
         )}
       </KeyboardAvoidingView>
+
+      <UnsavedChangesModal
+        visible={unsavedModalVisible}
+        onYes={onUnsavedYes}
+        onNo={onUnsavedNo}
+        onDismiss={onUnsavedNo}
+      />
+
+      <TeacherProfilePdfModal
+        visible={pdfPreviewVisible}
+        userId={savedTeacherId || id}
+        teacherName={name}
+        onClose={() => setPdfPreviewVisible(false)}
+        onDone={onPdfPreviewDone}
+      />
     </SafeAreaView>
   );
 }

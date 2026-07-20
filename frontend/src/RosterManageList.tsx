@@ -7,6 +7,8 @@ import { api, ROLE_COLORS, useAuth, userHasPermission } from "./auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "./coachAccess";
 import { getManageListMeta } from "./manageKinds";
+import { consumeManageDirectoryToast } from "./manageDirectoryToast";
+import { colors } from "./theme";
 import { PlayerRosterListView } from "./PlayerRosterListView";
 import { StudentRosterListView } from "./StudentRosterListView";
 
@@ -22,6 +24,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [classFilter, setClassFilter] = useState<string | null>(null);
   const [centreFilter, setCentreFilter] = useState<string | null>(null);
   const [sportFilter, setSportFilter] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const meta = getManageListMeta(kind)!;
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
@@ -88,6 +91,11 @@ export function RosterManageList({ kind }: { kind: string }) {
   }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useFocusEffect(useCallback(() => {
+    const message = consumeManageDirectoryToast();
+    if (message) setToastMessage(message);
+  }, []));
 
   if (user && isCoachUser(user) && kind === "staff") {
     return (
@@ -168,6 +176,16 @@ export function RosterManageList({ kind }: { kind: string }) {
           <Text style={s.addText}>Add</Text>
         </TouchableOpacity>
       </View>
+
+      {toastMessage ? (
+        <View style={s.toastBanner} testID="directory-toast">
+          <Feather name="check-circle" size={16} color={colors.success} />
+          <Text style={s.toastTxt}>{toastMessage}</Text>
+          <TouchableOpacity onPress={() => setToastMessage(null)} hitSlop={8}>
+            <Feather name="x" size={16} color={colors.muted} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <View style={s.searchRow}>
         {!coachBlocked && (
@@ -283,4 +301,18 @@ const s = StyleSheet.create({
   blockedBox: { marginHorizontal: 20, marginTop: 16, padding: 20, backgroundColor: "#FEF2F2", borderRadius: 14, borderWidth: 1, borderColor: "#FECACA", alignItems: "center", gap: 8 },
   blockedTitle: { fontSize: 16, fontWeight: "800", color: "#991B1B" },
   blockedText: { textAlign: "center", color: "#7F1D1D", lineHeight: 20 },
+  toastBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: colors.successSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  toastTxt: { flex: 1, fontSize: 13, fontWeight: "700", color: "#065F46" },
 });
