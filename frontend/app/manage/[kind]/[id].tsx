@@ -37,6 +37,7 @@ import {
   TeacherUserFormFields,
   assignmentsToClassRows,
   buildTeacherPermissions,
+  describeTeacherAllocationFailure,
   expandClassAllocations,
   isValidIndianMobile,
   isTeacherClassRowComplete,
@@ -554,8 +555,11 @@ export default function ManageEdit() {
     teacherId: string,
     rows: TeacherClassAllocationRow[],
     yearId: string,
+    grades = teacherGrades,
+    sections = teacherSections,
+    subjects = teacherSubjects,
   ) => {
-    const desired = expandClassAllocations(rows, teacherGrades, teacherSections, teacherSubjects);
+    const desired = expandClassAllocations(rows, grades, sections, subjects);
     const { data: existing } = await api.get("/academic/class-assignments", {
       params: { teacher_user_id: teacherId, academic_year_id: yearId },
     });
@@ -664,19 +668,6 @@ export default function ManageEdit() {
         showError("Class allocation incomplete", "Each class card needs a class, section, and at least one subject.");
         return;
       }
-      const resolved = expandClassAllocations(
-        teacherClassRows,
-        teacherGrades,
-        teacherSections,
-        teacherSubjects,
-      );
-      if (resolved.length === 0) {
-        showError(
-          "Class allocation could not be saved",
-          "Selections could not be matched to the academic structure. Ensure grades, sections, and subjects exist under Academic Structure.",
-        );
-        return;
-      }
       if (!academicYearId) {
         showError("Academic year missing", "Set up an open academic year before assigning classes.");
         return;
@@ -702,6 +693,42 @@ export default function ManageEdit() {
     if (isLoginUserKind && !(await confirmUserTypeChangeIfNeeded())) return;
     setSaving(true);
     try {
+      let teacherAcademic: {
+        grades: AcademicGrade[];
+        sections: AcademicSection[];
+        subjects: AcademicSubject[];
+      } | null = null;
+
+      if (isTeacherUserForm && academicYearId) {
+        const [gRes, sRes, subRes] = await Promise.all([
+          api.get("/academic/grades", { params: { academic_year_id: academicYearId } }),
+          api.get("/academic/sections", { params: { academic_year_id: academicYearId } }),
+          api.get("/academic/subjects", { params: { academic_year_id: academicYearId } }),
+        ]);
+        const grades = gRes.data || [];
+        const sections = sRes.data || [];
+        const subjects = subRes.data || [];
+        for (const row of teacherClassRows.filter(isTeacherClassRowComplete)) {
+          const reason = describeTeacherAllocationFailure(row, grades, sections, subjects);
+          if (reason) {
+            showError("Class allocation could not be saved", reason);
+            return;
+          }
+        }
+        const resolved = expandClassAllocations(teacherClassRows, grades, sections, subjects);
+        if (resolved.length === 0) {
+          showError(
+            "Class allocation could not be saved",
+            "Selections could not be matched to the academic structure. Ensure standards, sections, and subjects exist for the open academic year.",
+          );
+          return;
+        }
+        setTeacherGrades(grades);
+        setTeacherSections(sections);
+        setTeacherSubjects(subjects);
+        teacherAcademic = { grades, sections, subjects };
+      }
+
       if (isLoginUserKind && userTypeKind) {
         const scopeOrg = isCoachKind ? "ALPHA" : (typeCatalog?.entityScope || organization);
         if (isNew) {
@@ -775,8 +802,15 @@ export default function ManageEdit() {
             if (isAdmin) body.can_manage = canManage;
           }
           const { data: created } = await api.post("/users", body);
-          if (isTeacherUserForm && academicYearId) {
-            await syncTeacherClassAssignments(created.id, teacherClassRows, academicYearId);
+          if (isTeacherUserForm && academicYearId && teacherAcademic) {
+            await syncTeacherClassAssignments(
+              created.id,
+              teacherClassRows,
+              academicYearId,
+              teacherAcademic.grades,
+              teacherAcademic.sections,
+              teacherAcademic.subjects,
+            );
           }
         } else {
           const body: any = { name, organization: isCoachKind ? "ALPHA" : organization, department: department || null, phone: phone || null };
@@ -800,8 +834,15 @@ export default function ManageEdit() {
             }
           }
           await api.patch(`/users/${id}`, body);
-          if (isTeacherUserForm && academicYearId) {
-            await syncTeacherClassAssignments(id, teacherClassRows, academicYearId);
+          if (isTeacherUserForm && academicYearId && teacherAcademic) {
+            await syncTeacherClassAssignments(
+              id,
+              teacherClassRows,
+              academicYearId,
+              teacherAcademic.grades,
+              teacherAcademic.sections,
+              teacherAcademic.subjects,
+            );
           }
         }
       } else if (isPlayerKind) {

@@ -19,8 +19,17 @@ import { FormTextField } from "./components/forms/FormTextField";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
-import { CLASS_PREFIX, resolveSectionMatch } from "./StudentRosterFormFields";
-import { DEFAULT_PWS_SUBJECT_OPTIONS } from "./academicStructure";
+import { CLASS_PREFIX } from "./StudentRosterFormFields";
+import {
+  DEFAULT_PWS_SUBJECT_OPTIONS,
+  classNameForGradeName,
+  describeTeacherAllocationFailure,
+  matchAcademicGrade,
+  matchAcademicSection,
+  matchAcademicSubject,
+} from "./academicStructure";
+
+export { describeTeacherAllocationFailure };
 
 export type TeacherDesignation = "CLASS_TEACHER" | "TEACHER";
 
@@ -59,7 +68,10 @@ export const TEACHER_SECTION_OPTIONS: FormSelectOption[] = [
 export const TEACHER_SUBJECT_OPTIONS: FormSelectOption[] = DEFAULT_PWS_SUBJECT_OPTIONS;
 
 const CLASS_NAME_BY_GRADE: Record<string, string> = Object.fromEntries(
-  Object.entries(CLASS_PREFIX).map(([className, gradeName]) => [gradeName, className]),
+  Object.entries(CLASS_PREFIX).flatMap(([className, gradeName]) => [
+    [gradeName, className],
+    [className, className],
+  ]),
 );
 
 function parseSectionLetter(label: string): string {
@@ -67,15 +79,32 @@ function parseSectionLetter(label: string): string {
   return m ? m[1].toUpperCase() : "";
 }
 
-function gradeNameForClass(className: string): string {
-  return CLASS_PREFIX[className] || className;
-}
+export function resolveTeacherAllocationIds(
+  row: TeacherClassAllocationRow,
+  grades: AcademicGrade[],
+  sections: AcademicSection[],
+  subjects: AcademicSubject[],
+): { gradeId: string; sectionId: string; subjectId: string }[] {
+  if (!row.className || !row.sectionLetter || row.subjects.length === 0) return [];
 
-function findGrade(className: string, grades: AcademicGrade[]): AcademicGrade | undefined {
-  const key = gradeNameForClass(className);
-  return grades.find(
-    (g) => g.name === key || g.name === className || g.name.toLowerCase() === key.toLowerCase(),
+  const grade = matchAcademicGrade(row.className, grades);
+  if (!grade) return [];
+
+  const section = matchAcademicSection(
+    row.className,
+    row.sectionLetter,
+    sections,
+    grade.id,
   );
+  if (!section) return [];
+
+  const out: { gradeId: string; sectionId: string; subjectId: string }[] = [];
+  for (const subjectName of row.subjects) {
+    const subject = matchAcademicSubject(subjectName, subjects);
+    if (!subject) continue;
+    out.push({ gradeId: grade.id, sectionId: section.id, subjectId: subject.id });
+  }
+  return out;
 }
 
 const TEACHER_DESIGNATION_OPTIONS: FormSelectOption[] = [
@@ -165,36 +194,6 @@ function PermissionSwitch({
   );
 }
 
-export function resolveTeacherAllocationIds(
-  row: TeacherClassAllocationRow,
-  grades: AcademicGrade[],
-  sections: AcademicSection[],
-  subjects: AcademicSubject[],
-): { gradeId: string; sectionId: string; subjectId: string }[] {
-  if (!row.className || !row.sectionLetter || row.subjects.length === 0) return [];
-
-  const grade = findGrade(row.className, grades);
-  if (!grade) return [];
-
-  const gradeSections = sections
-    .filter((sec) => sec.grade_id === grade.id)
-    .map((sec) => ({ id: sec.id, label: sec.label }));
-  const { id: sectionId } = resolveSectionMatch(row.className, row.sectionLetter, gradeSections);
-  if (!sectionId) return [];
-
-  const out: { gradeId: string; sectionId: string; subjectId: string }[] = [];
-  for (const subjectName of row.subjects) {
-    const subject = subjects.find(
-      (sub) => sub.name.toLowerCase() === subjectName.toLowerCase(),
-    );
-    if (!subject) continue;
-    if (subject.grade_ids?.length && !subject.grade_ids.includes(grade.id)) continue;
-    if (subject.section_ids?.length && !subject.section_ids.includes(sectionId)) continue;
-    out.push({ gradeId: grade.id, sectionId, subjectId: subject.id });
-  }
-  return out;
-}
-
 export function expandClassAllocations(
   rows: TeacherClassAllocationRow[],
   grades: AcademicGrade[],
@@ -217,7 +216,7 @@ export function assignmentsToClassRows(
     const subject = subjects.find((s) => s.id === a.subject_id);
     if (!grade || !section || !subject) continue;
 
-    const className = CLASS_NAME_BY_GRADE[grade.name] || grade.name;
+    const className = CLASS_NAME_BY_GRADE[grade.name] || classNameForGradeName(grade.name);
     const sectionLetter = parseSectionLetter(section.label);
     const groupKey = `${className}:${sectionLetter}`;
     if (!map.has(groupKey)) {
@@ -308,15 +307,21 @@ export function TeacherUserFormFields({
   const { isWide } = useBreakpoint();
   const previewType = userTypeKind || UserRole.PWS_TEACHER;
 
-  const unresolvedCount = useMemo(
-    () =>
-      classRows.filter(
-        (row) =>
-          isTeacherClassRowComplete(row) &&
-          resolveTeacherAllocationIds(row, grades, sections, subjects).length === 0,
-      ).length,
-    [classRows, grades, sections, subjects],
-  );
+  const allocationHint = useMemo(() => {
+    for (const row of classRows) {
+      if (!isTeacherClassRowComplete(row)) continue;
+      const reason = describeTeacherAllocationFailure(row, grades, sections, subjects);
+      if (reason) return reason;
+    }
+    return null;
+  }, [classRows, grades, sections, subjects]);
+
+  const subjectOptions = useMemo(() => {
+    if (subjects.length) {
+      return subjects.map((sub) => ({ value: sub.name, label: sub.name }));
+    }
+    return TEACHER_SUBJECT_OPTIONS;
+  }, [subjects]);
 
   const updateRow = (key: string, patch: Partial<TeacherClassAllocationRow>) => {
     setClassRows((prev) =>
@@ -471,10 +476,8 @@ export function TeacherUserFormFields({
         {academicLoading && (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
         )}
-        {!academicLoading && unresolvedCount > 0 && (
-          <Text style={s.warnHint}>
-            Some selections could not be matched to the academic structure yet. Ensure grades, sections, and subjects exist under Academic Structure.
-          </Text>
+        {!academicLoading && allocationHint && (
+          <Text style={s.warnHint}>{allocationHint}</Text>
         )}
         <View style={s.classRows}>
           {classRows.map((row, index) => (
@@ -527,7 +530,7 @@ export function TeacherUserFormFields({
                     required
                     testID={`class-subjects-${index}`}
                     values={row.subjects}
-                    options={TEACHER_SUBJECT_OPTIONS}
+                    options={subjectOptions}
                     placeholder={row.sectionLetter ? "Select subjects" : "Select section first"}
                     searchPlaceholder="Search subjects…"
                     disabled={readOnly || !row.sectionLetter}

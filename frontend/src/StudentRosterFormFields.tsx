@@ -16,8 +16,9 @@ import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
 import { FormTextField } from "./components/forms/FormTextField";
+import { CLASS_PREFIX, matchAcademicSection, sectionLabelCandidates } from "./academicStructure";
 
-const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
+export { CLASS_PREFIX } from "./academicStructure";
 export const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
 const SECTION_FILTER = ["All", ...SECTION_LETTERS] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
@@ -60,21 +61,7 @@ export function pwsClassFilterLabel(pwsClass?: string | null) {
   return PWS_CLASS_FILTER_LABELS[pwsClass] || pwsClass;
 }
 
-export const CLASS_PREFIX: Record<string, string> = {
-  Nursery: "Nursery",
-  LKG: "LKG",
-  UKG: "UKG",
-  "Class I": "1",
-  "Class II": "2",
-  "Class III": "3",
-  "Class IV": "4",
-  "Class V": "5",
-  "Class VI": "6",
-  "Class VII": "7",
-  "Class VIII": "8",
-  "Class IX": "9",
-  "Class X": "10",
-};
+const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
 
 function parseSectionLetter(group: string): string {
   const m = group.trim().match(/-([A-F])$/i);
@@ -88,15 +75,12 @@ export function classGroupPrefix(pwsClass: string): string {
 export function resolveSectionMatch(
   pwsClass: string,
   letter: string,
-  sections: { id: string; label: string }[],
+  sections: { id: string; label: string; grade_id?: string }[],
 ): { id: string | null; label: string } {
-  const prefix = CLASS_PREFIX[pwsClass] || pwsClass;
-  const target = `${prefix}-${letter}`;
-  const exact = sections.find((sec) => sec.label.toLowerCase() === target.toLowerCase());
-  if (exact) return { id: exact.id, label: exact.label };
-  const suffix = sections.find((sec) => sec.label.toUpperCase().endsWith(`-${letter}`));
-  if (suffix) return { id: suffix.id, label: suffix.label };
-  return { id: null, label: target };
+  const matched = matchAcademicSection(pwsClass, letter, sections);
+  if (matched) return { id: matched.id, label: matched.label };
+  const [fallback = `${CLASS_PREFIX[pwsClass] || pwsClass}-${letter}`] = sectionLabelCandidates(pwsClass, letter);
+  return { id: null, label: fallback };
 }
 
 export type StudentRosterFormFieldsProps = {
