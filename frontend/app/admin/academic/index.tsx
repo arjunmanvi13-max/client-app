@@ -72,6 +72,7 @@ export default function AcademicAdmin() {
   const [subjectGradeIds, setSubjectGradeIds] = useState<string[]>([]);
   const [assignTeacherId, setAssignTeacherId] = useState<string | null>(null);
   const [assignRows, setAssignRows] = useState<TeacherAssignRow[]>([newTeacherAssignRow()]);
+  const [openAssignRowKey, setOpenAssignRowKey] = useState<string | null>(null);
   const [seedingSubjects, setSeedingSubjects] = useState(false);
   const [seedingStandards, setSeedingStandards] = useState(false);
 
@@ -634,7 +635,13 @@ export default function AcademicAdmin() {
                     <Text style={[s.label, { marginTop: 12 }]}>Class assignments</Text>
                     <Text style={s.fieldHelp}>Map one or more classes; for each class, select the subjects the teacher handles.</Text>
                     {assignRows.map((row, idx) => (
-                      <View key={row.key} style={s.assignFormRow}>
+                      <View
+                        key={row.key}
+                        style={[
+                          s.assignFormRow,
+                          openAssignRowKey === row.key && s.assignFormRowOpen,
+                        ]}
+                      >
                         <View style={s.assignFormHeader}>
                           <Text style={s.assignFormTitle}>Class {idx + 1}</Text>
                           {assignRows.length > 1 && (
@@ -657,6 +664,12 @@ export default function AcademicAdmin() {
                           values={row.subjectIds}
                           options={subjectOptions}
                           onChange={(subjectIds) => updateAssignRow(row.key, { subjectIds })}
+                          onOpenChange={(open) => {
+                            setOpenAssignRowKey((current) => {
+                              if (open) return row.key;
+                              return current === row.key ? null : current;
+                            });
+                          }}
                           placeholder="Select one or more subjects…"
                           searchPlaceholder="Search subjects…"
                           required={!!row.sectionId}
@@ -664,6 +677,7 @@ export default function AcademicAdmin() {
                         />
                       </View>
                     ))}
+                    <View style={s.assignActions}>
                     <TouchableOpacity
                       style={s.secondaryBtn}
                       onPress={() => setAssignRows((rows) => [...rows, newTeacherAssignRow()])}
@@ -673,6 +687,7 @@ export default function AcademicAdmin() {
                     <TouchableOpacity testID="btn-assign-class" style={[s.btn, { alignSelf: "flex-start", marginTop: 10 }]} onPress={assignClasses}>
                       <Text style={s.btnTxt}>Save assignments</Text>
                     </TouchableOpacity>
+                    </View>
                   </>
                 )}
                 {groupedAssignments.length === 0 ? (
@@ -720,7 +735,15 @@ const s = StyleSheet.create({
   yearBar: { paddingHorizontal: 20, paddingVertical: 8, backgroundColor: "#EEF2FF" },
   yearBarTxt: { fontSize: 12, fontWeight: "700", color: "#1E40AF" },
   scroll: { padding: 20, paddingBottom: 40 },
-  card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, borderWidth: 1, borderColor: "#E2E8F0", marginBottom: 12 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 12,
+    overflow: "visible",
+  },
   cardTitle: { fontSize: 15, fontWeight: "800", color: "#0F172A", marginBottom: 8 },
   row: { flexDirection: "row", gap: 8, alignItems: "center" },
   input: { flex: 1, borderWidth: 1, borderColor: "#E2E8F0", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: "#0F172A", backgroundColor: "#F8FAFC", marginBottom: 8 },
@@ -777,6 +800,17 @@ const s = StyleSheet.create({
     marginBottom: 10,
     backgroundColor: "#F8FAFC",
     gap: 8,
+    position: "relative",
+    zIndex: 1,
+    overflow: "visible",
+  },
+  assignFormRowOpen: {
+    zIndex: 100,
+    elevation: 100,
+  },
+  assignActions: {
+    position: "relative",
+    zIndex: 1,
   },
   assignFormHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   assignFormTitle: { fontSize: 13, fontWeight: "800", color: "#0F172A" },

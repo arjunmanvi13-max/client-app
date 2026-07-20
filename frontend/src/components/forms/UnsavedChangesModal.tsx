@@ -2,7 +2,7 @@ import {
   View, Text, Modal, Pressable, StyleSheet, Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { colors, radii, shadow, spacing } from "../theme";
+import { colors, radii, shadow, spacing } from "../../theme";
 
 type UnsavedChangesModalProps = {
   visible: boolean;

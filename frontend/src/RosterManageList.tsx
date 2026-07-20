@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -11,6 +11,35 @@ import { consumeManageDirectoryToast } from "./manageDirectoryToast";
 import { colors } from "./theme";
 import { PlayerRosterListView } from "./PlayerRosterListView";
 import { StudentRosterListView } from "./StudentRosterListView";
+
+type TeacherStatusFilter = "all" | "active" | "inactive";
+
+const TEACHER_STATUS_FILTERS: { key: TeacherStatusFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Active" },
+  { key: "inactive", label: "Inactive" },
+];
+
+function isTeacherInactive(record: { status?: string; is_active?: boolean }) {
+  return record.status === "deactivated" || record.is_active === false;
+}
+
+function matchesTeacherSearch(record: any, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    (record.name || "").toLowerCase().includes(q)
+    || (record.email || "").toLowerCase().includes(q)
+    || String(record.mobile || record.phone || "").includes(q)
+    || String(record.id || "").toLowerCase().includes(q)
+  );
+}
+
+function sortByName<T extends { name?: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }),
+  );
+}
 
 /** Roster records (students, players, staff) and legacy user lists from Directory sidebar. */
 export function RosterManageList({ kind }: { kind: string }) {
@@ -25,7 +54,9 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [centreFilter, setCentreFilter] = useState<string | null>(null);
   const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [teacherStatusFilter, setTeacherStatusFilter] = useState<TeacherStatusFilter>("all");
   const meta = getManageListMeta(kind)!;
+  const isTeacherList = kind === "teacher";
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
@@ -66,7 +97,7 @@ export function RosterManageList({ kind }: { kind: string }) {
       if (meta.isUser) {
         const { data } = await api.get("/users", { params: { role: kind } });
         let rows = data;
-        if (search.trim()) {
+        if (search.trim() && !isTeacherList) {
           const q = search.trim().toLowerCase();
           rows = rows.filter((u: any) =>
             (u.name || "").toLowerCase().includes(q)
@@ -88,7 +119,24 @@ export function RosterManageList({ kind }: { kind: string }) {
         setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
       }
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
+  }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
+
+  const visibleItems = useMemo(() => {
+    if (!isTeacherList) return items;
+    let rows = items;
+    if (teacherStatusFilter === "active") {
+      rows = rows.filter((u) => !isTeacherInactive(u));
+    } else if (teacherStatusFilter === "inactive") {
+      rows = rows.filter((u) => isTeacherInactive(u));
+    }
+    if (search.trim()) {
+      rows = rows.filter((u) => matchesTeacherSearch(u, search));
+    }
+    return sortByName(rows);
+  }, [items, isTeacherList, teacherStatusFilter, search]);
+
+  const listItems = isTeacherList ? visibleItems : items;
+  const hasTeacherCriteria = isTeacherList && (teacherStatusFilter !== "all" || !!search.trim());
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -163,7 +211,7 @@ export function RosterManageList({ kind }: { kind: string }) {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>{meta.label}</Text>
-          <Text style={s.sub}>{items.length} record{items.length !== 1 ? "s" : ""}</Text>
+          <Text style={s.sub}>{listItems.length} record{listItems.length !== 1 ? "s" : ""}</Text>
           {isPlayer && isCoachUser(user) && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
             <View style={s.scopeBadge}>
               <Feather name="lock" size={12} color="#1E40AF" />
@@ -209,6 +257,24 @@ export function RosterManageList({ kind }: { kind: string }) {
         )}
       </View>
 
+      {isTeacherList && (
+        <View style={s.toggleRow} testID="teacher-status-filters">
+          {TEACHER_STATUS_FILTERS.map(({ key, label }) => {
+            const active = teacherStatusFilter === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                testID={`teacher-filter-${key}`}
+                style={[s.togglePill, active && s.togglePillActive]}
+                onPress={() => setTeacherStatusFilter(key)}
+              >
+                <Text style={[s.toggleTxt, active && s.toggleTxtActive]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
       {coachBlocked && (
         <View style={s.blockedBox}>
           <Feather name="alert-circle" size={28} color="#DC2626" />
@@ -219,17 +285,19 @@ export function RosterManageList({ kind }: { kind: string }) {
 
       <ScrollView contentContainerStyle={s.scroll}>
         {loading ? <ActivityIndicator color={meta.tint} style={{ marginTop: 24 }} /> :
-         items.length === 0 ? (
+         listItems.length === 0 ? (
            <View style={s.empty}>
              <Feather name="users" size={36} color="#94A3B8" />
              <Text style={s.emptyText}>
-               {search.trim()
-                 ? `No matches for "${search.trim()}".`
-                 : `No ${meta.label.toLowerCase()} yet. Tap Add to create one.`}
+               {isTeacherList && hasTeacherCriteria
+                 ? "No teachers found matching this criteria."
+                 : search.trim()
+                   ? `No matches for "${search.trim()}".`
+                   : `No ${meta.label.toLowerCase()} yet. Tap Add to create one.`}
              </Text>
            </View>
-         ) : items.map((it) => {
-          const isDeact = it.status === "deactivated";
+         ) : listItems.map((it) => {
+          const isDeact = isTeacherInactive(it);
           return (
           <TouchableOpacity
             key={it.id}

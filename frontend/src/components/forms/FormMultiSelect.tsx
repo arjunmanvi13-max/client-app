@@ -23,6 +23,8 @@ type FormMultiSelectProps = {
   required?: boolean;
   disabled?: boolean;
   testID?: string;
+  /** Notifies parent when the menu opens/closes so wrappers can raise stacking order. */
+  onOpenChange?: (open: boolean) => void;
 };
 
 function toggleValue(list: string[], value: string): string[] {
@@ -39,10 +41,17 @@ export function FormMultiSelect({
   required,
   disabled,
   testID,
+  onOpenChange,
 }: FormMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<RNView>(null);
+
+  const setMenuOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setQuery("");
+    onOpenChange?.(next);
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -64,10 +73,7 @@ export function FormMultiSelect({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => {
-      setOpen(false);
-      setQuery("");
-    };
+    const close = () => setMenuOpen(false);
     if (Platform.OS === "web" && typeof document !== "undefined") {
       const onDocClick = (e: MouseEvent) => {
         const node = rootRef.current as unknown as HTMLElement | null;
@@ -86,16 +92,16 @@ export function FormMultiSelect({
         : `${selectedLabels.slice(0, 2).join(", ")} +${selectedLabels.length - 2} more`;
 
   return (
-    <View style={s.field}>
+    <View style={[s.field, open && s.fieldOpen]}>
       <Text style={s.label}>
         {label}
         {required ? " *" : ""}
       </Text>
-      <View ref={rootRef} style={s.controlWrap}>
+      <View ref={rootRef} style={[s.controlWrap, open && s.controlWrapOpen]}>
         <Pressable
           testID={testID}
           disabled={disabled}
-          onPress={() => setOpen((v) => !v)}
+          onPress={() => setMenuOpen(!open)}
           style={[s.trigger, disabled && s.triggerDisabled, open && s.triggerOpen]}
         >
           <Text
@@ -179,10 +185,14 @@ export function FormMultiSelect({
   );
 }
 
+const MENU_Z = 1000;
+
 const s = StyleSheet.create({
-  field: { flex: 1, minWidth: 0, zIndex: 1 },
+  field: { flex: 1, minWidth: 0 },
+  fieldOpen: { zIndex: MENU_Z, elevation: MENU_Z },
   label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
-  controlWrap: { position: "relative", zIndex: 10 },
+  controlWrap: { position: "relative" },
+  controlWrapOpen: { zIndex: MENU_Z, elevation: MENU_Z },
   trigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -224,9 +234,13 @@ const s = StyleSheet.create({
     borderBottomLeftRadius: radii.md,
     borderBottomRightRadius: radii.md,
     maxHeight: 280,
-    zIndex: 20,
+    zIndex: MENU_Z + 1,
+    elevation: MENU_Z + 1,
     ...Platform.select({
-      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      web: {
+        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)",
+        isolation: "isolate",
+      } as object,
       default: {},
     }),
   },
