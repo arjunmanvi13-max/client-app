@@ -11,8 +11,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { api, useAuth, userHasPermission } from "../../../src/auth";
-import { Permission } from "../../../src/rbac";
+import { api, useAuth } from "../../../src/auth";
+import { isSuperAdminUser } from "../../../src/rbac";
 import { getApiError } from "../../../src/ScreenStates";
 import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, isApprovedLoginUserType, resolveRouteParam, type LoginUserType } from "../../../src/userClassification";
 import { colors, radii, shadow } from "../../../src/theme";
@@ -72,7 +72,7 @@ function permissionsApiError(e: any, fallback: string): string {
 export default function CategoryPermissionsScreen() {
   const router = useRouter();
   const { category: categoryParam } = useLocalSearchParams<{ category?: string | string[] }>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isWide, horizontalPadding } = useBreakpoint();
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [selected, setSelected] = useState<LoginUserType>(APPROVED_LOGIN_USER_TYPES[1]);
@@ -197,13 +197,29 @@ export default function CategoryPermissionsScreen() {
     }
   };
 
-  if (!user) return null;
-  if (!userHasPermission(user, Permission.MANAGE_ACCESS)) {
+  useEffect(() => {
+    if (authLoading || !user || isSuperAdminUser(user)) return;
+    router.replace("/(tabs)/dashboard");
+  }, [authLoading, user, router]);
+
+  if (authLoading || !user) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!isSuperAdminUser(user)) {
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.denied}>
           <Feather name="lock" size={40} color={colors.hint} />
-          <Text style={s.deniedTitle}>Super Admin only</Text>
+          <Text style={s.deniedTitle}>Access denied</Text>
+          <Text style={s.deniedSub}>You do not have permission to view this page.</Text>
+          <TouchableOpacity style={s.deniedBtn} onPress={() => router.replace("/(tabs)/dashboard")}>
+            <Text style={s.deniedBtnTxt}>Go to Dashboard</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -495,4 +511,7 @@ const s = StyleSheet.create({
   link: { color: colors.primary, fontWeight: "700", fontSize: 12 },
   denied: { padding: 40, alignItems: "center", gap: 8 },
   deniedTitle: { fontSize: 16, fontWeight: "700", color: colors.ink },
+  deniedSub: { fontSize: 14, color: colors.muted, textAlign: "center", lineHeight: 20 },
+  deniedBtn: { marginTop: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: radii.md, backgroundColor: colors.primary },
+  deniedBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });

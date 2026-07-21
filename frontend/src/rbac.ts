@@ -111,6 +111,15 @@ export function normalizeRole(raw: string): UserRole {
   return LEGACY_ROLE_ALIASES[key] ?? UserRole.STAFF;
 }
 
+/** True only for the Super Admin login account — not PWS/ALPHA Admin principals. */
+export function isSuperAdminUser(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === UserRole.SUPER_ADMIN || user.role_canonical === UserRole.SUPER_ADMIN) return true;
+  const userType = (user as RBACUser & { user_type?: string }).user_type;
+  if (userType === UserRole.SUPER_ADMIN) return true;
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Role → permission matrix
 // ---------------------------------------------------------------------------

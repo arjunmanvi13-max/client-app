@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth, userHasPermission } from "./auth";
-import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
+import { BusinessEntity, Permission, UserRole, isSuperAdminUser, normalizeRole } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
@@ -41,7 +41,7 @@ export default function CommandCenter() {
   if (!user) return null;
 
   const isSportsAdmin = normalizeRole(user.role) === UserRole.ALPHA_ADMIN;
-  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const isSuper = isSuperAdminUser(user);
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

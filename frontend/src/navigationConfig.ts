@@ -4,7 +4,7 @@
  */
 import type { User } from "./auth";
 import { isCoachUser } from "./coachAccess";
-import { BusinessEntity, Permission, hasPermission } from "./rbac";
+import { BusinessEntity, Permission, hasPermission, isSuperAdminUser } from "./rbac";
 import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
 
 function matchManageLoginUsers(pathname: string): boolean {
@@ -338,7 +338,11 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         label: "Access Control",
         icon: "shield",
         match: (p) => p.startsWith("/admin/permissions") || matchManageLoginUsers(p),
-        permissions: [Permission.MANAGE_ACCESS, Permission.MANAGE_USERS_ROSTERS, Permission.ADD_NEW_TEACHER],
+        permissions: [Permission.MANAGE_USERS_ROSTERS, Permission.ADD_NEW_TEACHER],
+        isVisible: (ctx) =>
+          isSuperAdminUser(ctx.user)
+          || hasPermission(ctx.user, Permission.MANAGE_USERS_ROSTERS)
+          || hasPermission(ctx.user, Permission.ADD_NEW_TEACHER),
         children: [
           {
             id: "permissions",
@@ -346,7 +350,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
             icon: "key",
             href: "/admin/permissions",
             match: matchPrefix(["/admin/permissions"]),
-            permissions: [Permission.MANAGE_ACCESS],
+            isVisible: (ctx) => isSuperAdminUser(ctx.user),
           },
           {
             id: "manage-users",

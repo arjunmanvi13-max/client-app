@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -20,7 +20,7 @@ import { RosterManageList } from "../../../src/RosterManageList";
 /** Approved login user types — Super Admin hub only. */
 function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -31,12 +31,8 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   const canAccessList = canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher);
   const canShowAdd = kind !== "super_admin" && (canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher));
 
-  useEffect(() => {
-    if (!canAccessList) router.replace("/manage");
-  }, [canAccessList, router]);
-
   const load = useCallback(async () => {
-    if (!canAccessList) return;
+    if (authLoading || !canAccessList) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -55,9 +51,40 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
       setItems([]);
       setLoadError(e?.response?.data?.detail || "Failed to load accounts");
     } finally { setLoading(false); }
-  }, [kind, canAccessList, search]);
+  }, [authLoading, kind, canAccessList, search]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color={catalog.tint} style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!canAccessList) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="list-back">
+            <Feather name="chevron-left" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={s.h1}>{catalog.displayName}</Text>
+            <Text style={s.sub}>Access restricted</Text>
+          </View>
+        </View>
+        <View style={s.blockedBox}>
+          <Feather name="shield-off" size={36} color="#991B1B" />
+          <Text style={s.blockedTitle}>Permission required</Text>
+          <Text style={s.blockedText}>
+            You need Manage Users &amp; Rosters or Add New Teacher enabled for your role. Ask a Super Admin to update Permissions under System &amp; Settings.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -119,7 +146,9 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
             onPress={() => router.push(`/manage/${kind}/${it.id}`)}
           >
             <View style={[s.avatar, { backgroundColor: isDeact ? "#94A3B8" : catalog.tint }]}>
-              <Text style={s.avatarTxt}>{it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("")}</Text>
+              <Text style={s.avatarTxt}>
+                {(it.name || "?").split(" ").filter(Boolean).map((n: string) => n[0]).slice(0, 2).join("") || "?"}
+              </Text>
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

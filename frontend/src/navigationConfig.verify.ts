@@ -127,6 +127,12 @@ function run() {
   const pwsAdmin = mockUser({ role: "pws_admin", organization: "PWS" });
   const pwsAdminLeaves = allLeafIds(filterNavigationGroups({ user: pwsAdmin }));
   assert(!pwsAdminLeaves.includes("players"), "PWS Admin should not see Players without ALPHA scope");
+  assert(!pwsAdminLeaves.includes("permissions"), "PWS Admin should not see Permissions nav item");
+
+  const principal = mockUser({ role: "principal", organization: "PWS", permissions_rbac: { MANAGE_USERS_ROSTERS: true } as any });
+  const principalLeaves = allLeafIds(filterNavigationGroups({ user: principal }));
+  assert(!principalLeaves.includes("permissions"), "Principal should not see Permissions nav item");
+  assert(principalLeaves.includes("manage-users"), "Principal with manage-users should still see Manage Users & Rosters");
 
   const alphaAdmin = mockUser({ role: "alpha_admin", organization: "ALPHA" });
   const alphaAdminLeaves = allLeafIds(filterNavigationGroups({ user: alphaAdmin }));

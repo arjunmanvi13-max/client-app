@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { api } from "./auth";
+import { api, useAuth } from "./auth";
+import { isSuperAdminUser } from "./rbac";
 import { enabledModuleLabels, type PreviewCatalogGroup } from "./categoryPermissionsUtil";
 import { colors, radii } from "./theme";
 import type { LoginUserType } from "./userClassification";
@@ -14,6 +15,8 @@ type Props = {
 
 export function CategoryPermissionsPreview({ userType, displayName }: Props) {
   const router = useRouter();
+  const { user } = useAuth();
+  const canEditCategory = isSuperAdminUser(user);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -77,14 +80,16 @@ export function CategoryPermissionsPreview({ userType, displayName }: Props) {
                   </View>
                 ))
               )}
-              <TouchableOpacity
-                style={s.linkBtn}
-                onPress={() => router.push(`/admin/permissions?category=${userType}`)}
-                testID="edit-category-permissions-link"
-              >
-                <Feather name="external-link" size={12} color={colors.primary} />
-                <Text style={s.linkTxt}>Edit Category Permissions</Text>
-              </TouchableOpacity>
+              {canEditCategory ? (
+                <TouchableOpacity
+                  style={s.linkBtn}
+                  onPress={() => router.push(`/admin/permissions?category=${userType}`)}
+                  testID="edit-category-permissions-link"
+                >
+                  <Feather name="external-link" size={12} color={colors.primary} />
+                  <Text style={s.linkTxt}>Edit Category Permissions</Text>
+                </TouchableOpacity>
+              ) : null}
             </>
           )}
         </View>
