@@ -50,7 +50,10 @@ import {
 } from "../../../src/TeacherUserFormFields";
 import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
 import { UnsavedChangesModal } from "../../../src/components/forms/UnsavedChangesModal";
-import { DeactivateUserConfirmModal } from "../../../src/components/forms/DeactivateUserConfirmModal";
+import {
+  DeactivateUserConfirmModal,
+  type UserStatusConfirmAction,
+} from "../../../src/components/forms/DeactivateUserConfirmModal";
 import { TeacherProfilePdfModal } from "../../../src/components/forms/TeacherProfilePdfModal";
 import {
   buildTeacherFormSnapshot,
@@ -139,21 +142,6 @@ function confirmAction(title: string, message: string, onConfirm: () => void) {
   }
 }
 
-function confirmCoachDeactivation(onConfirm: () => void | Promise<void>) {
-  const message = "Are you sure you want to deactivate?";
-  if (Platform.OS === "web") {
-    // eslint-disable-next-line no-undef
-    if (typeof window !== "undefined" && window.confirm(message)) {
-      void onConfirm();
-    }
-  } else {
-    Alert.alert("", message, [
-      { text: "No", style: "cancel" },
-      { text: "Yes", style: "destructive", onPress: () => { void onConfirm(); } },
-    ]);
-  }
-}
-
 function navigateToTeachersList(router: ReturnType<typeof useRouter>) {
   const href = "/manage/teacher";
   const go = () => router.replace(href);
@@ -164,21 +152,9 @@ function navigateToTeachersList(router: ReturnType<typeof useRouter>) {
   go();
 }
 
-function navigateToAlphaCoachesList(router: ReturnType<typeof useRouter>) {
-  const href = "/manage/alpha_coach";
-  const go = () => {
-    router.replace(href);
-  };
-  // Defer on web so navigation runs after the confirm dialog closes.
-  if (Platform.OS === "web") {
-    setTimeout(go, 0);
-    return;
-  }
-  go();
-}
-
-function navigateToManageUsersHub(router: ReturnType<typeof useRouter>) {
-  const go = () => router.replace("/manage");
+function navigateToManageUserList(router: ReturnType<typeof useRouter>, kind: string) {
+  const href = `/manage/${kind}`;
+  const go = () => router.replace(href);
   if (Platform.OS === "web") {
     setTimeout(go, 0);
     return;
@@ -221,6 +197,7 @@ export default function ManageEdit() {
   const isStaffKind = kindParam === "staff";
   const isStudentKind = kindParam === "student";
   const displayTitle = typeCatalog?.displayName || rosterMeta?.label || kindParam || "User";
+  const canConfirmLoginUserStatusChange = isLoginUserKind || isCoachUserForm;
 
   useEffect(() => {
     if (kindRaw === undefined) return;
@@ -369,8 +346,8 @@ export default function ManageEdit() {
   const [teacherAssignmentsReady, setTeacherAssignmentsReady] = useState(false);
   const [unsavedModalVisible, setUnsavedModalVisible] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
-  const [deactivateModalVisible, setDeactivateModalVisible] = useState(false);
-  const [deactivateBusy, setDeactivateBusy] = useState(false);
+  const [loginUserStatusModal, setLoginUserStatusModal] = useState<UserStatusConfirmAction | null>(null);
+  const [loginUserStatusBusy, setLoginUserStatusBusy] = useState(false);
   const [pdfPreviewVisible, setPdfPreviewVisible] = useState(false);
   const [savedTeacherId, setSavedTeacherId] = useState<string | null>(null);
   const skipDirtyGuard = useRef(false);
@@ -1123,8 +1100,8 @@ export default function ManageEdit() {
   const onDelete = () => {
     if (isNew) return;
     if (isTeacherUserForm) return;
-    if (isPwsAdminKind && userStatus === "active" && isSuper) {
-      setDeactivateModalVisible(true);
+    if (canConfirmLoginUserStatusChange && userStatus === "active" && isSuper) {
+      setLoginUserStatusModal("deactivate");
       return;
     }
     confirmAction("Delete?", `This ${displayTitle} account will be permanently removed.`, async () => {
@@ -1164,29 +1141,33 @@ export default function ManageEdit() {
     }
   };
 
-  const onPwsAdminDeactivate = () => {
-    if (!isPwsAdminKind || userStatus !== "active" || isNew || !isSuper) return;
-    setDeactivateModalVisible(true);
+  const onLoginUserStatusAction = (action: UserStatusConfirmAction) => {
+    if (!canConfirmLoginUserStatusChange || isNew || !isSuper) return;
+    if (action === "deactivate" && userStatus !== "active") return;
+    if (action === "reactivate" && userStatus !== "deactivated") return;
+    setLoginUserStatusModal(action);
   };
 
-  const onConfirmPwsAdminDeactivate = async () => {
-    if (deactivateBusy) return;
-    setDeactivateBusy(true);
+  const onConfirmLoginUserStatusAction = async () => {
+    if (!loginUserStatusModal || loginUserStatusBusy) return;
+    setLoginUserStatusBusy(true);
+    const endpoint = loginUserStatusModal === "deactivate" ? "deactivate" : "activate";
     try {
-      await api.post(`/users/${id}/deactivate`);
+      await api.post(`/users/${id}/${endpoint}`);
       skipDirtyGuard.current = true;
-      setDeactivateModalVisible(false);
-      navigateToManageUsersHub(router);
+      setLoginUserStatusModal(null);
+      navigateToManageUserList(router, kindParam);
     } catch (e: any) {
-      showError("Error", e?.response?.data?.detail || "Failed to deactivate user");
+      const fallback = loginUserStatusModal === "deactivate" ? "Failed to deactivate user" : "Failed to reactivate user";
+      showError("Error", e?.response?.data?.detail || fallback);
     } finally {
-      setDeactivateBusy(false);
+      setLoginUserStatusBusy(false);
     }
   };
 
-  const onCancelPwsAdminDeactivate = () => {
-    if (deactivateBusy) return;
-    setDeactivateModalVisible(false);
+  const onCancelLoginUserStatusAction = () => {
+    if (loginUserStatusBusy) return;
+    setLoginUserStatusModal(null);
   };
 
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
@@ -1262,30 +1243,7 @@ export default function ManageEdit() {
               setPermMap={setPermMap}
               userStatus={userStatus}
               onToggleUserStatus={!isNew && isSuper ? () => {
-                if (userStatus === "active") {
-                  confirmCoachDeactivation(async () => {
-                    try {
-                      await api.post(`/users/${id}/deactivate`);
-                      navigateToAlphaCoachesList(router);
-                    } catch (e: any) {
-                      showError("Error", e?.response?.data?.detail || "Failed to deactivate coach");
-                    }
-                  });
-                  return;
-                }
-                confirmAction(
-                  `Reactivate ${displayTitle}?`,
-                  "Reactivate this account. Login restored; user will appear in lists again.",
-                  async () => {
-                    try {
-                      await api.post(`/users/${id}/activate`);
-                      setUserStatus("active");
-                      Alert.alert("Done", "Coach reactivated.");
-                    } catch (e: any) {
-                      showError("Error", e?.response?.data?.detail || "Failed to reactivate coach");
-                    }
-                  },
-                );
+                onLoginUserStatusAction(userStatus === "active" ? "deactivate" : "reactivate");
               } : undefined}
               resetPwdVal={resetPwdVal}
               setResetPwdVal={setResetPwdVal}
@@ -1602,8 +1560,8 @@ export default function ManageEdit() {
                     testID={userStatus === "active" ? "btn-user-deactivate" : "btn-user-activate"}
                     style={[s.statusBtn, userStatus === "active" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#DCFCE7" }]}
                     onPress={() => {
-                      if (isPwsAdminKind && userStatus === "active") {
-                        onPwsAdminDeactivate();
+                      if (canConfirmLoginUserStatusChange) {
+                        onLoginUserStatusAction(userStatus === "active" ? "deactivate" : "reactivate");
                         return;
                       }
                       const next = userStatus === "active" ? "deactivated" : "active";
@@ -1874,10 +1832,11 @@ export default function ManageEdit() {
       />
 
       <DeactivateUserConfirmModal
-        visible={deactivateModalVisible}
-        loading={deactivateBusy}
-        onYes={() => { void onConfirmPwsAdminDeactivate(); }}
-        onNo={onCancelPwsAdminDeactivate}
+        visible={loginUserStatusModal !== null}
+        action={loginUserStatusModal ?? "deactivate"}
+        loading={loginUserStatusBusy}
+        onYes={() => { void onConfirmLoginUserStatusAction(); }}
+        onNo={onCancelLoginUserStatusAction}
       />
 
       <TeacherProfilePdfModal

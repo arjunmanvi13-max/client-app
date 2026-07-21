@@ -4,40 +4,61 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { colors, radii, shadow, spacing } from "../../theme";
 
+export type UserStatusConfirmAction = "deactivate" | "reactivate";
+
 type Props = {
   visible: boolean;
+  action: UserStatusConfirmAction;
   loading?: boolean;
   onYes: () => void;
   onNo: () => void;
 };
 
-export function DeactivateUserConfirmModal({ visible, loading, onYes, onNo }: Props) {
+const COPY: Record<UserStatusConfirmAction, { message: string; icon: "user-x" | "user-check"; yesLabel: string; noLabel: string }> = {
+  deactivate: {
+    message: "Are you sure you want to Deactivate the user?",
+    icon: "user-x",
+    yesLabel: "Yes, deactivate user",
+    noLabel: "No, cancel deactivation",
+  },
+  reactivate: {
+    message: "Are you sure you want to Reactivate the user?",
+    icon: "user-check",
+    yesLabel: "Yes, reactivate user",
+    noLabel: "No, cancel reactivation",
+  },
+};
+
+export function DeactivateUserConfirmModal({ visible, action, loading, onYes, onNo }: Props) {
+  const copy = COPY[action];
+  const isReactivate = action === "reactivate";
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={loading ? undefined : onNo}>
       <Pressable style={s.backdrop} onPress={loading ? undefined : onNo}>
         <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
-          <View style={s.iconWrap}>
-            <Feather name="user-x" size={22} color={colors.danger} />
+          <View style={[s.iconWrap, isReactivate && s.iconWrapSuccess]}>
+            <Feather name={copy.icon} size={22} color={isReactivate ? colors.success : colors.danger} />
           </View>
-          <Text style={s.message}>Are you sure you want to Deactivate the user?</Text>
+          <Text style={s.message}>{copy.message}</Text>
           <View style={s.actions}>
             <Pressable
-              testID="deactivate-user-no-btn"
+              testID={`${action}-user-no-btn`}
               style={[s.noBtn, loading && s.btnDisabled]}
               onPress={onNo}
               disabled={loading}
               accessibilityRole="button"
-              accessibilityLabel="No, cancel deactivation"
+              accessibilityLabel={copy.noLabel}
             >
               <Text style={s.noTxt}>No</Text>
             </Pressable>
             <Pressable
-              testID="deactivate-user-yes-btn"
-              style={[s.yesBtn, loading && s.btnDisabled]}
+              testID={`${action}-user-yes-btn`}
+              style={[s.yesBtn, isReactivate && s.yesBtnSuccess, loading && s.btnDisabled]}
               onPress={onYes}
               disabled={loading}
               accessibilityRole="button"
-              accessibilityLabel="Yes, deactivate user"
+              accessibilityLabel={copy.yesLabel}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#fff" />
@@ -76,6 +97,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
+  },
+  iconWrapSuccess: {
+    backgroundColor: colors.successSoft,
   },
   message: {
     fontSize: 16,
@@ -116,6 +140,9 @@ const s = StyleSheet.create({
       web: { cursor: "pointer" } as object,
       default: {},
     }),
+  },
+  yesBtnSuccess: {
+    backgroundColor: colors.success,
   },
   yesTxt: { fontSize: 14, fontWeight: "800", color: "#fff" },
   btnDisabled: { opacity: 0.65 },
