@@ -21,6 +21,7 @@ import {
 import { FormSelect } from "../../../src/components/forms/FormSelect";
 import { FormMultiSelect } from "../../../src/components/forms/FormMultiSelect";
 import { FormSearchSelect } from "../../../src/components/forms/FormSearchSelect";
+import { inactiveUserSuffix } from "../../../src/userStatus";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
 
@@ -694,7 +695,10 @@ export default function AcademicAdmin() {
                   <Text style={s.hint}>No class assignments yet.</Text>
                 ) : groupedAssignments.map((group) => (
                   <View key={group.teacher?.id || group.teacher?.name} style={s.teacherGroup}>
-                    <Text style={s.assignName}>{group.teacher?.name || "Teacher"}</Text>
+                    <Text style={s.assignName}>
+                      {group.teacher?.name || "Teacher"}
+                      {inactiveUserSuffix(group.teacher)}
+                    </Text>
                     {group.rows.map((row) => (
                       <View key={`${row.sectionLabel}-${row.subjects}`} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
                         <View style={{ flex: 1 }}>

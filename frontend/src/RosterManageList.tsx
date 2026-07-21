@@ -96,7 +96,9 @@ export function RosterManageList({ kind }: { kind: string }) {
     setLoading(true);
     try {
       if (meta.isUser) {
-        const { data } = await api.get("/users", { params: { role: kind } });
+        const params: Record<string, string | boolean> = { role: kind };
+        if (isTeacherList) params.include_deactivated = true;
+        const { data } = await api.get("/users", { params });
         let rows = data;
         if (search.trim() && !isTeacherList) {
           const q = search.trim().toLowerCase();

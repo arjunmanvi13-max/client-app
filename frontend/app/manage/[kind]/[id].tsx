@@ -436,7 +436,9 @@ export default function ManageEdit() {
         if (isUserKind) {
           let u: any = null;
           try {
-            const params = userTypeKind ? { user_type: userTypeKind } : { role: kindParam };
+            const params = userTypeKind
+              ? { user_type: userTypeKind, include_deactivated: true }
+              : { role: kindParam, include_deactivated: true };
             const { data: list } = await api.get("/users", { params });
             u = (Array.isArray(list) ? list : []).find((x: any) => x.id === id);
           } catch {
@@ -448,7 +450,7 @@ export default function ManageEdit() {
               u = data;
             } catch (e: any) {
               if (e?.response?.status === 405 || e?.response?.status === 404) {
-                const { data: all } = await api.get("/users");
+                const { data: all } = await api.get("/users", { params: { include_deactivated: true } });
                 u = (Array.isArray(all) ? all : []).find((x: any) => x.id === id);
               } else {
                 throw e;
@@ -456,7 +458,7 @@ export default function ManageEdit() {
             }
           }
           if (!u && userTypeKind) {
-            const { data: all } = await api.get("/users");
+            const { data: all } = await api.get("/users", { params: { include_deactivated: true } });
             u = filterUsersByType(Array.isArray(all) ? all : [], userTypeKind).find((x: any) => x.id === id);
           }
           if (u) {

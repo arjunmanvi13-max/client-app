@@ -1,3 +1,6 @@
+/** Task assignee role filter chips and list filtering. */
+import { isActiveUser } from "./userStatus";
+
 export type AssigneeRoleFilter =
   | "all"
   | "teachers"
@@ -19,6 +22,8 @@ export type AssigneeUser = {
   role?: string;
   organization?: string;
   department?: string;
+  status?: string;
+  is_active?: boolean;
 };
 
 function normalizeRole(role?: string): string {
@@ -65,6 +70,7 @@ export function filterAssigneeUsers(
 ): AssigneeUser[] {
   const q = query.trim().toLowerCase();
   return users.filter((user) => {
+    if (!isActiveUser(user)) return false;
     if (!matchesAssigneeRoleFilter(user, roleFilter)) return false;
     if (!q) return true;
     return assigneeSearchText(user).includes(q);

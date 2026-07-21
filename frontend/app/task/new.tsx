@@ -13,6 +13,7 @@ import {
   type AssigneeRoleFilter,
   type AssigneeUser,
 } from "../../src/taskAssigneeFilters";
+import { filterActiveUsers } from "../../src/userStatus";
 
 const PRIORITIES = ["low", "medium", "high"] as const;
 const ENTITIES = ["pws", "alpha", "both"] as const;
@@ -36,7 +37,7 @@ export default function NewTask() {
   useEffect(() => {
     (async () => {
       const { data } = await api.get("/users/directory");
-      setUsers(data.filter((u: AssigneeUser) => !NON_ASSIGNABLE_ROLES.includes(u.role || "")));
+      setUsers(filterActiveUsers(data.filter((u: AssigneeUser) => !NON_ASSIGNABLE_ROLES.includes(u.role || ""))));
     })();
   }, []);
 

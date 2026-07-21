@@ -36,7 +36,7 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
     setLoading(true);
     setLoadError(null);
     try {
-      const { data } = await api.get("/users", { params: { user_type: kind } });
+      const { data } = await api.get("/users", { params: { user_type: kind, include_deactivated: true } });
       let rows = filterUsersByType(Array.isArray(data) ? data : [], kind);
       if (search.trim()) {
         const q = search.trim().toLowerCase();
