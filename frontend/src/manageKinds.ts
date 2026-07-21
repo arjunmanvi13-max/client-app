@@ -71,11 +71,27 @@ export function getManageListMeta(kind: string): ManageListMeta | null {
   return MANAGE_LIST_META[kind] || null;
 }
 
+/** Expo static export + Vercel rewrite can leave literal `[kind]` / `[id]` in search params. */
+const ROUTE_PARAM_PLACEHOLDER = /^\[(kind|id)\]$/;
+
+function kindFromPathname(pathname: string): string {
+  return pathname.match(/\/manage\/([^/?]+)/)?.[1] || "";
+}
+
+function idFromPathname(pathname: string): string {
+  return pathname.match(/\/manage\/[^/?]+\/([^/?]+)/)?.[1] || "";
+}
+
 export function resolveManageKind(kindParam: string, pathname: string): string {
-  const fromParam = (kindParam || "").trim();
-  if (fromParam) return fromParam;
-  const match = pathname.match(/\/manage\/([^/?]+)/);
-  return match?.[1] || "";
+  const trimmed = (kindParam || "").trim();
+  if (trimmed && !ROUTE_PARAM_PLACEHOLDER.test(trimmed)) return trimmed;
+  return kindFromPathname(pathname);
+}
+
+export function resolveManageId(idParam: string, pathname: string): string {
+  const trimmed = (idParam || "").trim();
+  if (trimmed && !ROUTE_PARAM_PLACEHOLDER.test(trimmed)) return trimmed;
+  return idFromPathname(pathname);
 }
 
 export function isDirectoryRosterKind(kind: string): boolean {

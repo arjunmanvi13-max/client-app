@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { colors, formColors, radii, spacing } from "../../theme";
+import { colors, radii, spacing } from "../../theme";
 
 type FormPageHeaderProps = {
   breadcrumb: string;
@@ -114,7 +114,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 11,
     borderRadius: radii.md,
-    backgroundColor: formColors.primary,
+    backgroundColor: colors.accent,
     ...Platform.select({
       web: { cursor: "pointer", transition: "background-color 0.15s ease" } as object,
       default: {},

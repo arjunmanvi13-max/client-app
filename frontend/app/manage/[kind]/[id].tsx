@@ -22,7 +22,7 @@ import {
   type PwsAdminDesignation,
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
-import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
+import { getManageListMeta, resolveManageId, resolveManageKind } from "../../../src/manageKinds";
 import {
   DATE_PLACEHOLDER,
   dateHelpText,
@@ -189,7 +189,7 @@ export default function ManageEdit() {
   const { kind: kindRaw, id: idRaw } = useLocalSearchParams<{ kind: string | string[]; id: string | string[] }>();
   const pathname = usePathname() || "";
   const kindParam = resolveManageKind(resolveRouteParam(kindRaw), pathname);
-  const id = resolveRouteParam(idRaw);
+  const id = resolveManageId(resolveRouteParam(idRaw), pathname);
   const { user } = useAuth();
   const router = useRouter();
   const navigation = useNavigation();

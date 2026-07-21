@@ -71,10 +71,10 @@ function NavRow({ item, depth, pathname, collapsed, openItems, onToggleItem, onN
           ]}
         >
           <View style={[styles.itemIcon, active && styles.itemIconActive]}>
-            <Feather name={item.icon} size={16} color={active ? "#fff" : colors.muted} />
+            <Feather name={item.icon} size={16} color={active ? "#fff" : colors.sidebarTextMuted} />
           </View>
           <Text style={[styles.itemTxt, active && styles.itemTxtActive]} numberOfLines={1}>{item.label}</Text>
-          <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.muted} />
+          <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.sidebarTextMuted} />
         </Pressable>
         {isOpen && children.map((child) => (
           <NavRow
@@ -109,7 +109,7 @@ function NavRow({ item, depth, pathname, collapsed, openItems, onToggleItem, onN
       ]}
     >
       <View style={[styles.itemIcon, leafActive && styles.itemIconActive]}>
-        <Feather name={item.icon} size={16} color={leafActive ? "#fff" : colors.muted} />
+        <Feather name={item.icon} size={16} color={leafActive ? "#fff" : colors.sidebarTextMuted} />
       </View>
       <Text style={[styles.itemTxt, leafActive && styles.itemTxtActive]} numberOfLines={1}>{item.label}</Text>
     </Pressable>
@@ -209,7 +209,7 @@ export function Sidebar() {
                 ]}
               >
                 <View style={[styles.itemIcon, active && styles.itemIconActive]}>
-                  <Feather name={n.icon} size={18} color={active ? "#fff" : colors.muted} />
+                  <Feather name={n.icon} size={18} color={active ? "#fff" : colors.sidebarTextMuted} />
                 </View>
               </Pressable>
             );
@@ -228,10 +228,10 @@ export function Sidebar() {
                   style={({ hovered }: any) => [styles.groupHeader, hovered && styles.groupHeaderHover, groupActive && styles.groupHeaderActive]}
                 >
                   <View style={[styles.groupIcon, groupActive && styles.groupIconActive]}>
-                    <Feather name={g.icon} size={14} color={groupActive ? colors.primary : colors.muted} />
+                    <Feather name={g.icon} size={14} color={groupActive ? colors.accent : colors.sidebarTextMuted} />
                   </View>
-                  <Text style={[styles.groupLabel, groupActive && { color: colors.primary }]} numberOfLines={2}>{g.label}</Text>
-                  <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.muted} />
+                  <Text style={[styles.groupLabel, groupActive && styles.groupLabelActive]} numberOfLines={2}>{g.label}</Text>
+                  <Feather name={isOpen ? "chevron-down" : "chevron-right"} size={14} color={colors.sidebarTextMuted} />
                 </Pressable>
                 {isOpen && (
                   <View style={styles.groupBody}>
@@ -261,12 +261,12 @@ export function Sidebar() {
           style={styles.footerBtn}
           onPress={() => setCollapsed((c) => !c)}
         >
-          <Feather name={collapsed ? "chevrons-right" : "chevrons-left"} size={16} color={colors.muted} />
+          <Feather name={collapsed ? "chevrons-right" : "chevrons-left"} size={16} color={colors.sidebarTextMuted} />
           {!collapsed && <Text style={styles.footerTxt}>Collapse</Text>}
         </TouchableOpacity>
         <TouchableOpacity
           testID="sidebar-logout"
-          style={[styles.footerBtn, { backgroundColor: colors.dangerSoft }]}
+          style={[styles.footerBtn, styles.footerBtnDanger]}
           onPress={async () => {
             await logout();
             router.replace("/login");
@@ -282,9 +282,9 @@ export function Sidebar() {
 
 const styles = StyleSheet.create({
   sidebar: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.primary,
     borderRightWidth: 1,
-    borderRightColor: colors.border,
+    borderRightColor: colors.sidebarBorder,
     height: "100%",
     paddingTop: 16,
     paddingBottom: 16,
@@ -296,24 +296,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
+    borderBottomColor: colors.sidebarBorder,
   },
   brandLogos: { flexShrink: 0 },
-  brandTitle: { color: colors.ink, fontWeight: "800", fontSize: 14, letterSpacing: -0.2 },
-  brandSub: { color: colors.muted, fontSize: 11, marginTop: 1 },
+  brandTitle: { color: "#FFFFFF", fontWeight: "800", fontSize: 14, letterSpacing: -0.2 },
+  brandSub: { color: colors.sidebarTextMuted, fontSize: 11, marginTop: 1 },
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     margin: 12,
     padding: 10,
-    backgroundColor: colors.primarySofter,
+    backgroundColor: colors.sidebarHover,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.sidebarBorder,
   },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" },
   avatarTxt: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  profileName: { fontWeight: "700", color: colors.ink, fontSize: 13 },
-  profileRole: { color: colors.muted, fontSize: 11, marginTop: 2, textTransform: "capitalize" },
+  profileName: { fontWeight: "700", color: colors.sidebarText, fontSize: 13 },
+  profileRole: { color: colors.sidebarTextMuted, fontSize: 11, marginTop: 2, textTransform: "capitalize" },
   group: { marginBottom: 2 },
   groupHeader: {
     flexDirection: "row",
@@ -325,14 +327,16 @@ const styles = StyleSheet.create({
     marginTop: 2,
     borderRadius: 8,
   },
-  groupHeaderHover: { backgroundColor: colors.borderSoft },
-  groupHeaderActive: { backgroundColor: colors.primarySofter },
+  groupHeaderHover: { backgroundColor: colors.sidebarHover },
+  groupHeaderActive: { backgroundColor: colors.sidebarActive },
   groupIcon: {
-    width: 22, height: 22, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: colors.borderSoft,
+    width: 22, height: 22, alignItems: "center", justifyContent: "center", borderRadius: 6,
+    backgroundColor: colors.sidebarHover,
   },
-  groupIconActive: { backgroundColor: colors.primarySoft },
-  groupLabel: { flex: 1, color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
-  groupBody: { paddingLeft: 4, marginTop: 1, borderLeftWidth: 1, borderLeftColor: colors.borderSoft, marginLeft: 18 },
+  groupIconActive: { backgroundColor: "rgba(0,168,232,0.28)" },
+  groupLabel: { flex: 1, color: colors.sidebarTextMuted, fontSize: 10, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
+  groupLabelActive: { color: colors.accent },
+  groupBody: { paddingLeft: 4, marginTop: 1, borderLeftWidth: 1, borderLeftColor: colors.sidebarBorder, marginLeft: 18 },
   item: {
     flexDirection: "row",
     alignItems: "center",
@@ -345,18 +349,18 @@ const styles = StyleSheet.create({
   },
   itemNested: { marginLeft: 8 },
   itemDeep: { marginLeft: 14 },
-  itemHover: { backgroundColor: colors.primarySofter },
-  itemActive: { backgroundColor: colors.primarySoft },
-  itemParentActive: { backgroundColor: "#EEF2FF" },
+  itemHover: { backgroundColor: colors.sidebarHover },
+  itemActive: { backgroundColor: colors.accent },
+  itemParentActive: { backgroundColor: colors.sidebarActive },
   itemIcon: { width: 24, height: 24, alignItems: "center", justifyContent: "center", borderRadius: 6 },
-  itemIconActive: { backgroundColor: colors.primary },
-  itemTxt: { color: colors.ink2, fontWeight: "600", fontSize: 13, flex: 1 },
-  itemTxtActive: { color: colors.primary, fontWeight: "800" },
+  itemIconActive: { backgroundColor: "rgba(255,255,255,0.16)" },
+  itemTxt: { color: colors.sidebarText, fontWeight: "600", fontSize: 13, flex: 1 },
+  itemTxtActive: { color: "#FFFFFF", fontWeight: "800" },
   footer: {
     paddingHorizontal: 8,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
+    borderTopColor: colors.sidebarBorder,
     gap: 6,
   },
   footerBtn: {
@@ -366,7 +370,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.borderSoft,
+    backgroundColor: colors.sidebarHover,
   },
-  footerTxt: { color: colors.muted, fontSize: 12, fontWeight: "700" },
+  footerBtnDanger: { backgroundColor: "rgba(255,107,107,0.12)" },
+  footerTxt: { color: colors.sidebarTextMuted, fontSize: 12, fontWeight: "700" },
 });

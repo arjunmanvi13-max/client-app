@@ -1,19 +1,29 @@
 /**
  * Centralised theme tokens for PWS & ALPHA Tracker.
- * Blue/white palette aligned with the ALPHA Sports Academy logo.
+ * PWS deep blue (#1B3B6F) + ALPHA electric cyan (#00A8E8) on a slate canvas.
  */
+export const brand = {
+  /** PWS — sidebar, headings, structural chrome */
+  primary: "#1B3B6F",
+  /** ALPHA — buttons, active nav, filters, tabs */
+  secondary: "#00A8E8",
+  success: "#00C49F",
+  alert: "#FF6B6B",
+} as const;
+
 export const colors = {
   // Brand
-  primary: "#1E40AF",        // deep royal blue
-  primaryHover: "#1D4ED8",
-  primarySoft: "#DBEAFE",    // surface tint
-  primarySofter: "#EFF6FF",  // even lighter surface
-  primaryDeeper: "#1E3A8A",  // for headers / drawers
-  accent: "#0EA5E9",         // sky blue
-  accentSoft: "#E0F2FE",
-  brandGradient: ["#0891B2", "#1D4ED8", "#1E3A8A"] as const,
+  primary: brand.primary,
+  primaryHover: "#15325E",
+  primarySoft: "#D9E4F2",
+  primarySofter: "#EEF3F9",
+  primaryDeeper: "#142D52",
+  accent: brand.secondary,
+  accentHover: "#0096D1",
+  accentSoft: "#E0F7FC",
+  brandGradient: [brand.secondary, brand.primary, "#142D52"] as const,
 
-  // Greys
+  // Neutrals (slate canvas)
   ink: "#0F172A",
   ink2: "#1E293B",
   muted: "#475569",
@@ -21,33 +31,41 @@ export const colors = {
   hint: "#94A3B8",
   border: "#E2E8F0",
   borderSoft: "#F1F5F9",
-  bg: "#F4F5F7",
+  bg: "#F8FAFC",
   surface: "#FFFFFF",
   surface2: "#F8FAFC",
 
   // Status
-  success: "#10B981",
-  successSoft: "#D1FAE5",
-  warning: "#F59E0B",
-  warningSoft: "#FEF3C7",
-  danger: "#EF4444",
-  dangerSoft: "#FEE2E2",
-  info: "#0EA5E9",
-  infoSoft: "#E0F2FE",
+  success: brand.success,
+  successSoft: "#E0FBF6",
+  warning: brand.alert,
+  warningSoft: "#FFE8E8",
+  danger: brand.alert,
+  dangerSoft: "#FFE8E8",
+  info: brand.secondary,
+  infoSoft: "#E0F7FC",
+
+  /** Text on PWS sidebar surfaces */
+  sidebarText: "#E2E8F0",
+  sidebarTextMuted: "#94A3B8",
+  sidebarBorder: "rgba(255,255,255,0.12)",
+  sidebarHover: "rgba(255,255,255,0.08)",
+  sidebarActive: "rgba(0,168,232,0.18)",
 } as const;
 
 export const radii = { sm: 8, md: 12, lg: 14, xl: 16, xxl: 20, pill: 999 } as const;
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
 
-/** Polished form surfaces — aligned with dashboard Add Student spec. */
+/** Form surfaces — action buttons use ALPHA secondary accent. */
 export const formColors = {
-  primary: "#002060",
-  primaryHover: "#001A4D",
-  primarySoft: "#E8EEF8",
-  pageBg: "#F5F7FA",
-  danger: "#FF4D4D",
-  dangerSoft: "#FFF0F0",
+  primary: brand.secondary,
+  primaryHover: "#0096D1",
+  primarySoft: "#E0F7FC",
+  pageBg: colors.bg,
+  danger: brand.alert,
+  dangerSoft: "#FFE8E8",
 } as const;
+
 export const shadow = {
   sm: { shadowColor: "#0F172A", shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   md: { shadowColor: "#0F172A", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 },

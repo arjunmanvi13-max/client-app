@@ -3,6 +3,7 @@ import { Feather } from "@expo/vector-icons";
 import { useAuth } from "../../src/auth";
 import { ActivityIndicator, View } from "react-native";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { colors } from "../../src/theme";
 
 export default function TabsLayout() {
   const { user, loading } = useAuth();
@@ -10,8 +11,8 @@ export default function TabsLayout() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F4F5F7" }}>
-        <ActivityIndicator size="large" color="#1E40AF" />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -27,11 +28,11 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#1E40AF",
-        tabBarInactiveTintColor: "#94A3B8",
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.hint,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E2E8F0",
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           height: 70,
           paddingTop: 8,
           paddingBottom: 14,
