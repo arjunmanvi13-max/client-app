@@ -26,11 +26,10 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const catalog = CATALOG_BY_CODE[kind];
-  const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
-    || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
   const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
-  const canAccessList = isSuper || (kind === UserRole.PWS_TEACHER && canAddTeacher);
-  const canShowAdd = kind !== "super_admin" && (isSuper || (kind === UserRole.PWS_TEACHER && canAddTeacher));
+  const canAccessList = canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher);
+  const canShowAdd = kind !== "super_admin" && (canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher));
 
   useEffect(() => {
     if (!canAccessList) router.replace("/manage");

@@ -11,12 +11,12 @@ export default function ManageHub() {
   const { user } = useAuth();
   if (!user) return null;
 
-  const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
   const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
-  const canAccessHub = isSuper || canAddTeacher;
+  const canAccessHub = canManageUsersRosters || canAddTeacher;
 
   const visibleTypes = USER_TYPE_CATALOG.filter((item) => {
-    if (isSuper) return true;
+    if (canManageUsersRosters) return true;
     return canAddTeacher && item.code === UserRole.PWS_TEACHER;
   });
 
@@ -36,7 +36,7 @@ export default function ManageHub() {
           <Feather name="shield-off" size={36} color="#94A3B8" />
           <Text style={s.emptyTitle}>Access restricted</Text>
           <Text style={s.emptyText}>
-            Manage Users &amp; Rosters is restricted to Super Admin, or users with Add New Teacher permission for teacher provisioning.
+            Manage Users &amp; Rosters requires the Manage Users &amp; Rosters permission, or Add New Teacher for teacher provisioning only.
           </Text>
         </View>
       </SafeAreaView>
@@ -52,7 +52,7 @@ export default function ManageHub() {
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>Manage Users & Rosters</Text>
           <Text style={s.sub}>
-            {isSuper ? "Approved login user types only" : "Create PWS teacher login accounts"}
+            {canManageUsersRosters ? "Approved login user types only" : "Create PWS teacher login accounts"}
           </Text>
         </View>
       </View>
@@ -77,7 +77,7 @@ export default function ManageHub() {
           </TouchableOpacity>
         ))}
 
-        {isSuper && (
+        {canManageUsersRosters && (
           <View style={s.note}>
             <Feather name="info" size={14} color="#1E40AF" />
             <Text style={s.noteText}>

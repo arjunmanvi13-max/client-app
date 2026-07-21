@@ -206,6 +206,7 @@ export default function ManageEdit() {
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
   const canAddNewTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
   const canManageTeachers = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
@@ -220,9 +221,9 @@ export default function ManageEdit() {
   const canEdit = (() => {
     if (isLoginUserKind) {
       if (isNew && userTypeKind === UserRole.PWS_TEACHER) {
-        return isSuper || canAddNewTeacher;
+        return canManageUsersRosters || canAddNewTeacher;
       }
-      return isSuper;
+      return canManageUsersRosters;
     }
     if (!rosterMeta) return false;
     if (isTeacherUserForm && isNew) return false;
@@ -900,7 +901,7 @@ export default function ManageEdit() {
         } else {
           const body: any = { name, department: department || null, phone: phone || null };
           if (password) body.password = password;
-          if (isSuper && email.trim()) body.email = email.trim().toLowerCase();
+          if (canManageUsersRosters && email.trim()) body.email = email.trim().toLowerCase();
           if (isPwsAdminKind) {
             body.user_type = UserRole.PWS_ADMIN;
             body.designation = designation;
@@ -1121,7 +1122,7 @@ export default function ManageEdit() {
   const onDelete = () => {
     if (isNew) return;
     if (isTeacherUserForm) return;
-    if (canConfirmLoginUserStatusChange && userStatus === "active" && isSuper) {
+    if (canConfirmLoginUserStatusChange && userStatus === "active" && canManageUsersRosters) {
       setLoginUserStatusModal("deactivate");
       return;
     }
@@ -1163,7 +1164,7 @@ export default function ManageEdit() {
   };
 
   const onLoginUserStatusAction = (action: UserStatusConfirmAction) => {
-    if (!canConfirmLoginUserStatusChange || isNew || !isSuper) return;
+    if (!canConfirmLoginUserStatusChange || isNew || !canManageUsersRosters) return;
     if (action === "deactivate" && userStatus !== "active") return;
     if (action === "reactivate" && userStatus !== "deactivated") return;
     setLoginUserStatusModal(action);
@@ -1263,12 +1264,12 @@ export default function ManageEdit() {
               permMap={permMap}
               setPermMap={setPermMap}
               userStatus={userStatus}
-              onToggleUserStatus={!isNew && isSuper ? () => {
+              onToggleUserStatus={!isNew && canManageUsersRosters ? () => {
                 onLoginUserStatusAction(userStatus === "active" ? "deactivate" : "reactivate");
               } : undefined}
               resetPwdVal={resetPwdVal}
               setResetPwdVal={setResetPwdVal}
-              onResetPassword={!isNew && isSuper ? async () => {
+              onResetPassword={!isNew && canManageUsersRosters ? async () => {
                 setResetBusy(true);
                 try {
                   await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
@@ -1524,7 +1525,7 @@ export default function ManageEdit() {
           {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && (
             <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
-              <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || isSuper} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !isSuper && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
+              <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || canManageUsersRosters} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !canManageUsersRosters && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
               <Text style={s.label}>{isNew ? "Assigned password *" : "Assign new password (leave blank to keep)"}</Text>
               <TextInput testID="field-password" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" placeholderTextColor="#94A3B8" style={s.input} />
               <Text style={s.fieldHint}>The user signs in with this password and will be prompted to set their own on first login.</Text>
@@ -1565,7 +1566,7 @@ export default function ManageEdit() {
                 </View>
               )}
 
-              {!isNew && isSuper && (
+              {!isNew && canManageUsersRosters && (
                 <View style={s.statusCard}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.statusLabel}>{isCoachKind ? "Coach Status" : "User Status"}</Text>
@@ -1607,7 +1608,7 @@ export default function ManageEdit() {
                   </TouchableOpacity>
                 </View>
               )}
-              {!isNew && isSuper && (
+              {!isNew && canManageUsersRosters && (
                 <View style={s.resetPwdBox}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                     <Feather name="key" size={14} color="#B45309" />
