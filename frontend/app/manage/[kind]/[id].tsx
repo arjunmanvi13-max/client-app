@@ -191,7 +191,8 @@ export default function ManageEdit() {
   const isCoachUserForm = isCoachKind && isUserKind;
   const isTeacherKind = kindParam === "teacher";
   const isTeacherUserForm = isTeacherKind && isLegacyUserKind;
-  const isStructuredUserForm = isCoachUserForm || isTeacherUserForm;
+  const isManageUsersLoginForm = isLoginUserKind && !isCoachUserForm;
+  const isStructuredUserForm = isCoachUserForm || isTeacherUserForm || isManageUsersLoginForm;
   const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
   const isPlayerKind = kindParam === "player";
   const isStaffKind = kindParam === "staff";
@@ -1223,6 +1224,19 @@ export default function ManageEdit() {
               saving={saving}
               saveLabel={isNew ? "Create" : "Save changes"}
               readOnly={readOnly}
+            />
+          )}
+
+          {isManageUsersLoginForm && (
+            <FormPageHeader
+              breadcrumb="SYSTEM & SETTINGS · MANAGE USERS & ROSTERS"
+              title={isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
+              onCancel={() => router.back()}
+              onSave={canEdit ? save : undefined}
+              saving={saving}
+              saveLabel={isNew ? "Create" : "Save changes"}
+              readOnly={readOnly}
+              testID="manage-users-form-header"
             />
           )}
 

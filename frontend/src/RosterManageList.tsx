@@ -68,16 +68,9 @@ export function RosterManageList({ kind }: { kind: string }) {
   const coachBlocked = isPlayer && isCoachUser(user) && coachScope.requiresSportAssignment;
   const isStudent = kind === "student";
   const isTeacher = role === UserRole.PWS_TEACHER;
-  const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
-  const canAddNewTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
   const canAdd = (() => {
-    if (isTeacherList) {
-      return (
-        canManageUsersRosters
-        || canAddNewTeacher
-        || userHasPermission(user, Permission.MANAGE_ACCESS)
-      );
-    }
+    // PWS teacher login accounts are created under System & Settings → Manage Users & Rosters.
+    if (isTeacherList) return false;
     if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
     if (meta.isUser) return (user?.can_manage || []).includes(kind);
@@ -230,7 +223,7 @@ export function RosterManageList({ kind }: { kind: string }) {
             </View>
           )}
         </View>
-        {(!isTeacherList || canAdd) && (
+        {canAdd && (
         <TouchableOpacity
           testID={`add-${kind}`}
           style={[s.addBtn, { backgroundColor: meta.tint }, !canAdd && { opacity: 0.45 }]}

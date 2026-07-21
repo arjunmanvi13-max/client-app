@@ -101,6 +101,13 @@ function run() {
   assert(accessActive.items["access-control"] === true, "Access Control expands for manage user list");
   assert(accessActive.groups.system === true, "System group expands for manage user list");
 
+  const pwsTeacherActive = initialExpandedState(superGroups, "/manage/pws_teacher/new");
+  assert(pwsTeacherActive.groups.system === true, "System group expands for new PWS teacher");
+  assert(pwsTeacherActive.items["access-control"] === true, "Access Control expands for new PWS teacher");
+  const directoryTeachers = NAVIGATION_GROUPS.find((g) => g.id === "directory")?.children.find((c) => c.id === "teachers");
+  assert(!!directoryTeachers?.match("/manage/teacher"), "Directory Teachers matches legacy teacher roster");
+  assert(!directoryTeachers?.match("/manage/pws_teacher/new"), "PWS teacher login routes are not under Directory Teachers");
+
   const permActive = initialExpandedState(superGroups, "/admin/permissions");
   assert(permActive.items["access-control"] === true, "Access Control expands for permissions page");
 

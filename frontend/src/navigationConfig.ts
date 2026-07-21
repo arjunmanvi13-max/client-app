@@ -129,7 +129,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         label: "Teachers",
         icon: "book-open",
         href: "/manage/teacher",
-        match: matchPrefix(["/manage/teacher", "/manage/pws_teacher"]),
+        match: matchPrefix(["/manage/teacher"]),
         permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.CREATE_USERS],
         pwsOnly: true,
         excludeRoles: ["teacher"],
