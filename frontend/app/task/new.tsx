@@ -17,6 +17,8 @@ import {
 const PRIORITIES = ["low", "medium", "high"] as const;
 const ENTITIES = ["pws", "alpha", "both"] as const;
 
+const NON_ASSIGNABLE_ROLES = ["student", "player", "parent"];
+
 export default function NewTask() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -34,7 +36,7 @@ export default function NewTask() {
   useEffect(() => {
     (async () => {
       const { data } = await api.get("/users/directory");
-      setUsers(data.filter((u: AssigneeUser) => !["student", "player"].includes(u.role || "")));
+      setUsers(data.filter((u: AssigneeUser) => !NON_ASSIGNABLE_ROLES.includes(u.role || "")));
     })();
   }, []);
 

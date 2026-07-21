@@ -3,8 +3,7 @@ export type AssigneeRoleFilter =
   | "teachers"
   | "staff"
   | "coaches"
-  | "administration"
-  | "parents";
+  | "administration";
 
 export const ASSIGNEE_ROLE_FILTERS: { key: AssigneeRoleFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -12,7 +11,6 @@ export const ASSIGNEE_ROLE_FILTERS: { key: AssigneeRoleFilter; label: string }[]
   { key: "staff", label: "Staff" },
   { key: "coaches", label: "Coaches" },
   { key: "administration", label: "Administration" },
-  { key: "parents", label: "Parents" },
 ];
 
 export type AssigneeUser = {
@@ -55,8 +53,6 @@ export function matchesAssigneeRoleFilter(user: AssigneeUser, filter: AssigneeRo
         "alpha_admin",
         "sports_admin",
       ].includes(role);
-    case "parents":
-      return role === "parent";
     default:
       return true;
   }
