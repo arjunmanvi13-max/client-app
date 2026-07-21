@@ -267,15 +267,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     icon: "book",
     children: [
       {
-        id: "academic-structure",
-        label: "Academic Structure",
-        icon: "book-open",
-        href: "/admin/academic",
-        match: matchPrefix(["/admin/academic"]),
-        permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.MANAGE_TEACHERS_MAP_SECTIONS],
-        pwsOnly: true,
-      },
-      {
         id: "marks-entry",
         label: "Marks Entry",
         icon: "edit-3",
@@ -361,6 +352,15 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
             permissions: [Permission.MANAGE_USERS_ROSTERS, Permission.ADD_NEW_TEACHER],
           },
         ],
+      },
+      {
+        id: "academic-structure",
+        label: "Academic Structure",
+        icon: "book-open",
+        href: "/admin/academic",
+        match: matchPrefix(["/admin/academic"]),
+        permissions: [Permission.MANAGE_TEACHERS_MAP_SUBJECTS, Permission.MANAGE_TEACHERS_MAP_SECTIONS],
+        pwsOnly: true,
       },
       {
         id: "settings",

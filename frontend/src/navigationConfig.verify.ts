@@ -104,6 +104,15 @@ function run() {
   const permActive = initialExpandedState(superGroups, "/admin/permissions");
   assert(permActive.items["access-control"] === true, "Access Control expands for permissions page");
 
+  const academicActive = initialExpandedState(superGroups, "/admin/academic");
+  assert(academicActive.groups.system === true, "System group expands for academic structure");
+  assert(academicActive.items["academic-structure"] !== false, "Academic Structure is under System & Settings");
+
+  const academicLeaves = allLeafIds(superGroups);
+  assert(academicLeaves.includes("academic-structure"), "Super Admin sees Academic Structure under System & Settings");
+  const academicsGroup = superGroups.find((g) => g.id === "academics");
+  assert(!academicsGroup?.children.some((c) => c.id === "academic-structure"), "Academic Structure removed from Academics group");
+
   const playersItem = NAVIGATION_GROUPS.flatMap((g) => g.children)
     .flatMap(function walk(i): typeof NAVIGATION_GROUPS[0]["children"] {
       return i.children ? [i, ...i.children.flatMap(walk)] : [i];
