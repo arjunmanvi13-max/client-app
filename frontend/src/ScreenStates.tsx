@@ -12,6 +12,25 @@ export function getApiError(e: any, fallback = "Something went wrong. Please try
   return e?.message || fallback;
 }
 
+/** Parse FastAPI validation errors when axios used responseType blob/arraybuffer. */
+export async function getApiErrorFromResponse(
+  e: any,
+  fallback = "Something went wrong. Please try again.",
+): Promise<string> {
+  const data = e?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      const d = parsed?.detail;
+      if (typeof d === "string") return d;
+      if (Array.isArray(d)) return d.map((x: any) => x?.msg || String(x)).join(", ");
+    } catch {
+      // not JSON — fall through
+    }
+  }
+  return getApiError(e, fallback);
+}
+
 /** Cross-platform confirmation — keeps existing Alert pattern, clearer copy. */
 export function confirmAction(
   title: string,

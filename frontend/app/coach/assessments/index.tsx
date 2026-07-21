@@ -9,7 +9,7 @@ import { Feather } from "@expo/vector-icons";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission } from "../../../src/rbac";
 import { useBreakpoint } from "../../../src/useBreakpoint";
-import { LoadingState, ErrorState, EmptyState, getApiError, confirmAction } from "../../../src/ScreenStates";
+import { LoadingState, ErrorState, EmptyState, getApiError, getApiErrorFromResponse, confirmAction } from "../../../src/ScreenStates";
 import { formatDate, formatDateTime, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../../src/dateFormat";
 import { colors, radii, spacing } from "../../../src/theme";
 
@@ -394,6 +394,12 @@ export default function CoachAssessmentEntry() {
   const doExportPdf = async (playerId?: string) => {
     const pid = playerId || selectedPlayer?.player_id;
     if (!pid || !showGrid || !playerType) return;
+    if (playerType === "Daily" && !sessionType) {
+      const msg = "Select a session type (Morning or Evening) before exporting.";
+      if (Platform.OS === "web" && typeof window !== "undefined") window.alert(msg);
+      else Alert.alert("Export PDF", msg);
+      return;
+    }
     try {
       if (Platform.OS !== "web") {
         Alert.alert("Export PDF", "Open Player Assessment on desktop web to download PDF reports.");
@@ -429,9 +435,14 @@ export default function CoachAssessmentEntry() {
       }
     } catch (e: any) {
       const status = e?.response?.status;
-      const msg = status === 404
-        ? "Export is not available yet — the backend update is still deploying. Try again in a minute, or finalize the assessment first."
-        : getApiError(e, "Could not export PDF");
+      let msg: string;
+      if (status === 404) {
+        msg = "Export is not available yet — the backend update is still deploying. Try again in a minute, or finalize the assessment first.";
+      } else if (status === 422) {
+        msg = await getApiErrorFromResponse(e, "Assessment data is invalid for export. Check all required fields are filled.");
+      } else {
+        msg = await getApiErrorFromResponse(e, "Could not export PDF");
+      }
       if (Platform.OS === "web" && typeof window !== "undefined") window.alert(`Export failed: ${msg}`);
       else Alert.alert("Export failed", msg);
     }

@@ -153,12 +153,30 @@ export function normalizeScoresFromApi(raw: any, techMeta: TechAreaMeta[]): Play
 }
 
 export function buildEntryPayload(scores: PlayerScores, remark: string) {
-  return {
-    technical_detail: scores.technical_detail,
+  // API expects integers only in technical_detail — omit unset (null) sub-scores.
+  const technical_detail: Record<string, Record<string, number>> = {};
+  Object.entries(scores.technical_detail || {}).forEach(([area, subs]) => {
+    const clean: Record<string, number> = {};
+    Object.entries(subs || {}).forEach(([k, v]) => {
+      if (v != null) clean[k] = v;
+    });
+    if (Object.keys(clean).length) technical_detail[area] = clean;
+  });
+
+  const payload: {
+    technical_detail?: Record<string, Record<string, number>>;
+    strength_conditioning: number | null;
+    game_awareness: number | null;
+    mental_attributes: number | null;
+    training_attitude: number | null;
+    coach_remark: string | null;
+  } = {
     strength_conditioning: scores.strength_conditioning,
     game_awareness: scores.game_awareness,
     mental_attributes: scores.mental_attributes,
     training_attitude: scores.training_attitude,
     coach_remark: remark.trim().slice(0, 300) || null,
   };
+  if (Object.keys(technical_detail).length) payload.technical_detail = technical_detail;
+  return payload;
 }
