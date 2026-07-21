@@ -338,7 +338,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         label: "Access Control",
         icon: "shield",
         match: (p) => p.startsWith("/admin/permissions") || matchManageLoginUsers(p),
-        permissions: [Permission.MANAGE_ACCESS],
+        permissions: [Permission.MANAGE_ACCESS, Permission.ADD_NEW_TEACHER],
         children: [
           {
             id: "permissions",
@@ -354,7 +354,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
             icon: "users",
             href: "/manage",
             match: matchManageLoginUsers,
-            permissions: [Permission.MANAGE_ACCESS],
+            permissions: [Permission.MANAGE_ACCESS, Permission.ADD_NEW_TEACHER],
           },
         ],
       },

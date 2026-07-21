@@ -3,7 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth, userHasPermission } from "../../src/auth";
-import { Permission } from "../../src/rbac";
+import { BusinessEntity, Permission, UserRole } from "../../src/rbac";
 import { USER_TYPE_CATALOG } from "../../src/userClassification";
 
 export default function ManageHub() {
@@ -12,8 +12,15 @@ export default function ManageHub() {
   if (!user) return null;
 
   const isSuper = userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
+  const canAccessHub = isSuper || canAddTeacher;
 
-  if (!isSuper) {
+  const visibleTypes = USER_TYPE_CATALOG.filter((item) => {
+    if (isSuper) return true;
+    return canAddTeacher && item.code === UserRole.PWS_TEACHER;
+  });
+
+  if (!canAccessHub) {
     return (
       <SafeAreaView style={s.safe} edges={["top"]}>
         <View style={s.header}>
@@ -27,9 +34,9 @@ export default function ManageHub() {
         </View>
         <View style={s.empty}>
           <Feather name="shield-off" size={36} color="#94A3B8" />
-          <Text style={s.emptyTitle}>Super Admin only</Text>
+          <Text style={s.emptyTitle}>Access restricted</Text>
           <Text style={s.emptyText}>
-            Access Control &gt; Manage Users &amp; Rosters is restricted to Super Admin for creating and assigning approved login user types.
+            Manage Users &amp; Rosters is restricted to Super Admin, or users with Add New Teacher permission for teacher provisioning.
           </Text>
         </View>
       </SafeAreaView>
@@ -44,12 +51,14 @@ export default function ManageHub() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>Manage Users & Rosters</Text>
-          <Text style={s.sub}>Approved login user types only</Text>
+          <Text style={s.sub}>
+            {isSuper ? "Approved login user types only" : "Create PWS teacher login accounts"}
+          </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
-        {USER_TYPE_CATALOG.map((item) => (
+        {visibleTypes.map((item) => (
           <TouchableOpacity
             key={item.code}
             testID={`manage-${item.code}`}
@@ -68,12 +77,14 @@ export default function ManageHub() {
           </TouchableOpacity>
         ))}
 
-        <View style={s.note}>
-          <Feather name="info" size={14} color="#1E40AF" />
-          <Text style={s.noteText}>
-            Students, players, staff, and parents are roster/contact records — not login user types. Manage them from People in the sidebar.
-          </Text>
-        </View>
+        {isSuper && (
+          <View style={s.note}>
+            <Feather name="info" size={14} color="#1E40AF" />
+            <Text style={s.noteText}>
+              Students, players, staff, and parents are roster/contact records — not login user types. Manage them from People in the sidebar.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

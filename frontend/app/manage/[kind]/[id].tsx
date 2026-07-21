@@ -206,6 +206,7 @@ export default function ManageEdit() {
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canAddNewTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
   const canManageTeachers = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
   const canToggleTeacherStatus = isSuper || canManageTeachers;
@@ -217,8 +218,14 @@ export default function ManageEdit() {
   const canOverrideFees = canOverridePwsFees(user?.role);
   const perms = user?.permissions || {};
   const canEdit = (() => {
-    if (isLoginUserKind) return isSuper;
+    if (isLoginUserKind) {
+      if (isNew && userTypeKind === UserRole.PWS_TEACHER) {
+        return isSuper || canAddNewTeacher;
+      }
+      return isSuper;
+    }
     if (!rosterMeta) return false;
+    if (isTeacherUserForm && isNew) return false;
     if (isNew) {
       if (isTeacher && isStudentKind) return false;
       if (isAdmin) return true;
@@ -242,6 +249,17 @@ export default function ManageEdit() {
   const canDelete = canEdit && !isNew && !isTeacherUserForm
     && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
   const readOnly = !isNew && !canEdit;
+
+  useEffect(() => {
+    if (isNew && isTeacherUserForm) {
+      router.replace("/manage/pws_teacher/new");
+    }
+  }, [isNew, isTeacherUserForm, router]);
+
+  useEffect(() => {
+    if (!isNew || userTypeKind !== UserRole.PWS_TEACHER) return;
+    if (!canEdit) router.replace("/manage/pws_teacher");
+  }, [isNew, userTypeKind, canEdit, router]);
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -883,7 +901,10 @@ export default function ManageEdit() {
           const body: any = { name, department: department || null, phone: phone || null };
           if (password) body.password = password;
           if (isSuper && email.trim()) body.email = email.trim().toLowerCase();
-          if (isPwsAdminKind) body.designation = designation;
+          if (isPwsAdminKind) {
+            body.user_type = UserRole.PWS_ADMIN;
+            body.designation = designation;
+          }
           if (isCoachKind) {
             body.coach_permissions = coachPermissions;
             body.coach_type = coachType;
@@ -1469,6 +1490,10 @@ export default function ManageEdit() {
               </View>
               {isPwsAdminKind && (
                 <>
+                  <Text style={s.label}>User Category</Text>
+                  <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#DBEAFE", borderColor: "#93C5FD" }]} testID="field-user-category">
+                    <Text style={[s.chipText, { color: "#1E40AF" }]}>PWS Admin</Text>
+                  </View>
                   <Text style={s.label}>Designation</Text>
                   <View style={s.chipRow}>
                     {(["PRINCIPAL", "VICE_PRINCIPAL"] as const).map((d) => (

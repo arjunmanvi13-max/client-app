@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, useFocusEffect, usePathname } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
-import { Permission } from "../../../src/rbac";
+import { BusinessEntity, Permission, UserRole } from "../../../src/rbac";
 import {
   CATALOG_BY_CODE,
   designationLabel,
@@ -28,13 +28,16 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   const catalog = CATALOG_BY_CODE[kind];
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
+  const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
+  const canAccessList = isSuper || (kind === UserRole.PWS_TEACHER && canAddTeacher);
+  const canShowAdd = kind !== "super_admin" && (isSuper || (kind === UserRole.PWS_TEACHER && canAddTeacher));
 
   useEffect(() => {
-    if (!isSuper) router.replace("/manage");
-  }, [isSuper, router]);
+    if (!canAccessList) router.replace("/manage");
+  }, [canAccessList, router]);
 
   const load = useCallback(async () => {
-    if (!isSuper) return;
+    if (!canAccessList) return;
     setLoading(true);
     setLoadError(null);
     try {
@@ -53,7 +56,7 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
       setItems([]);
       setLoadError(e?.response?.data?.detail || "Failed to load accounts");
     } finally { setLoading(false); }
-  }, [kind, isSuper, search]);
+  }, [kind, canAccessList, search]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -67,7 +70,7 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
           <Text style={s.h1}>{catalog.displayName}</Text>
           <Text style={s.sub}>{items.length} account{items.length !== 1 ? "s" : ""} · {entityScopeLabel(catalog.entityScope)}</Text>
         </View>
-        {kind !== "super_admin" && (
+        {canShowAdd && (
           <TouchableOpacity
             testID={`add-${kind}`}
             style={[s.addBtn, { backgroundColor: catalog.tint }]}

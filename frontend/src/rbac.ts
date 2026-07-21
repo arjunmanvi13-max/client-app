@@ -36,6 +36,7 @@ export enum Permission {
   BULK_UPLOAD_USERS = "BULK_UPLOAD_USERS",
   TOGGLE_USER_STATUS = "TOGGLE_USER_STATUS",
   ADD_COACHES = "ADD_COACHES",
+  ADD_NEW_TEACHER = "ADD_NEW_TEACHER",
 
   // PWS Admin
   MARK_PWS_ATTENDANCE = "MARK_PWS_ATTENDANCE",
@@ -121,6 +122,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.BULK_UPLOAD_USERS,
     Permission.TOGGLE_USER_STATUS,
     Permission.ADD_COACHES,
+    Permission.ADD_NEW_TEACHER,
     Permission.DASHBOARD_ACCESS,
   ],
   [UserRole.PWS_ADMIN]: [
@@ -323,6 +325,7 @@ export function hasPermission(
     [Permission.MARK_HOSTEL_ATTENDANCE]: ["mark_hostel_attendance"],
     [Permission.VIEW_ATTENDANCE]: ["view_attendance"],
     [Permission.DASHBOARD_ACCESS]: ["dashboard_access"],
+    [Permission.ADD_NEW_TEACHER]: ["manage_users"],
   };
   const keys = legacyBridge[permission] || [];
   if (keys.some((k) => user.permissions?.[k])) return true;
@@ -342,6 +345,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.BULK_UPLOAD_USERS]: "Bulk upload users",
   [Permission.TOGGLE_USER_STATUS]: "Activate / deactivate users",
   [Permission.ADD_COACHES]: "Add coaches",
+  [Permission.ADD_NEW_TEACHER]: "Add new teacher",
   [Permission.MARK_PWS_ATTENDANCE]: "Mark PWS attendance",
   [Permission.MANAGE_TEACHERS_MAP_SUBJECTS]: "Map teachers to subjects",
   [Permission.CREATE_TEACHER_TASKS]: "Create teacher tasks",

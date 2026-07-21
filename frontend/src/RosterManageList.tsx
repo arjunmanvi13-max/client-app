@@ -69,6 +69,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   const isStudent = kind === "student";
   const isTeacher = role === UserRole.PWS_TEACHER;
   const canAdd = (() => {
+    if (isTeacherList) return false;
     if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
     if (meta.isUser) return (user?.can_manage || []).includes(kind);
