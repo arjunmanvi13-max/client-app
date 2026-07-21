@@ -50,6 +50,7 @@ import {
 } from "../../../src/TeacherUserFormFields";
 import { FormPageHeader } from "../../../src/components/forms/FormPageHeader";
 import { UnsavedChangesModal } from "../../../src/components/forms/UnsavedChangesModal";
+import { DeactivateUserConfirmModal } from "../../../src/components/forms/DeactivateUserConfirmModal";
 import { TeacherProfilePdfModal } from "../../../src/components/forms/TeacherProfilePdfModal";
 import {
   buildTeacherFormSnapshot,
@@ -169,6 +170,15 @@ function navigateToAlphaCoachesList(router: ReturnType<typeof useRouter>) {
     router.replace(href);
   };
   // Defer on web so navigation runs after the confirm dialog closes.
+  if (Platform.OS === "web") {
+    setTimeout(go, 0);
+    return;
+  }
+  go();
+}
+
+function navigateToManageUsersHub(router: ReturnType<typeof useRouter>) {
+  const go = () => router.replace("/manage");
   if (Platform.OS === "web") {
     setTimeout(go, 0);
     return;
@@ -359,6 +369,8 @@ export default function ManageEdit() {
   const [teacherAssignmentsReady, setTeacherAssignmentsReady] = useState(false);
   const [unsavedModalVisible, setUnsavedModalVisible] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
+  const [deactivateModalVisible, setDeactivateModalVisible] = useState(false);
+  const [deactivateBusy, setDeactivateBusy] = useState(false);
   const [pdfPreviewVisible, setPdfPreviewVisible] = useState(false);
   const [savedTeacherId, setSavedTeacherId] = useState<string | null>(null);
   const skipDirtyGuard = useRef(false);
@@ -1111,6 +1123,10 @@ export default function ManageEdit() {
   const onDelete = () => {
     if (isNew) return;
     if (isTeacherUserForm) return;
+    if (isPwsAdminKind && userStatus === "active" && isSuper) {
+      setDeactivateModalVisible(true);
+      return;
+    }
     confirmAction("Delete?", `This ${displayTitle} account will be permanently removed.`, async () => {
       try {
         if (isUserKind) await api.delete(`/users/${id}`);
@@ -1146,6 +1162,31 @@ export default function ManageEdit() {
       skipDirtyGuard.current = true;
       action();
     }
+  };
+
+  const onPwsAdminDeactivate = () => {
+    if (!isPwsAdminKind || userStatus !== "active" || isNew || !isSuper) return;
+    setDeactivateModalVisible(true);
+  };
+
+  const onConfirmPwsAdminDeactivate = async () => {
+    if (deactivateBusy) return;
+    setDeactivateBusy(true);
+    try {
+      await api.post(`/users/${id}/deactivate`);
+      skipDirtyGuard.current = true;
+      setDeactivateModalVisible(false);
+      navigateToManageUsersHub(router);
+    } catch (e: any) {
+      showError("Error", e?.response?.data?.detail || "Failed to deactivate user");
+    } finally {
+      setDeactivateBusy(false);
+    }
+  };
+
+  const onCancelPwsAdminDeactivate = () => {
+    if (deactivateBusy) return;
+    setDeactivateModalVisible(false);
   };
 
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
@@ -1561,6 +1602,10 @@ export default function ManageEdit() {
                     testID={userStatus === "active" ? "btn-user-deactivate" : "btn-user-activate"}
                     style={[s.statusBtn, userStatus === "active" ? { backgroundColor: "#FEE2E2" } : { backgroundColor: "#DCFCE7" }]}
                     onPress={() => {
+                      if (isPwsAdminKind && userStatus === "active") {
+                        onPwsAdminDeactivate();
+                        return;
+                      }
                       const next = userStatus === "active" ? "deactivated" : "active";
                       const verb = next === "active" ? "Reactivate" : "Deactivate";
                       confirmAction(`${verb} ${displayTitle}?`, `${verb} this account. ${next === "deactivated" ? "They will lose login access immediately." : "Login restored; user will appear in lists again."}`, async () => {
@@ -1826,6 +1871,13 @@ export default function ManageEdit() {
         onYes={onUnsavedYes}
         onNo={onUnsavedNo}
         onDismiss={onUnsavedNo}
+      />
+
+      <DeactivateUserConfirmModal
+        visible={deactivateModalVisible}
+        loading={deactivateBusy}
+        onYes={() => { void onConfirmPwsAdminDeactivate(); }}
+        onNo={onCancelPwsAdminDeactivate}
       />
 
       <TeacherProfilePdfModal
