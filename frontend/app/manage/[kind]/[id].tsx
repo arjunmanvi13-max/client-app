@@ -3,7 +3,6 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, usePathname, useNavigation } from "expo-router";
-import { usePreventRemove } from "@react-navigation/native";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
 import {
@@ -59,6 +58,7 @@ import {
 } from "../../../src/teachers/teacherFormState";
 import { setManageDirectoryToast } from "../../../src/manageDirectoryToast";
 import { formColors } from "../../../src/theme";
+import { useDirtyLeaveGuard } from "../../../src/useDirtyLeaveGuard";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -646,13 +646,18 @@ export default function ManageEdit() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [isTeacherUserForm, teacherFormDirty]);
 
-  usePreventRemove(isTeacherUserForm && teacherFormDirty && !skipDirtyGuard.current, ({ data }) => {
-    setPendingLeaveAction(() => () => {
-      skipDirtyGuard.current = true;
-      navigation.dispatch(data.action);
-    });
+  const blockDirtyLeave = useCallback((continueLeave: () => void) => {
+    setPendingLeaveAction(() => continueLeave);
     setUnsavedModalVisible(true);
-  });
+  }, []);
+
+  useDirtyLeaveGuard(
+    isTeacherUserForm,
+    teacherFormDirty,
+    skipDirtyGuard,
+    navigation,
+    blockDirtyLeave,
+  );
 
   const confirmLeaveIfDirty = (leave: () => void) => {
     if (!isTeacherUserForm || !teacherFormDirty || skipDirtyGuard.current) {
