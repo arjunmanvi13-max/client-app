@@ -60,6 +60,7 @@ type GroupedAssignmentRow = {
 };
 
 type GroupedAssignment = {
+  teacherId: string;
   teacher: any;
   rows: GroupedAssignmentRow[];
 };
@@ -129,11 +130,6 @@ export default function AcademicAdmin() {
     [sections],
   );
 
-  const teacherOptions = useMemo(
-    () => teachers.map((t) => ({ value: t.id, label: t.name })),
-    [teachers],
-  );
-
   const missingDefaultSubjects = useMemo(
     () => DEFAULT_PWS_SUBJECTS.filter(
       (def) => !subjects.some((s) => s.name.toLowerCase() === def.name.toLowerCase()),
@@ -183,9 +179,10 @@ export default function AcademicAdmin() {
 
     const subjectNameById = new Map(subjects.map((sub) => [sub.id, sub.name]));
 
-    return Array.from(map.values())
-      .map(({ teacher, rows }) => ({
-        teacher,
+    return Array.from(map.entries())
+      .map(([teacherId, { teacher, rows }]) => ({
+        teacherId,
+        teacher: teacher ? { ...teacher, id: teacherId } : { id: teacherId, name: "Teacher" },
         rows: Array.from(rows.values()).map((row) => ({
           ...row,
           subjects: row.subjectIds
@@ -198,6 +195,28 @@ export default function AcademicAdmin() {
         (a.teacher?.name || "").localeCompare(b.teacher?.name || "", undefined, { sensitivity: "base" }),
       );
   }, [classAssignments, subjects]);
+
+  const teacherOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const t of teachers) {
+      if (t.id) map.set(t.id, t.name);
+    }
+    for (const group of groupedAssignments) {
+      if (group.teacherId && group.teacher?.name) {
+        map.set(group.teacherId, group.teacher.name);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }, [teachers, groupedAssignments]);
+
+  const editingTeacherName = useMemo(() => {
+    if (!editingTeacherId) return "";
+    return teachers.find((t) => t.id === editingTeacherId)?.name
+      || groupedAssignments.find((g) => g.teacherId === editingTeacherId)?.teacher?.name
+      || "Teacher";
+  }, [editingTeacherId, teachers, groupedAssignments]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -439,12 +458,22 @@ export default function AcademicAdmin() {
   };
 
   const editTeacherAssignments = (group: GroupedAssignment) => {
-    const teacherId = group.teacher?.id;
+    const teacherId = group.teacherId;
     if (!teacherId || isReadOnly) return;
     const rows = assignRowsForTeacher(teacherId, classAssignments);
     setAssignTeacherId(teacherId);
     setEditingTeacherId(teacherId);
     setAssignRows(rows.length ? rows : [newTeacherAssignRow()]);
+    setOpenAssignRowKey(null);
+    setOpenTeacherSelect(false);
+  };
+
+  const cancelEditAssignments = () => {
+    setEditingTeacherId(null);
+    setAssignTeacherId(null);
+    setAssignRows([newTeacherAssignRow()]);
+    setOpenAssignRowKey(null);
+    setOpenTeacherSelect(false);
   };
 
   const removeTeacherAssignments = (group: GroupedAssignment) => {
@@ -464,10 +493,8 @@ export default function AcademicAdmin() {
               for (const id of ids) {
                 await api.delete(`/academic/class-assignments/${id}`);
               }
-              if (editingTeacherId === group.teacher?.id) {
-                setEditingTeacherId(null);
-                setAssignTeacherId(null);
-                setAssignRows([newTeacherAssignRow()]);
+              if (editingTeacherId === group.teacherId) {
+                cancelEditAssignments();
               }
               await load();
             } catch (e: any) {
@@ -533,10 +560,34 @@ export default function AcademicAdmin() {
           ) : (
             <View style={[s.assignmentsShell, isWide && s.assignmentsShellWide]}>
               {!isReadOnly && (
-                <View style={[s.assignPanel, s.assignFormPanel, openTeacherSelect && s.assignPanelOpen]}>
-                  <Text style={s.assignPanelTitle}>Assign classes</Text>
+                <View style={[s.assignPanel, s.assignFormPanel, openTeacherSelect && s.assignPanelOpen, editingTeacherId && s.assignFormPanelEditing]}>
+                  <View style={s.assignFormTitleRow}>
+                    <View style={s.assignFormTitleWrap}>
+                      <Text style={s.assignPanelTitle}>
+                        {editingTeacherId ? `Edit assignment for ${editingTeacherName}` : "Assign classes"}
+                      </Text>
+                      {editingTeacherId ? (
+                        <View style={s.editingBadge}>
+                          <Text style={s.editingBadgeTxt}>Editing</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {editingTeacherId ? (
+                      <TouchableOpacity
+                        testID="cancel-edit-assignments"
+                        onPress={cancelEditAssignments}
+                        style={s.cancelEditBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel editing assignments"
+                      >
+                        <Text style={s.cancelEditTxt}>Cancel</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                   <Text style={s.fieldHelpCompact}>
-                    Map one or more classes; for each class, select the subjects the teacher handles.
+                    {editingTeacherId
+                      ? "Update classes and subjects below, then save. You can add or remove class blocks."
+                      : "Map one or more classes; for each class, select the subjects the teacher handles."}
                   </Text>
 
                   <View style={[s.teacherSelectWrap, openTeacherSelect && s.teacherSelectWrapOpen]}>
@@ -553,6 +604,7 @@ export default function AcademicAdmin() {
                       searchPlaceholder="Search teachers…"
                       required
                       compact
+                      disabled={!!editingTeacherId}
                       testID="assign-teacher"
                     />
                   </View>
@@ -618,13 +670,24 @@ export default function AcademicAdmin() {
                     >
                       <Text style={s.secondaryBtnTxt}>+ Add another class</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      testID="btn-assign-class"
-                      style={s.btnCompact}
-                      onPress={assignClasses}
-                    >
-                      <Text style={s.btnTxt}>{editingTeacherId ? "Update assignments" : "Save assignments"}</Text>
-                    </TouchableOpacity>
+                    <View style={s.assignPrimaryActions}>
+                      {editingTeacherId ? (
+                        <TouchableOpacity
+                          testID="cancel-edit-assignments-footer"
+                          style={s.cancelEditBtnFooter}
+                          onPress={cancelEditAssignments}
+                        >
+                          <Text style={s.cancelEditTxt}>Cancel edit</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        testID="btn-assign-class"
+                        style={s.btnCompact}
+                        onPress={assignClasses}
+                      >
+                        <Text style={s.btnTxt}>{editingTeacherId ? "Update assignments" : "Save assignments"}</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               )}
@@ -643,9 +706,14 @@ export default function AcademicAdmin() {
                   {groupedAssignments.length === 0 ? (
                     <Text style={s.hintCompact}>No class assignments yet.</Text>
                   ) : groupedAssignments.map((group) => {
-                    const teacherId = group.teacher?.id || group.teacher?.name;
+                    const teacherId = group.teacherId;
+                    const isEditingThis = editingTeacherId === teacherId;
                     return (
-                      <View key={teacherId} style={s.teacherCard} testID={`teacher-assignments-${teacherId}`}>
+                      <View
+                        key={teacherId}
+                        style={[s.teacherCard, isEditingThis && s.teacherCardEditing]}
+                        testID={`teacher-assignments-${teacherId}`}
+                      >
                         <View style={s.teacherCardHeader}>
                           <View style={s.teacherCardTitleWrap}>
                             <Text style={s.assignName} numberOfLines={1}>
@@ -942,6 +1010,45 @@ const s = StyleSheet.create({
     flex: 1.05,
     minWidth: 0,
   },
+  assignFormPanelEditing: {
+    borderColor: "#93C5FD",
+    backgroundColor: "#F8FBFF",
+  },
+  assignFormTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 4,
+  },
+  assignFormTitleWrap: { flex: 1, minWidth: 0, gap: 6 },
+  editingBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "#DBEAFE",
+    marginTop: 4,
+  },
+  editingBadgeTxt: { fontSize: 10, fontWeight: "800", color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.4 },
+  cancelEditBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+  },
+  cancelEditBtnFooter: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+  },
+  cancelEditTxt: { fontSize: 13, fontWeight: "700", color: "#64748B" },
+  assignPrimaryActions: { flexDirection: "row", alignItems: "center", gap: 8 },
   assignListPanel: {
     flex: 0.95,
     minWidth: 0,
@@ -1099,6 +1206,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 2,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+  },
+  teacherCardEditing: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    borderBottomColor: "#BFDBFE",
   },
   teacherCardHeader: {
     flexDirection: "row",
