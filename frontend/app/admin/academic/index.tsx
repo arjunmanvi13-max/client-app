@@ -1,7 +1,7 @@
 import { useCallback, useState, useEffect, useMemo } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  ActivityIndicator, Alert, RefreshControl,
+  ActivityIndicator, Alert, RefreshControl, Pressable, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -50,6 +50,37 @@ function gradeNamesForSubject(sub: any, grades: any[]): string {
     .join(", ") || "all";
 }
 
+type GroupedAssignmentRow = {
+  sectionId: string;
+  sectionLabel: string;
+  stdName: string;
+  subjectIds: string[];
+  subjects: string;
+  ids: string[];
+};
+
+type GroupedAssignment = {
+  teacher: any;
+  rows: GroupedAssignmentRow[];
+};
+
+function assignRowsForTeacher(teacherId: string, assignments: any[]): TeacherAssignRow[] {
+  const bySection = new Map<string, string[]>();
+  for (const a of assignments) {
+    if (a.teacher_user_id !== teacherId || !a.section_id) continue;
+    const subjectIds = bySection.get(a.section_id) || [];
+    if (a.subject_id && !subjectIds.includes(a.subject_id)) {
+      subjectIds.push(a.subject_id);
+    }
+    bySection.set(a.section_id, subjectIds);
+  }
+  return Array.from(bySection.entries()).map(([sectionId, subjectIds]) => ({
+    key: `row-${sectionId}-${Math.random().toString(36).slice(2, 7)}`,
+    sectionId,
+    subjectIds,
+  }));
+}
+
 export default function AcademicAdmin() {
   const router = useRouter();
   const { user } = useAuth();
@@ -77,6 +108,7 @@ export default function AcademicAdmin() {
   const [assignRows, setAssignRows] = useState<TeacherAssignRow[]>([newTeacherAssignRow()]);
   const [openAssignRowKey, setOpenAssignRowKey] = useState<string | null>(null);
   const [openTeacherSelect, setOpenTeacherSelect] = useState(false);
+  const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
   const [seedingSubjects, setSeedingSubjects] = useState(false);
   const [seedingStandards, setSeedingStandards] = useState(false);
 
@@ -121,38 +153,51 @@ export default function AcademicAdmin() {
     [sections, sectionGradeId],
   );
 
-  const groupedAssignments = useMemo(() => {
-    const map = new Map<string, {
-      teacher: any;
-      rows: { sectionLabel: string; stdName: string; subjects: string; ids: string[] }[];
-    }>();
+  const groupedAssignments = useMemo((): GroupedAssignment[] => {
+    const map = new Map<string, { teacher: any; rows: Map<string, GroupedAssignmentRow> }>();
     for (const a of classAssignments) {
       const tid = a.teacher_user_id;
+      const sectionId = a.section_id || "";
+      if (!tid || !sectionId) continue;
       if (!map.has(tid)) {
-        map.set(tid, { teacher: a.teacher, rows: [] });
+        map.set(tid, { teacher: a.teacher, rows: new Map() });
       }
       const entry = map.get(tid)!;
-      const sectionLabel = a.section?.label || a.section_id?.slice(0, 8) || "—";
-      const stdName = a.grade?.name || a.section?.grade_name || "—";
-      const existing = entry.rows.find((r) => r.sectionLabel === sectionLabel);
-      if (existing) {
-        const names = existing.subjects.split(", ").filter(Boolean);
-        if (a.subject?.name && !names.includes(a.subject.name)) {
-          names.push(a.subject.name);
-          existing.subjects = names.join(", ");
-        }
-        existing.ids.push(a.id);
-      } else {
-        entry.rows.push({
-          sectionLabel,
-          stdName,
-          subjects: a.subject?.name || "—",
-          ids: [a.id],
-        });
+      let row = entry.rows.get(sectionId);
+      if (!row) {
+        row = {
+          sectionId,
+          sectionLabel: a.section?.label || sectionId.slice(0, 8) || "—",
+          stdName: a.grade?.name || a.section?.grade_name || "—",
+          subjectIds: [],
+          subjects: "",
+          ids: [],
+        };
+        entry.rows.set(sectionId, row);
       }
+      if (a.subject_id && !row.subjectIds.includes(a.subject_id)) {
+        row.subjectIds.push(a.subject_id);
+      }
+      row.ids.push(a.id);
     }
-    return Array.from(map.values());
-  }, [classAssignments]);
+
+    const subjectNameById = new Map(subjects.map((sub) => [sub.id, sub.name]));
+
+    return Array.from(map.values())
+      .map(({ teacher, rows }) => ({
+        teacher,
+        rows: Array.from(rows.values()).map((row) => ({
+          ...row,
+          subjects: row.subjectIds
+            .map((id) => subjectNameById.get(id))
+            .filter(Boolean)
+            .join(", ") || "—",
+        })),
+      }))
+      .sort((a, b) =>
+        (a.teacher?.name || "").localeCompare(b.teacher?.name || "", undefined, { sensitivity: "base" }),
+      );
+  }, [classAssignments, subjects]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -346,9 +391,16 @@ export default function AcademicAdmin() {
       return;
     }
     const payload = buildTeacherAssignmentPayload(assignTeacherId!, assignRows);
+    const replacing = editingTeacherId === payload.teacherId;
     let created = 0;
     let skipped = 0;
     try {
+      if (replacing) {
+        const existing = classAssignments.filter((a) => a.teacher_user_id === payload.teacherId);
+        for (const a of existing) {
+          await api.delete(`/academic/class-assignments/${a.id}`);
+        }
+      }
       for (const mapping of payload.mappings) {
         const section = sections.find((sec) => sec.id === mapping.sectionId);
         if (!section) {
@@ -372,24 +424,59 @@ export default function AcademicAdmin() {
         }
       }
       setAssignTeacherId(null);
+      setEditingTeacherId(null);
       setAssignRows([newTeacherAssignRow()]);
       await load();
       Alert.alert(
-        "Assignments saved",
-        `${created} assignment(s) created${skipped ? `, ${skipped} already existed` : ""}.`,
+        replacing ? "Assignments updated" : "Assignments saved",
+        replacing
+          ? `${created} assignment(s) saved for this teacher.`
+          : `${created} assignment(s) created${skipped ? `, ${skipped} already existed` : ""}.`,
       );
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Failed to assign teacher");
     }
   };
 
-  const removeAssignment = async (id: string) => {
-    try {
-      await api.delete(`/academic/class-assignments/${id}`);
-      load();
-    } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "Failed to remove assignment");
-    }
+  const editTeacherAssignments = (group: GroupedAssignment) => {
+    const teacherId = group.teacher?.id;
+    if (!teacherId || isReadOnly) return;
+    const rows = assignRowsForTeacher(teacherId, classAssignments);
+    setAssignTeacherId(teacherId);
+    setEditingTeacherId(teacherId);
+    setAssignRows(rows.length ? rows : [newTeacherAssignRow()]);
+  };
+
+  const removeTeacherAssignments = (group: GroupedAssignment) => {
+    const teacherName = group.teacher?.name || "this teacher";
+    const ids = group.rows.flatMap((row) => row.ids);
+    if (!ids.length || isReadOnly) return;
+    Alert.alert(
+      "Delete all assignments?",
+      `Remove every class assignment for ${teacherName}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              for (const id of ids) {
+                await api.delete(`/academic/class-assignments/${id}`);
+              }
+              if (editingTeacherId === group.teacher?.id) {
+                setEditingTeacherId(null);
+                setAssignTeacherId(null);
+                setAssignRows([newTeacherAssignRow()]);
+              }
+              await load();
+            } catch (e: any) {
+              Alert.alert("Error", e?.response?.data?.detail || "Failed to remove assignments");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const toggleChip = (list: string[], id: string, setter: (v: string[]) => void) => {
@@ -457,7 +544,10 @@ export default function AcademicAdmin() {
                       label="Teacher"
                       value={assignTeacherId || ""}
                       options={teacherOptions}
-                      onChange={(id) => setAssignTeacherId(id || null)}
+                      onChange={(id) => {
+                        setAssignTeacherId(id || null);
+                        if (id !== editingTeacherId) setEditingTeacherId(null);
+                      }}
                       onOpenChange={setOpenTeacherSelect}
                       placeholder="Search and select teacher…"
                       searchPlaceholder="Search teachers…"
@@ -533,7 +623,7 @@ export default function AcademicAdmin() {
                       style={s.btnCompact}
                       onPress={assignClasses}
                     >
-                      <Text style={s.btnTxt}>Save assignments</Text>
+                      <Text style={s.btnTxt}>{editingTeacherId ? "Update assignments" : "Save assignments"}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -552,28 +642,61 @@ export default function AcademicAdmin() {
                 >
                   {groupedAssignments.length === 0 ? (
                     <Text style={s.hintCompact}>No class assignments yet.</Text>
-                  ) : groupedAssignments.map((group) => (
-                    <View key={group.teacher?.id || group.teacher?.name} style={s.teacherGroup}>
-                      <Text style={s.assignName}>
-                        {group.teacher?.name || "Teacher"}
-                        {inactiveUserSuffix(group.teacher)}
-                      </Text>
-                      {group.rows.map((row) => (
-                        <View key={`${row.sectionLabel}-${row.subjects}`} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
+                  ) : groupedAssignments.map((group) => {
+                    const teacherId = group.teacher?.id || group.teacher?.name;
+                    return (
+                      <View key={teacherId} style={s.teacherCard} testID={`teacher-assignments-${teacherId}`}>
+                        <View style={s.teacherCardHeader}>
+                          <View style={s.teacherCardTitleWrap}>
+                            <Text style={s.assignName} numberOfLines={1}>
+                              {group.teacher?.name || "Teacher"}
+                              {inactiveUserSuffix(group.teacher)}
+                            </Text>
+                            <Text style={s.assignClassCount}>
+                              {group.rows.length} class{group.rows.length === 1 ? "" : "es"}
+                            </Text>
+                          </View>
+                          {!isReadOnly && (
+                            <View style={s.teacherCardActions}>
+                              <Pressable
+                                testID={`edit-teacher-assignments-${teacherId}`}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Edit assignments for ${group.teacher?.name || "teacher"}`}
+                                onPress={() => editTeacherAssignments(group)}
+                                style={({ pressed, hovered }) => [
+                                  s.assignActionBtn,
+                                  s.assignActionBtnEdit,
+                                  (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
+                                ]}
+                              >
+                                <Feather name="edit-2" size={14} color="#1E40AF" />
+                              </Pressable>
+                              <Pressable
+                                testID={`delete-teacher-assignments-${teacherId}`}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Delete all assignments for ${group.teacher?.name || "teacher"}`}
+                                onPress={() => removeTeacherAssignments(group)}
+                                style={({ pressed, hovered }) => [
+                                  s.assignActionBtn,
+                                  s.assignActionBtnDelete,
+                                  (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
+                                ]}
+                              >
+                                <Feather name="trash-2" size={14} color="#EF4444" />
+                              </Pressable>
+                            </View>
+                          )}
+                        </View>
+                        {group.rows.map((row) => (
+                          <View key={row.sectionId} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
                             <Text style={s.assignMeta} numberOfLines={2}>
                               {row.sectionLabel} · {stdLabel(row.stdName)} · {row.subjects}
                             </Text>
                           </View>
-                          {!isReadOnly && row.ids.map((id) => (
-                            <TouchableOpacity key={id} onPress={() => removeAssignment(id)} style={s.assignDeleteBtn}>
-                              <Feather name="trash-2" size={15} color="#EF4444" />
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      ))}
-                    </View>
-                  ))}
+                        ))}
+                      </View>
+                    );
+                  })}
                 </ScrollView>
               </View>
             </View>
@@ -971,10 +1094,48 @@ const s = StyleSheet.create({
   },
   assignFormHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
   assignFormTitle: { fontSize: 12, fontWeight: "800", color: "#0F172A" },
-  teacherGroup: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
-  assignRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 6 },
-  assignDeleteBtn: { padding: 4 },
-  assignName: { fontSize: 13, fontWeight: "700", color: "#0F172A", marginBottom: 2 },
+  teacherCard: {
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+  teacherCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 4,
+  },
+  teacherCardTitleWrap: { flex: 1, minWidth: 0 },
+  teacherCardActions: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0 },
+  assignActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  assignActionBtnEdit: {
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+  },
+  assignActionBtnDelete: {
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+  },
+  assignActionBtnHover: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#93C5FD",
+  },
+  assignActionBtnDeleteHover: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FCA5A5",
+  },
+  assignRow: { paddingVertical: 4, paddingLeft: 2 },
+  assignName: { fontSize: 13, fontWeight: "700", color: "#0F172A" },
+  assignClassCount: { fontSize: 11, color: "#94A3B8", marginTop: 1, fontWeight: "600" },
   assignMeta: { fontSize: 12, color: "#64748B", lineHeight: 16 },
   denied: { padding: 24, color: "#64748B", textAlign: "center" },
 });
