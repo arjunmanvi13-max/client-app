@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,49 +8,56 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
 import { LoadingState, ErrorState, getApiError } from "../../../src/ScreenStates";
+import { useBreakpoint } from "../../../src/useBreakpoint";
 import { colors, radii, spacing } from "../../../src/theme";
-
-const CATEGORIES = ["Day Boarding", "Boarding", "Hostel", "Daily Players"] as const;
-
-type EntityKey = "PWS" | "ALPHA";
-
-type BaselineForm = Record<EntityKey, Record<string, string>>;
-
-const EMPTY_FORM: BaselineForm = {
-  PWS: Object.fromEntries(CATEGORIES.map((c) => [c, "0"])),
-  ALPHA: Object.fromEntries(CATEGORIES.map((c) => [c, "0"])),
-};
+import {
+  ALPHA_CATEGORY_FIELDS,
+  ALPHA_SPORTS,
+  PWS_CLASS_FIELDS,
+  alphaBaselineFromApi,
+  emptyAlphaBaselineStrings,
+  emptyPwsBaselineStrings,
+  parseAlphaBaseline,
+  parsePwsBaseline,
+  pwsBaselineFromApi,
+  sumAlphaBaseline,
+  sumPwsBaseline,
+  type AlphaCategoryKey,
+  type AlphaSportKey,
+  type PwsClassKey,
+} from "../../../src/academyStructureTypes";
 
 export default function AcademyStructureAdmin() {
   const router = useRouter();
   const { user } = useAuth();
-  const [form, setForm] = useState<BaselineForm>(EMPTY_FORM);
+  const { isWide, horizontalPadding, contentMaxWidth } = useBreakpoint();
+  const [pwsForm, setPwsForm] = useState(emptyPwsBaselineStrings());
+  const [alphaForm, setAlphaForm] = useState(emptyAlphaBaselineStrings());
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<EntityKey | null>(null);
+  const [savingPws, setSavingPws] = useState(false);
+  const [savingAlpha, setSavingAlpha] = useState(false);
   const [error, setError] = useState("");
 
   const isSuperAdmin = user?.role === "super_admin";
+
+  const pwsTotal = useMemo(() => sumPwsBaseline(pwsForm), [pwsForm]);
+  const alphaTotals = useMemo(() => sumAlphaBaseline(alphaForm), [alphaForm]);
 
   const load = useCallback(async () => {
     setError("");
     try {
       const { data } = await api.get("/academy-structure");
-      const next: BaselineForm = { ...EMPTY_FORM };
-      for (const ent of ["PWS", "ALPHA"] as EntityKey[]) {
-        const cats = data?.entities?.[ent]?.categories || {};
-        for (const cat of CATEGORIES) {
-          next[ent][cat] = String(cats[cat] ?? 0);
-        }
-      }
-      setForm(next);
+      setPwsForm(pwsBaselineFromApi(data?.entities?.PWS?.pws_classes));
+      setAlphaForm(alphaBaselineFromApi(data?.entities?.ALPHA?.alpha_matrix));
     } catch (e: any) {
-      setError(getApiError(e, "Could not load academy structure."));
+      setError(getApiError(e, "Could not load structure baselines."));
     } finally {
       setLoading(false);
     }
@@ -58,95 +65,166 @@ export default function AcademyStructureAdmin() {
 
   useEffect(() => { load(); }, [load]);
 
-  const updateField = (entity: EntityKey, category: string, value: string) => {
+  const updatePwsField = (key: PwsClassKey, value: string) => {
     const digits = value.replace(/[^\d]/g, "");
-    setForm((prev) => ({
+    setPwsForm((prev) => ({ ...prev, [key]: digits }));
+  };
+
+  const updateAlphaField = (category: AlphaCategoryKey, sport: AlphaSportKey, value: string) => {
+    const digits = value.replace(/[^\d]/g, "");
+    setAlphaForm((prev) => ({
       ...prev,
-      [entity]: { ...prev[entity], [category]: digits },
+      [category]: { ...prev[category], [sport]: digits },
     }));
   };
 
-  const saveEntity = async (entity: EntityKey) => {
-    setSaving(entity);
+  const savePws = async () => {
+    setSavingPws(true);
     try {
-      const categories = Object.fromEntries(
-        CATEGORIES.map((cat) => [cat, parseInt(form[entity][cat] || "0", 10) || 0]),
-      );
-      await api.put(`/academy-structure/${entity}`, { categories });
-      Alert.alert("Saved", `${entity} baselines updated.`);
+      await api.put("/academy-structure/PWS", { pws_classes: parsePwsBaseline(pwsForm) });
+      Alert.alert("Saved", "PWS baselines updated.");
       await load();
     } catch (e: any) {
-      Alert.alert("Error", e?.response?.data?.detail || "Failed to save baselines.");
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to save PWS baselines.");
     } finally {
-      setSaving(null);
+      setSavingPws(false);
+    }
+  };
+
+  const saveAlpha = async () => {
+    setSavingAlpha(true);
+    try {
+      await api.put("/academy-structure/ALPHA", { alpha_matrix: parseAlphaBaseline(alphaForm) });
+      Alert.alert("Saved", "ALPHA baselines updated.");
+      await load();
+    } catch (e: any) {
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to save ALPHA baselines.");
+    } finally {
+      setSavingAlpha(false);
     }
   };
 
   if (!isSuperAdmin) {
     return (
       <SafeAreaView style={s.safe}>
-        <Text style={s.denied}>Academy Structure is restricted to Super Admin.</Text>
+        <Text style={s.denied}>ALPHA/PWS Structure is restricted to Super Admin.</Text>
       </SafeAreaView>
     );
   }
 
+  const pageStyle = {
+    paddingHorizontal: horizontalPadding,
+    maxWidth: contentMaxWidth ? Math.min(contentMaxWidth, 1280) : undefined,
+    alignSelf: contentMaxWidth ? ("center" as const) : undefined,
+    width: contentMaxWidth ? ("100%" as const) : undefined,
+  };
+
+  let lastPwsGroup = "";
+
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.header}>
+      <View style={[s.header, pageStyle]}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="academy-structure-back">
           <Feather name="chevron-left" size={22} color={colors.ink} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.h1}>Academy Structure</Text>
-          <Text style={s.sub}>Seat capacity baselines for PWS and ALPHA enrollment planning</Text>
+          <Text style={s.h1}>ALPHA/PWS Structure</Text>
+          <Text style={s.sub}>Class-wise and sport-wise seat capacity baselines</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={s.scroll}>
+      <ScrollView contentContainerStyle={[s.scroll, pageStyle]}>
         {loading ? (
           <LoadingState message="Loading baselines…" compact />
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : (
-          (["PWS", "ALPHA"] as EntityKey[]).map((entity) => (
-            <View key={entity} style={s.card}>
+          <View style={[s.grid, isWide && s.gridWide]}>
+            <View style={s.card}>
               <View style={s.cardHead}>
-                <Feather name={entity === "PWS" ? "book-open" : "award"} size={18} color={colors.primary} />
-                <Text style={s.cardTitle}>{entity} capacity baselines</Text>
-              </View>
-              <Text style={s.cardHint}>
-                Maximum seat counts used on the Super Admin dashboard for enrollment gap tracking.
-              </Text>
-
-              {CATEGORIES.map((cat) => (
-                <View key={`${entity}-${cat}`} style={s.fieldRow}>
-                  <Text style={s.fieldLabel}>{cat}</Text>
-                  <TextInput
-                    testID={`baseline-${entity}-${cat}`}
-                    value={form[entity][cat]}
-                    onChangeText={(v) => updateField(entity, cat, v)}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.hint}
-                    style={s.input}
-                  />
+                <Feather name="book-open" size={16} color={colors.primary} />
+                <Text style={s.cardTitle}>PWS capacity baselines</Text>
+                <View style={s.totalBadge}>
+                  <Text style={s.totalBadgeTxt}>Total: {pwsTotal}</Text>
                 </View>
-              ))}
+              </View>
+              <Text style={s.cardHint}>Class-wise maximum seats for enrollment gap tracking.</Text>
 
-              <TouchableOpacity
-                testID={`save-baselines-${entity}`}
-                style={s.saveBtn}
-                disabled={saving === entity}
-                onPress={() => saveEntity(entity)}
-              >
-                {saving === entity ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={s.saveBtnText}>Save {entity} baselines</Text>
-                )}
+              <View style={s.pwsGrid}>
+                {PWS_CLASS_FIELDS.map((field) => {
+                  const showGroup = field.group !== lastPwsGroup;
+                  lastPwsGroup = field.group;
+                  return (
+                    <View key={field.key} style={s.pwsCell}>
+                      {showGroup ? <Text style={s.groupLabel}>{field.group}</Text> : null}
+                      <Text style={s.fieldLabel}>{field.label}</Text>
+                      <TextInput
+                        testID={`baseline-pws-${field.key}`}
+                        value={pwsForm[field.key]}
+                        onChangeText={(v) => updatePwsField(field.key, v)}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={colors.hint}
+                        style={s.inputCompact}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+
+              <TouchableOpacity testID="save-baselines-PWS" style={s.saveBtn} disabled={savingPws} onPress={savePws}>
+                {savingPws ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>Save PWS baselines</Text>}
               </TouchableOpacity>
             </View>
-          ))
+
+            <View style={s.card}>
+              <View style={s.cardHead}>
+                <Feather name="award" size={16} color={colors.accent} />
+                <Text style={s.cardTitle}>ALPHA capacity baselines</Text>
+              </View>
+              <View style={s.alphaTotalsRow}>
+                <View style={s.totalBadge}>
+                  <Text style={s.totalBadgeTxt}>Cricket: {alphaTotals.cricket}</Text>
+                </View>
+                <View style={s.totalBadge}>
+                  <Text style={s.totalBadgeTxt}>Football: {alphaTotals.football}</Text>
+                </View>
+                <View style={[s.totalBadge, s.totalBadgePrimary]}>
+                  <Text style={[s.totalBadgeTxt, s.totalBadgeTxtPrimary]}>Total: {alphaTotals.overall}</Text>
+                </View>
+              </View>
+              <Text style={s.cardHint}>Category × sport matrix for ALPHA enrollment planning.</Text>
+
+              <View style={s.alphaTable}>
+                <View style={s.alphaHeaderRow}>
+                  <Text style={[s.alphaHeaderCell, s.alphaCatCol]}>Category</Text>
+                  <Text style={s.alphaHeaderCell}>Cricket</Text>
+                  <Text style={s.alphaHeaderCell}>Football</Text>
+                </View>
+                {ALPHA_CATEGORY_FIELDS.map((cat) => (
+                  <View key={cat.key} style={s.alphaRow}>
+                    <Text style={[s.fieldLabel, s.alphaCatCol]}>{cat.label}</Text>
+                    {ALPHA_SPORTS.map((sport) => (
+                      <TextInput
+                        key={`${cat.key}-${sport}`}
+                        testID={`baseline-alpha-${cat.key}-${sport}`}
+                        value={alphaForm[cat.key][sport]}
+                        onChangeText={(v) => updateAlphaField(cat.key, sport, v)}
+                        keyboardType="number-pad"
+                        placeholder="0"
+                        placeholderTextColor={colors.hint}
+                        style={[s.inputCompact, s.alphaInput]}
+                      />
+                    ))}
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity testID="save-baselines-ALPHA" style={s.saveBtn} disabled={savingAlpha} onPress={saveAlpha}>
+                {savingAlpha ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>Save ALPHA baselines</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -160,44 +238,89 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   backBtn: { padding: 8 },
-  h1: { fontSize: 22, fontWeight: "800", color: colors.ink },
-  sub: { fontSize: 13, color: colors.muted2, marginTop: 4 },
-  scroll: { padding: spacing.lg, paddingBottom: 80, gap: spacing.lg },
+  h1: { fontSize: 20, fontWeight: "800", color: colors.ink },
+  sub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  scroll: { paddingVertical: spacing.md, paddingBottom: spacing.lg },
+  grid: { gap: spacing.md },
+  gridWide: { flexDirection: "row", alignItems: "flex-start" },
   card: {
+    flex: 1,
+    minWidth: 0,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: spacing.lg,
-    gap: 10,
+    padding: spacing.md,
+    gap: 8,
   },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: colors.ink },
-  cardHint: { fontSize: 12, color: colors.muted2, marginBottom: 4 },
-  fieldRow: { gap: 6 },
-  fieldLabel: { fontSize: 13, fontWeight: "700", color: colors.muted },
-  input: {
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  cardTitle: { fontSize: 14, fontWeight: "800", color: colors.ink, flex: 1 },
+  cardHint: { fontSize: 11, color: colors.muted2 },
+  totalBadge: {
+    backgroundColor: colors.primarySofter,
+    borderRadius: radii.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  totalBadgePrimary: { backgroundColor: colors.accentSoft },
+  totalBadgeTxt: { fontSize: 11, fontWeight: "800", color: colors.primary },
+  totalBadgeTxtPrimary: { color: colors.accentHover },
+  alphaTotalsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  pwsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  pwsCell: {
+    width: Platform.OS === "web" ? "23%" : "47%",
+    minWidth: 88,
+    gap: 4,
+  },
+  groupLabel: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.hint,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+  fieldLabel: { fontSize: 11, fontWeight: "700", color: colors.muted },
+  inputCompact: {
     backgroundColor: colors.surface2,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    borderRadius: radii.sm,
+    paddingHorizontal: 10,
+    paddingVertical: Platform.OS === "web" ? 7 : 9,
+    fontSize: 14,
     color: colors.ink,
+    minHeight: 36,
+    ...Platform.select({ web: { outlineStyle: "none" } as object, default: {} }),
   },
+  alphaTable: { gap: 6 },
+  alphaHeaderRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingBottom: 2 },
+  alphaHeaderCell: {
+    flex: 1,
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.hint,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  alphaRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  alphaCatCol: { flex: 1.2, minWidth: 92 },
+  alphaInput: { flex: 1 },
   saveBtn: {
-    marginTop: 8,
+    marginTop: 4,
     backgroundColor: colors.primary,
     borderRadius: radii.md,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: "center",
   },
-  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  saveBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
 });

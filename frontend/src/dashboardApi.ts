@@ -46,6 +46,15 @@ export type SuperAdminMetrics = {
   entity: string;
   date: string;
   enrollment: EnrollmentMetric[];
+  pws_enrollment?: Array<{ key: string; label: string; active: number; baseline: number; gap: number }>;
+  alpha_enrollment?: Array<{
+    key: string;
+    category: string;
+    sports: Record<string, { active: number; baseline: number; gap: number }>;
+  }>;
+  pws_total_baseline?: number;
+  pws_total_active?: number;
+  alpha_totals?: { cricket: number; football: number; overall?: number };
   revenue: {
     expected_monthly: number;
     collected_monthly: number;

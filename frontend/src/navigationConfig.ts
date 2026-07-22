@@ -364,7 +364,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
       },
       {
         id: "academy-structure",
-        label: "Academy Structure",
+        label: "ALPHA/PWS Structure",
         icon: "layers",
         href: "/admin/academy-structure",
         match: matchPrefix(["/admin/academy-structure"]),

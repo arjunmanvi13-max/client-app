@@ -202,7 +202,10 @@ export default function SuperAdminDashboard() {
 
   const pendingApprovals = metrics?.pending_approvals ?? bundle?.pendingApprovals ?? data?.pending_approvals ?? 0;
   const openTaskCount = metrics?.open_tasks ?? data?.open_tasks ?? openTasks.length;
-  const enrollmentRows = metrics?.enrollment || [];
+  const pwsEnrollmentRows = metrics?.pws_enrollment || [];
+  const alphaEnrollmentRows = metrics?.alpha_enrollment || [];
+  const showPwsEnrollment = entity !== "alpha" && pwsEnrollmentRows.length > 0;
+  const showAlphaEnrollment = entity !== "pws" && alphaEnrollmentRows.length > 0;
 
   const quickActions = [
     { label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" },
@@ -346,40 +349,59 @@ export default function SuperAdminDashboard() {
                 </View>
               </View>
 
-              {enrollmentRows.length > 0 && (
+              {(showPwsEnrollment || showAlphaEnrollment) && (
                 <View style={s.card}>
                   <View style={s.cardHead}>
                     <Feather name="layers" size={18} color={colors.hint} />
                     <Text style={s.cardTitle}>Enrollment vs capacity</Text>
                   </View>
-                  <View style={s.enrollmentList}>
-                    {enrollmentRows.map((row) => {
-                      const hasBaseline = row.baseline > 0;
-                      const pctFull = hasBaseline ? Math.min(100, Math.round((row.active / row.baseline) * 100)) : 0;
-                      return (
-                        <View key={row.category} style={s.enrollmentRow}>
-                          <View style={s.enrollmentTop}>
-                            <Text style={s.enrollmentCat}>{row.category}</Text>
-                            <Text style={s.enrollmentCount}>
-                              {row.active}/{hasBaseline ? row.baseline : "—"} enrolled
-                            </Text>
-                          </View>
-                          {hasBaseline ? (
-                            <>
-                              <View style={s.progressTrack}>
-                                <View style={[s.progressFill, { width: `${pctFull}%`, backgroundColor: row.gap === 0 ? colors.warning : colors.primary }]} />
-                              </View>
+
+                  {showPwsEnrollment && (
+                    <View style={s.enrollmentBlock}>
+                      <Text style={s.enrollmentSectionTitle}>
+                        PWS classes · {metrics?.pws_total_active ?? 0}/{metrics?.pws_total_baseline ?? 0} total
+                      </Text>
+                      <View style={s.enrollmentList}>
+                        {pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0).slice(0, 6).map((row) => (
+                          <View key={row.key} style={s.enrollmentRow}>
+                            <View style={s.enrollmentTop}>
+                              <Text style={s.enrollmentCat}>{row.label}</Text>
+                              <Text style={s.enrollmentCount}>{row.active}/{row.baseline || "—"}</Text>
+                            </View>
+                            {row.baseline > 0 ? (
                               <Text style={[s.enrollmentGap, row.gap === 0 && s.enrollmentGapFull]}>
                                 {row.gap > 0 ? `${row.gap} seat${row.gap === 1 ? "" : "s"} available` : "At capacity"}
                               </Text>
-                            </>
-                          ) : (
-                            <Text style={s.enrollmentGapMuted}>Set baseline in Academy Structure</Text>
-                          )}
-                        </View>
-                      );
-                    })}
-                  </View>
+                            ) : null}
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {showAlphaEnrollment && (
+                    <View style={[s.enrollmentBlock, showPwsEnrollment && { marginTop: 10 }]}>
+                      <Text style={s.enrollmentSectionTitle}>ALPHA by category & sport</Text>
+                      <View style={s.enrollmentList}>
+                        {alphaEnrollmentRows.map((row) => (
+                          <View key={row.key} style={s.enrollmentRow}>
+                            <Text style={s.enrollmentCat}>{row.category}</Text>
+                            {(["cricket", "football"] as const).map((sport) => {
+                              const cell = row.sports?.[sport];
+                              if (!cell) return null;
+                              return (
+                                <Text key={sport} style={s.enrollmentSportLine}>
+                                  {sport.charAt(0).toUpperCase() + sport.slice(1)}: {cell.active}/{cell.baseline || "—"}
+                                  {cell.baseline > 0 && cell.gap > 0 ? ` · ${cell.gap} open` : ""}
+                                </Text>
+                              );
+                            })}
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
                   <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
                     <Text style={s.link}>Configure baselines →</Text>
                   </TouchableOpacity>
@@ -669,7 +691,10 @@ const s = StyleSheet.create({
   },
   categoryFinanceLabel: { fontSize: 11, fontWeight: "700", color: colors.muted },
   categoryFinanceVal: { fontSize: 11, fontWeight: "600", color: colors.ink2, flexShrink: 1, textAlign: "right" },
-  enrollmentList: { gap: 10 },
+  enrollmentList: { gap: 8 },
+  enrollmentBlock: { gap: 6 },
+  enrollmentSectionTitle: { fontSize: 11, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.4 },
+  enrollmentSportLine: { fontSize: 11, color: colors.muted, marginTop: 2 },
   enrollmentRow: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
