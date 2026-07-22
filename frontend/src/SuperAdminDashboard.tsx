@@ -59,6 +59,22 @@ function formatDueLabel(due?: string) {
   return formatDate(iso);
 }
 
+const PWS_FINANCE_CATEGORIES = new Set(["Day Students", "Boarding Students"]);
+const ALPHA_FINANCE_CATEGORIES = new Set(["Day Boarding", "Boarding", "Hostel", "Daily Players"]);
+
+function filterFinanceCategories(
+  rows: Array<{ category: string; expected: number; collected: number; gap: number }>,
+  entity: Entity,
+) {
+  if (entity === "pws") {
+    return rows.filter((row) => PWS_FINANCE_CATEGORIES.has(row.category));
+  }
+  if (entity === "alpha") {
+    return rows.filter((row) => ALPHA_FINANCE_CATEGORIES.has(row.category));
+  }
+  return rows;
+}
+
 const ZONE = {
   finance: { bg: "#EFF6FF", border: "#BFDBFE", accent: "#2563EB" },
   registry: { bg: "#F0FDF4", border: "#BBF7D0", accent: "#16A34A" },
@@ -138,6 +154,7 @@ export default function SuperAdminDashboard() {
     const received = collectedMonthly;
     const target = Math.max(expectedMonthly || received + monthlyDues + historicalDues, received, 1);
     const progress = Math.min(100, Math.round((received / target) * 100));
+    const byCategory = filterFinanceCategories(metrics?.revenue?.by_category || [], entity);
     return {
       collectedToday,
       txn,
@@ -149,9 +166,9 @@ export default function SuperAdminDashboard() {
       received,
       target,
       progress,
-      byCategory: metrics?.revenue?.by_category || [],
+      byCategory,
     };
-  }, [data, fees, metrics]);
+  }, [data, fees, metrics, entity]);
 
   const attendanceRows = useMemo(() => {
     const att = command?.attendance_by_kind || {};
