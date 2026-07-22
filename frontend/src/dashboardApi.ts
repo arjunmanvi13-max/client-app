@@ -12,6 +12,7 @@ export type AttendanceKindStats = {
 
 export type SuperAdminDashboardBundle = {
   mvp: any;
+  metrics?: SuperAdminMetrics;
   command?: {
     roster_counts?: Record<string, number>;
     attendance_by_kind?: Record<string, AttendanceKindStats>;
@@ -28,7 +29,41 @@ export type SuperAdminDashboardBundle = {
     priority?: string;
     due_date?: string;
     status?: string;
+    entity_id?: string;
   }>;
+  pendingApprovals: number;
+};
+
+export type EnrollmentMetric = {
+  category: string;
+  active: number;
+  baseline: number;
+  gap: number;
+  utilization_pct?: number | null;
+};
+
+export type SuperAdminMetrics = {
+  entity: string;
+  date: string;
+  enrollment: EnrollmentMetric[];
+  revenue: {
+    expected_monthly: number;
+    collected_monthly: number;
+    collection_gap: number;
+    by_category: Array<{ category: string; expected: number; collected: number; gap: number }>;
+  };
+  aging_dues: {
+    current_month_dues: number;
+    current_month_count: number;
+    overdue_past_month: number;
+    overdue_count: number;
+  };
+  attendance_roles: {
+    coaches: AttendanceKindStats & { roster: number };
+    staff: AttendanceKindStats & { roster: number };
+  };
+  open_tasks: number;
+  pending_approvals: number;
 };
 
 const OPEN_TASK_STATUSES = new Set(["open", "assigned", "in_progress", "blocked", "delayed"]);
@@ -82,27 +117,55 @@ function aggregateFeesDashboard(raw: any, entity: DashboardEntity) {
   };
 }
 
+function filterTasksByEntity(tasks: any[], entity: DashboardEntity) {
+  return tasks.filter((t) => {
+    const eid = (t.entity_id || "both").toLowerCase();
+    if (entity === "both") return true;
+    if (entity === "pws") return eid === "pws" || eid === "both" || !t.entity_id;
+    return eid === "alpha" || eid === "both" || !t.entity_id;
+  });
+}
+
+function filterApprovalsByEntity(rows: any[], entity: DashboardEntity) {
+  return rows.filter((r) => {
+    if (r.status !== "pending") return false;
+    const eid = (r.entity_id || "pws").toLowerCase();
+    if (entity === "both") return true;
+    if (entity === "pws") return eid === "pws";
+    return eid === "alpha";
+  });
+}
+
 /** Super Admin / ALPHA Admin bento dashboard data bundle. */
 export async function fetchSuperAdminDashboardBundle(entity: DashboardEntity): Promise<SuperAdminDashboardBundle> {
   const entityParam = entity === "both" ? "both" : entity;
-  const [mvp, ccRes, tasksRes, feesRes] = await Promise.all([
+  const [mvp, ccRes, tasksRes, feesRes, metricsRes, approvalsRes] = await Promise.all([
     fetchDashboardMvp({ entity: entityParam }),
     api.get("/command-center").catch(() => ({ data: null })),
     api.get("/tasks").catch(() => ({ data: [] })),
     api.get("/fees/dashboard", {
       params: entity === "pws" ? { entity_id: "pws" } : entity === "alpha" ? { entity_id: "alpha" } : {},
     }).catch(() => ({ data: null })),
+    api.get("/dashboard/super-admin-metrics", { params: { entity: entityParam } }).catch(() => ({ data: null })),
+    api.get("/approval-requests").catch(() => ({ data: [] })),
   ]);
 
-  const openTasks = (Array.isArray(tasksRes.data) ? tasksRes.data : [])
+  const allTasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
+  const entityTasks = filterTasksByEntity(allTasks, entity);
+  const openTasks = entityTasks
     .filter((t: any) => OPEN_TASK_STATUSES.has(t.status || "open"))
     .slice(0, 5);
 
+  const approvals = Array.isArray(approvalsRes.data) ? approvalsRes.data : [];
+  const pendingApprovals = filterApprovalsByEntity(approvals, entity).length;
+
   return {
     mvp: mvp,
+    metrics: metricsRes.data || undefined,
     command: ccRes.data ? filterCommandCenter(ccRes.data, entity) : undefined,
     fees: feesRes.data ? aggregateFeesDashboard(feesRes.data, entity) : undefined,
     openTasks,
+    pendingApprovals,
   };
 }
 

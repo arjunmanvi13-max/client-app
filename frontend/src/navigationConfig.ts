@@ -363,6 +363,14 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         pwsOnly: true,
       },
       {
+        id: "academy-structure",
+        label: "Academy Structure",
+        icon: "layers",
+        href: "/admin/academy-structure",
+        match: matchPrefix(["/admin/academy-structure"]),
+        isVisible: (ctx) => isSuperAdminUser(ctx.user),
+      },
+      {
         id: "settings",
         label: "Settings",
         icon: "settings",

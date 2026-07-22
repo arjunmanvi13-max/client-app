@@ -91,6 +91,7 @@ export default function SuperAdminDashboard() {
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const data = bundle?.mvp;
+  const metrics = bundle?.metrics;
   const command = bundle?.command;
   const fees = bundle?.fees;
   const openTasks = bundle?.openTasks || [];
@@ -98,13 +99,28 @@ export default function SuperAdminDashboard() {
   const finance = useMemo(() => {
     const collectedToday = data?.fees_collected_today?.total ?? fees?.collected_today ?? 0;
     const txn = data?.fees_collected_today?.transaction_count ?? 0;
-    const monthlyDues = fees?.due_current_month ?? 0;
-    const historicalDues = fees?.due_past ?? data?.outstanding_invoices?.total ?? 0;
-    const received = fees?.received_total ?? collectedToday;
-    const target = Math.max(received + monthlyDues + historicalDues, received, 1);
+    const monthlyDues = metrics?.aging_dues?.current_month_dues ?? fees?.due_current_month ?? 0;
+    const historicalDues = metrics?.aging_dues?.overdue_past_month ?? fees?.due_past ?? data?.outstanding_invoices?.total ?? 0;
+    const expectedMonthly = metrics?.revenue?.expected_monthly ?? 0;
+    const collectedMonthly = metrics?.revenue?.collected_monthly ?? fees?.received_total ?? collectedToday;
+    const collectionGap = metrics?.revenue?.collection_gap ?? Math.max(expectedMonthly - collectedMonthly, 0);
+    const received = collectedMonthly;
+    const target = Math.max(expectedMonthly || received + monthlyDues + historicalDues, received, 1);
     const progress = Math.min(100, Math.round((received / target) * 100));
-    return { collectedToday, txn, monthlyDues, historicalDues, received, target, progress };
-  }, [data, fees]);
+    return {
+      collectedToday,
+      txn,
+      monthlyDues,
+      historicalDues,
+      expectedMonthly,
+      collectedMonthly,
+      collectionGap,
+      received,
+      target,
+      progress,
+      byCategory: metrics?.revenue?.by_category || [],
+    };
+  }, [data, fees, metrics]);
 
   const attendanceRows = useMemo(() => {
     const att = command?.attendance_by_kind || {};
@@ -153,22 +169,40 @@ export default function SuperAdminDashboard() {
         tint: colors.success,
       });
     }
-    const staff = kindTotals(att.staff);
+    if (entity !== "pws") {
+      const coachStats = metrics?.attendance_roles?.coaches;
+      const c = coachStats
+        ? kindTotals(coachStats)
+        : kindTotals(att.coach);
+      rows.push({
+        id: "coaches",
+        label: "Coaches",
+        icon: "flag",
+        roster: coachStats?.roster ?? roster.coaches ?? 0,
+        stats: c,
+        tint: "#EA580C",
+      });
+    }
+    const staffStats = metrics?.attendance_roles?.staff;
+    const staff = staffStats
+      ? kindTotals(staffStats)
+      : kindTotals(att.staff);
     rows.push({
       id: "staff",
       label: "Support Staff",
       icon: "briefcase",
-      roster: roster.staff || 0,
+      roster: staffStats?.roster ?? roster.staff ?? 0,
       stats: staff,
       tint: colors.muted2,
     });
     return rows;
-  }, [command, entity]);
+  }, [command, entity, metrics]);
 
   if (!user) return null;
 
-  const pendingApprovals = data?.pending_approvals ?? 0;
-  const openTaskCount = data?.open_tasks ?? openTasks.length;
+  const pendingApprovals = metrics?.pending_approvals ?? bundle?.pendingApprovals ?? data?.pending_approvals ?? 0;
+  const openTaskCount = metrics?.open_tasks ?? data?.open_tasks ?? openTasks.length;
+  const enrollmentRows = metrics?.enrollment || [];
 
   const quickActions = [
     { label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" },
@@ -264,22 +298,93 @@ export default function SuperAdminDashboard() {
                       <Text style={s.miniHint}>{finance.txn} transactions today</Text>
                     </View>
                     <View style={[s.miniCard, s.miniCardInset]}>
-                      <Text style={s.microLabel}>Dues analysis</Text>
+                      <Text style={s.microLabel}>Monthly revenue</Text>
                       <View style={s.dueRow}>
-                        <Text style={s.dueLbl}>Monthly dues</Text>
-                        <Text style={s.dueVal}>{inr(finance.monthlyDues)}</Text>
+                        <Text style={s.dueLbl}>Expected</Text>
+                        <Text style={s.dueVal}>{inr(finance.expectedMonthly)}</Text>
                       </View>
                       <View style={s.dueRow}>
+                        <Text style={s.dueLbl}>Collected</Text>
+                        <Text style={[s.dueVal, { color: "#047857" }]}>{inr(finance.collectedMonthly)}</Text>
+                      </View>
+                      <View style={[s.dueRow, { borderBottomWidth: 0 }]}>
+                        <Text style={s.dueLbl}>Collection gap</Text>
+                        <Text style={[s.dueVal, { color: finance.collectionGap > 0 ? "#D97706" : colors.ink }]}>
+                          {inr(finance.collectionGap)}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[s.miniCard, s.miniCardInset]}>
+                      <Text style={s.microLabel}>Aging dues</Text>
+                      <View style={s.dueRow}>
+                        <Text style={s.dueLbl}>Current month</Text>
+                        <Text style={s.dueVal}>{inr(finance.monthlyDues)}</Text>
+                      </View>
+                      <View style={[s.dueRow, { borderBottomWidth: 0 }]}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Text style={s.dueLbl}>Historical dues</Text>
+                          <Text style={s.dueLbl}>Overdue (&gt; 1 mo)</Text>
                           <Feather name="alert-triangle" size={11} color={colors.warning} />
                         </View>
                         <Text style={[s.dueVal, { color: "#D97706", fontWeight: "800" }]}>{inr(finance.historicalDues)}</Text>
                       </View>
                     </View>
                   </View>
+
+                  {finance.byCategory.length > 0 && (
+                    <View style={s.categoryFinanceList}>
+                      {finance.byCategory.filter((row) => row.expected > 0 || row.collected > 0).map((row) => (
+                        <View key={row.category} style={s.categoryFinanceRow}>
+                          <Text style={s.categoryFinanceLabel}>{row.category}</Text>
+                          <Text style={s.categoryFinanceVal}>
+                            {inr(row.collected)} / {inr(row.expected)}
+                            {row.gap > 0 ? ` · gap ${inr(row.gap)}` : ""}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </View>
+
+              {enrollmentRows.length > 0 && (
+                <View style={s.card}>
+                  <View style={s.cardHead}>
+                    <Feather name="layers" size={18} color={colors.hint} />
+                    <Text style={s.cardTitle}>Enrollment vs capacity</Text>
+                  </View>
+                  <View style={s.enrollmentList}>
+                    {enrollmentRows.map((row) => {
+                      const hasBaseline = row.baseline > 0;
+                      const pctFull = hasBaseline ? Math.min(100, Math.round((row.active / row.baseline) * 100)) : 0;
+                      return (
+                        <View key={row.category} style={s.enrollmentRow}>
+                          <View style={s.enrollmentTop}>
+                            <Text style={s.enrollmentCat}>{row.category}</Text>
+                            <Text style={s.enrollmentCount}>
+                              {row.active}/{hasBaseline ? row.baseline : "—"} enrolled
+                            </Text>
+                          </View>
+                          {hasBaseline ? (
+                            <>
+                              <View style={s.progressTrack}>
+                                <View style={[s.progressFill, { width: `${pctFull}%`, backgroundColor: row.gap === 0 ? colors.warning : colors.primary }]} />
+                              </View>
+                              <Text style={[s.enrollmentGap, row.gap === 0 && s.enrollmentGapFull]}>
+                                {row.gap > 0 ? `${row.gap} seat${row.gap === 1 ? "" : "s"} available` : "At capacity"}
+                              </Text>
+                            </>
+                          ) : (
+                            <Text style={s.enrollmentGapMuted}>Set baseline in Academy Structure</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
+                    <Text style={s.link}>Configure baselines →</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               <Pressable
                 testID="tile-people"
@@ -553,6 +658,31 @@ const s = StyleSheet.create({
   },
   approvalCtaTxt: { fontSize: 14, fontWeight: "700", color: colors.primary },
   emptyHint: { fontSize: 12, color: colors.hint, paddingVertical: 8 },
+  categoryFinanceList: { gap: 6, marginTop: 4 },
+  categoryFinanceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSoft,
+  },
+  categoryFinanceLabel: { fontSize: 11, fontWeight: "700", color: colors.muted },
+  categoryFinanceVal: { fontSize: 11, fontWeight: "600", color: colors.ink2, flexShrink: 1, textAlign: "right" },
+  enrollmentList: { gap: 10 },
+  enrollmentRow: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: radii.md,
+    padding: 10,
+    gap: 6,
+  },
+  enrollmentTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  enrollmentCat: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
+  enrollmentCount: { fontSize: 12, fontWeight: "600", color: colors.muted },
+  enrollmentGap: { fontSize: 11, fontWeight: "700", color: colors.success },
+  enrollmentGapFull: { color: colors.warning },
+  enrollmentGapMuted: { fontSize: 11, color: colors.hint },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", justifyContent: "flex-start", alignItems: "flex-end", padding: 24, paddingTop: 80 },
   quickMenu: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, minWidth: 220, padding: 8, ...shadow.md },
   quickMenuTitle: { fontSize: 11, fontWeight: "800", color: colors.hint, textTransform: "uppercase", paddingHorizontal: 10, paddingVertical: 8 },
