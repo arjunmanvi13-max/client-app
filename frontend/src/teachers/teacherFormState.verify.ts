@@ -32,4 +32,12 @@ assert.equal(
 );
 assert.equal(isTeacherFormDirty(snapshot, { ...base, name: "Changed" }), true);
 
+const directoryProfile = buildTeacherFormSnapshot({
+  ...base,
+  email: undefined as unknown as string,
+  dateOfJoining: "",
+});
+assert.equal(directoryProfile.email, "");
+assert.equal(isTeacherFormDirty(directoryProfile, { ...base, email: "", dateOfJoining: "" }), false);
+
 console.log("teacherFormState.verify.ts OK");

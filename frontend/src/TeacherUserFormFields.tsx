@@ -154,6 +154,17 @@ type TeacherUserFormFieldsProps = {
   setResetPwdVal?: (v: string) => void;
   onResetPassword?: () => void;
   resetBusy?: boolean;
+  hasLoginAccount?: boolean;
+  personalEmail?: string;
+  dateOfBirth?: string;
+  qualification?: string;
+  qualificationOther?: string;
+  lastJob?: string;
+  guardianName?: string;
+  guardianMobile?: string;
+  referenceName?: string;
+  referenceMobile?: string;
+  aadhaarMasked?: string;
 };
 
 function newClassRow(): TeacherClassAllocationRow {
@@ -309,9 +320,21 @@ export function TeacherUserFormFields({
   setResetPwdVal,
   onResetPassword,
   resetBusy,
+  hasLoginAccount = true,
+  personalEmail = "",
+  dateOfBirth = "",
+  qualification = "",
+  qualificationOther = "",
+  lastJob = "",
+  guardianName = "",
+  guardianMobile = "",
+  referenceName = "",
+  referenceMobile = "",
+  aadhaarMasked = "",
 }: TeacherUserFormFieldsProps) {
   const { isWide } = useBreakpoint();
   const previewType = userTypeKind || UserRole.PWS_TEACHER;
+  const isDirectoryProfile = !hasLoginAccount && !isNew;
 
   const allocationHint = useMemo(() => {
     for (const row of classRows) {
@@ -371,18 +394,30 @@ export function TeacherUserFormFields({
             placeholder="Full name"
             readOnly={readOnly}
           />
-          <FormTextField
-            label="Date of Joining"
-            required
-            testID="field-date-of-joining"
-            value={dateOfJoining}
-            onChangeText={setDateOfJoining}
-            placeholder={DATE_PLACEHOLDER}
-            readOnly={readOnly}
-            hint={dateHelpText()}
-            trailingIcon="calendar"
-          />
-          {dateOfJoining ? (
+          {isDirectoryProfile && dateOfBirth ? (
+            <FormTextField
+              label="Date of Birth"
+              testID="field-date-of-birth"
+              value={dateOfBirth}
+              placeholder={DATE_PLACEHOLDER}
+              readOnly
+              trailingIcon="calendar"
+            />
+          ) : null}
+          {!isDirectoryProfile || dateOfJoining ? (
+            <FormTextField
+              label="Date of Joining"
+              required={!isDirectoryProfile}
+              testID="field-date-of-joining"
+              value={dateOfJoining}
+              onChangeText={setDateOfJoining}
+              placeholder={DATE_PLACEHOLDER}
+              readOnly={readOnly}
+              hint={dateHelpText()}
+              trailingIcon="calendar"
+            />
+          ) : null}
+          {dateOfJoining && !isDirectoryProfile ? (
             <Text style={s.previewDate}>Parsed: {formatDate(dateOfJoining) || "—"}</Text>
           ) : null}
           <FormTextField
@@ -416,35 +451,87 @@ export function TeacherUserFormFields({
           />
         </FormSectionCard>
 
+        {isDirectoryProfile ? (
+          <FormSectionCard
+            title="Directory Profile"
+            style={isWide ? s.col : { ...s.col, ...s.colFull }}
+            testID="teacher-directory-profile-card"
+          >
+            <FormTextField
+              label="Personal Email"
+              testID="field-personal-email"
+              value={personalEmail}
+              readOnly
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            {qualification ? (
+              <FormTextField
+                label="Qualification"
+                testID="field-qualification"
+                value={qualification === "Other" && qualificationOther ? qualificationOther : qualification}
+                readOnly
+              />
+            ) : null}
+            {lastJob ? (
+              <FormTextField label="Last Job" testID="field-last-job" value={lastJob} readOnly />
+            ) : null}
+            {aadhaarMasked ? (
+              <FormTextField label="Aadhaar" testID="field-aadhaar" value={aadhaarMasked} readOnly />
+            ) : null}
+            {guardianName ? (
+              <FormTextField label="Guardian Name" testID="field-guardian-name" value={guardianName} readOnly />
+            ) : null}
+            {guardianMobile ? (
+              <FormTextField label="Guardian Mobile" testID="field-guardian-mobile" value={guardianMobile} readOnly />
+            ) : null}
+            {referenceName ? (
+              <FormTextField label="Reference Name" testID="field-reference-name" value={referenceName} readOnly />
+            ) : null}
+            {referenceMobile ? (
+              <FormTextField label="Reference Mobile" testID="field-reference-mobile" value={referenceMobile} readOnly />
+            ) : null}
+          </FormSectionCard>
+        ) : null}
+
         <FormSectionCard
-          title="Account & Access"
+          title={isDirectoryProfile ? "Login Account" : "Account & Access"}
           style={isWide ? s.col : { ...s.col, ...s.colFull }}
           testID="teacher-account-card"
         >
-          <FormTextField
-            label="Email (@prarambhika.com)"
-            required
-            testID="field-email"
-            value={email}
-            onChangeText={setEmail}
-            editable={isNew || isSuper}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="name@prarambhika.com"
-            readOnly={!isNew && !isSuper}
-          />
-          <FormTextField
-            label={isNew ? "Assigned password" : "Assign new password (leave blank to keep)"}
-            required={isNew}
-            testID="field-password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="••••••••"
-            readOnly={readOnly}
-            hint="The user signs in with this password and will be prompted to set their own on first login."
-          />
+          {isDirectoryProfile ? (
+            <Text style={s.fieldHelp}>
+              No login account yet. Provision a @prarambhika.com login under System & Settings when ready.
+            </Text>
+          ) : (
+            <>
+              <FormTextField
+                label="Email (@prarambhika.com)"
+                required
+                testID="field-email"
+                value={email}
+                onChangeText={setEmail}
+                editable={isNew || isSuper}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                placeholder="name@prarambhika.com"
+                readOnly={!isNew && !isSuper}
+              />
+              <FormTextField
+                label={isNew ? "Assigned password" : "Assign new password (leave blank to keep)"}
+                required={isNew}
+                testID="field-password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                placeholder="••••••••"
+                readOnly={readOnly}
+                hint="The user signs in with this password and will be prompted to set their own on first login."
+              />
+            </>
+          )}
 
+          {!isDirectoryProfile ? (
           <View style={s.fieldBlock}>
             <Text style={s.sectionSubtitle}>Permission Level</Text>
             <PermissionSwitch
@@ -472,6 +559,7 @@ export function TeacherUserFormFields({
               testID="perm-assessment"
             />
           </View>
+          ) : null}
         </FormSectionCard>
       </View>
 

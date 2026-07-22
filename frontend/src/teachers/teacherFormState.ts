@@ -26,14 +26,18 @@ function normalizeClassRows(rows: TeacherClassAllocationRow[]) {
     );
 }
 
+function safeTrim(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
 export function buildTeacherFormSnapshot(state: TeacherFormSnapshot): TeacherFormSnapshot {
   return {
     ...state,
-    name: state.name.trim(),
-    dateOfJoining: state.dateOfJoining.trim(),
-    mobile: state.mobile.trim(),
-    address: state.address.trim(),
-    email: state.email.trim().toLowerCase(),
+    name: safeTrim(state.name),
+    dateOfJoining: safeTrim(state.dateOfJoining),
+    mobile: safeTrim(state.mobile),
+    address: safeTrim(state.address),
+    email: safeTrim(state.email).toLowerCase(),
     password: state.password,
     classRows: normalizeClassRows(state.classRows).map((row, i) => ({
       key: `snap-${i}`,

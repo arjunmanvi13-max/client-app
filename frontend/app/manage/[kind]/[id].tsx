@@ -63,6 +63,7 @@ import {
 import { setManageDirectoryToast } from "../../../src/manageDirectoryToast";
 import { formColors } from "../../../src/theme";
 import { useDirtyLeaveGuard } from "../../../src/useDirtyLeaveGuard";
+import { ErrorState } from "../../../src/ScreenStates";
 
 const PERMS = ["student", "player", "teacher", "coach"] as const;
 const COACH_PERMS = [
@@ -265,6 +266,9 @@ export default function ManageEdit() {
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [recordFound, setRecordFound] = useState(isNew);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   // Shared
   const [name, setName] = useState("");
@@ -364,6 +368,17 @@ export default function ManageEdit() {
   const [academicLoading, setAcademicLoading] = useState(false);
   const [teacherBaseline, setTeacherBaseline] = useState<TeacherFormSnapshot | null>(null);
   const [teacherAssignmentsReady, setTeacherAssignmentsReady] = useState(false);
+  const [hasLoginAccount, setHasLoginAccount] = useState(true);
+  const [personalEmail, setPersonalEmail] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [qualification, setQualification] = useState("");
+  const [qualificationOther, setQualificationOther] = useState("");
+  const [lastJob, setLastJob] = useState("");
+  const [guardianName, setGuardianName] = useState("");
+  const [guardianMobile, setGuardianMobile] = useState("");
+  const [referenceName, setReferenceName] = useState("");
+  const [referenceMobile, setReferenceMobile] = useState("");
+  const [aadhaarMasked, setAadhaarMasked] = useState("");
   const [unsavedModalVisible, setUnsavedModalVisible] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
   const [loginUserStatusModal, setLoginUserStatusModal] = useState<UserStatusConfirmAction | null>(null);
@@ -433,6 +448,9 @@ export default function ManageEdit() {
     }
     (async () => {
       setLoading(true);
+      setLoadError(null);
+      setTeacherBaseline(null);
+      setTeacherAssignmentsReady(isTeacherUserForm && isNew);
       try {
         if (isUserKind) {
           let u: any = null;
@@ -450,7 +468,7 @@ export default function ManageEdit() {
               const { data } = await api.get(`/users/${id}`);
               u = data;
             } catch (e: any) {
-              if (e?.response?.status === 405 || e?.response?.status === 404) {
+              if (e?.response?.status === 405 || e?.response?.status === 404 || e?.response?.status === 403) {
                 const { data: all } = await api.get("/users", { params: { include_deactivated: true } });
                 u = (Array.isArray(all) ? all : []).find((x: any) => x.id === id);
               } else {
@@ -463,7 +481,22 @@ export default function ManageEdit() {
             u = filterUsersByType(Array.isArray(all) ? all : [], userTypeKind).find((x: any) => x.id === id);
           }
           if (u) {
-            setName(u.name); setEmail(u.email); setOrganization(u.organization);
+            setRecordFound(true);
+            setName(u.name || "");
+            setEmail(u.email || "");
+            setOrganization(u.organization);
+            const loginReady = u.has_login_account !== false && !!u.email;
+            setHasLoginAccount(loginReady);
+            setPersonalEmail(u.personal_email || "");
+            setDateOfBirth(u.date_of_birth ? formatDate(u.date_of_birth) : "");
+            setQualification(u.qualification || "");
+            setQualificationOther(u.qualification_other || "");
+            setLastJob(u.last_job || "");
+            setGuardianName(u.guardian_name || "");
+            setGuardianMobile(u.guardian_mobile || "");
+            setReferenceName(u.reference_name || "");
+            setReferenceMobile(u.reference_mobile || "");
+            setAadhaarMasked(u.aadhaar_number_masked || "");
             setDepartment(u.department || ""); setPhone(u.phone || "");
             setCanManage(u.can_manage || []);
             setCoachPermissions(u.coach_permissions || []);
@@ -478,7 +511,8 @@ export default function ManageEdit() {
             if (isTeacherUserForm) {
               setMobile(u.mobile || u.phone || "");
               setAddress(u.address || "");
-              setDateOfJoining(formatDate(u.date_of_joining || ""));
+              const dojDisplay = u.date_of_joining ? formatDate(u.date_of_joining) : "";
+              setDateOfJoining(dojDisplay === "—" ? "" : dojDisplay);
               setTeacherDesignation((u.teacher_designation as TeacherDesignation) || "TEACHER");
               const perms = u.permissions || {};
               setAttendanceAllowed(!!perms.mark_student_attendance);
@@ -488,10 +522,14 @@ export default function ManageEdit() {
             if (isCoachKind) setOrganization("ALPHA");
             else if (u.organization) setOrganization(u.organization);
             else if (typeCatalog) setOrganization(typeCatalog.entityScope);
+          } else {
+            setRecordFound(false);
+            setLoadError("This record could not be found or you may not have permission to view it.");
           }
         } else if (isRosterPersonKind) {
           const { data: p } = await api.get(`/people/${id}`);
           if (p) {
+            setRecordFound(true);
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
             setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
@@ -538,13 +576,18 @@ export default function ManageEdit() {
             setDateOfAdmission(formatDate(p.date_of_admission || ""));
             setStatus(p.status === "deactivated" ? "deactivated" : "active");
             setParentUserIds(p.parent_user_ids || []);
+          } else {
+            setRecordFound(false);
+            setLoadError("This record could not be found.");
           }
         }
       } catch (e: any) {
+        setRecordFound(false);
+        setLoadError(e?.response?.data?.detail || "Failed to load record");
         Alert.alert("Error", e?.response?.data?.detail || "Failed to load user");
       } finally { setLoading(false); }
     })();
-  }, [id, kindParam, isNew, isUserKind, isPlayerKind, isRosterPersonKind, user, userTypeKind, typeCatalog]);
+  }, [id, kindParam, isNew, isUserKind, isPlayerKind, isRosterPersonKind, user, userTypeKind, typeCatalog, reloadNonce]);
 
   useEffect(() => {
     if (isStudentKind || isPlayerKind) {
@@ -802,7 +845,7 @@ export default function ManageEdit() {
       return;
     }
     if (isTeacherUserForm) {
-      if (!dateOfJoining || !isValidDisplayDate(dateOfJoining)) {
+      if (hasLoginAccount && (!dateOfJoining || !isValidDisplayDate(dateOfJoining))) {
         showError("Invalid date", dateHelpText());
         return;
       }
@@ -810,9 +853,16 @@ export default function ManageEdit() {
         showError("Invalid mobile", "Enter a valid 10-digit Indian mobile number.");
         return;
       }
-      const incomplete = teacherClassRows.some((row) => !isTeacherClassRowComplete(row));
-      if (incomplete) {
+      const partialAllocation = teacherClassRows.some((row) => {
+        const hasAny = !!row.className || !!row.sectionLetter || row.subjects.length > 0;
+        return hasAny && !isTeacherClassRowComplete(row);
+      });
+      if (partialAllocation) {
         showError("Class allocation incomplete", "Each class card needs a class, section, and at least one subject.");
+        return;
+      }
+      if (hasLoginAccount && !teacherClassRows.some(isTeacherClassRowComplete)) {
+        showError("Class allocation required", "Assign at least one class with section and subjects.");
         return;
       }
       if (!academicYearId) {
@@ -1197,6 +1247,30 @@ export default function ManageEdit() {
 
   if (loading) return <SafeAreaView style={s.safe}><ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} /></SafeAreaView>;
 
+  if (!isNew && !recordFound) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
+            <Feather name="x" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={s.h1}>Teacher not found</Text>
+        </View>
+        <View style={{ padding: 16 }}>
+          <ErrorState
+            message={loadError || "This teacher could not be loaded."}
+            onRetry={() => {
+              setRecordFound(false);
+              setLoadError(null);
+              setLoading(true);
+              setReloadNonce((n) => n + 1);
+            }}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[s.safe, (isStudentKind || isStructuredUserForm) && s.safeStudent]} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -1377,6 +1451,17 @@ export default function ManageEdit() {
                 } finally { setResetBusy(false); }
               } : undefined}
               resetBusy={resetBusy}
+              hasLoginAccount={hasLoginAccount}
+              personalEmail={personalEmail}
+              dateOfBirth={dateOfBirth === "—" ? "" : dateOfBirth}
+              qualification={qualification}
+              qualificationOther={qualificationOther}
+              lastJob={lastJob}
+              guardianName={guardianName}
+              guardianMobile={guardianMobile}
+              referenceName={referenceName}
+              referenceMobile={referenceMobile}
+              aadhaarMasked={aadhaarMasked}
             />
           )}
 
