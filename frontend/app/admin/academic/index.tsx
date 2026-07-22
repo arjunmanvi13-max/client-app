@@ -21,7 +21,9 @@ import {
 import { FormSelect } from "../../../src/components/forms/FormSelect";
 import { FormMultiSelect } from "../../../src/components/forms/FormMultiSelect";
 import { FormSearchSelect } from "../../../src/components/forms/FormSearchSelect";
+import { FormFieldGrid } from "../../../src/components/forms/FormFieldGrid";
 import { inactiveUserSuffix } from "../../../src/userStatus";
+import { useBreakpoint } from "../../../src/useBreakpoint";
 
 type Tab = "years" | "structure" | "subjects" | "assignments";
 
@@ -74,11 +76,13 @@ export default function AcademicAdmin() {
   const [assignTeacherId, setAssignTeacherId] = useState<string | null>(null);
   const [assignRows, setAssignRows] = useState<TeacherAssignRow[]>([newTeacherAssignRow()]);
   const [openAssignRowKey, setOpenAssignRowKey] = useState<string | null>(null);
+  const [openTeacherSelect, setOpenTeacherSelect] = useState(false);
   const [seedingSubjects, setSeedingSubjects] = useState(false);
   const [seedingStandards, setSeedingStandards] = useState(false);
 
   const canManage = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS);
+  const { isWide } = useBreakpoint();
 
   const selectedYear = years.find((y) => y.id === selectedYearId) || years.find((y) => y.status === "open") || years[0];
   const isReadOnly = selectedYear?.status === "archived";
@@ -435,6 +439,147 @@ export default function AcademicAdmin() {
         </View>
       )}
 
+      {tab === "assignments" ? (
+        <View style={s.assignmentsViewport}>
+          {loading ? (
+            <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} />
+          ) : (
+            <View style={[s.assignmentsShell, isWide && s.assignmentsShellWide]}>
+              {!isReadOnly && (
+                <View style={[s.assignPanel, s.assignFormPanel, openTeacherSelect && s.assignPanelOpen]}>
+                  <Text style={s.assignPanelTitle}>Assign classes</Text>
+                  <Text style={s.fieldHelpCompact}>
+                    Map one or more classes; for each class, select the subjects the teacher handles.
+                  </Text>
+
+                  <View style={[s.teacherSelectWrap, openTeacherSelect && s.teacherSelectWrapOpen]}>
+                    <FormSearchSelect
+                      label="Teacher"
+                      value={assignTeacherId || ""}
+                      options={teacherOptions}
+                      onChange={(id) => setAssignTeacherId(id || null)}
+                      onOpenChange={setOpenTeacherSelect}
+                      placeholder="Search and select teacher…"
+                      searchPlaceholder="Search teachers…"
+                      required
+                      compact
+                      testID="assign-teacher"
+                    />
+                  </View>
+
+                  <ScrollView
+                    style={s.assignFormScroll}
+                    contentContainerStyle={s.assignFormScrollContent}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {assignRows.map((row, idx) => (
+                      <View
+                        key={row.key}
+                        style={[
+                          s.assignFormRow,
+                          openAssignRowKey === row.key && s.assignFormRowOpen,
+                        ]}
+                      >
+                        <View style={s.assignFormHeader}>
+                          <Text style={s.assignFormTitle}>Class {idx + 1}</Text>
+                          {assignRows.length > 1 && (
+                            <TouchableOpacity onPress={() => setAssignRows((rows) => rows.filter((r) => r.key !== row.key))}>
+                              <Feather name="trash-2" size={15} color="#EF4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <FormFieldGrid columns={2} isWide={isWide}>
+                          <FormSelect
+                            label="Class / section"
+                            value={row.sectionId}
+                            options={sectionOptions}
+                            onChange={(sectionId) => updateAssignRow(row.key, { sectionId })}
+                            placeholder="Select class…"
+                            required
+                            compact
+                            testID={`assign-section-${idx}`}
+                          />
+                          <FormMultiSelect
+                            label="Subjects for this class"
+                            values={row.subjectIds}
+                            options={subjectOptions}
+                            onChange={(subjectIds) => updateAssignRow(row.key, { subjectIds })}
+                            onOpenChange={(open) => {
+                              setOpenAssignRowKey((current) => {
+                                if (open) return row.key;
+                                return current === row.key ? null : current;
+                              });
+                            }}
+                            placeholder="Select one or more subjects…"
+                            searchPlaceholder="Search subjects…"
+                            required={!!row.sectionId}
+                            testID={`assign-subjects-${idx}`}
+                          />
+                        </FormFieldGrid>
+                      </View>
+                    ))}
+                  </ScrollView>
+
+                  <View style={s.assignActions}>
+                    <TouchableOpacity
+                      style={s.secondaryBtnCompact}
+                      onPress={() => setAssignRows((rows) => [...rows, newTeacherAssignRow()])}
+                    >
+                      <Text style={s.secondaryBtnTxt}>+ Add another class</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      testID="btn-assign-class"
+                      style={s.btnCompact}
+                      onPress={assignClasses}
+                    >
+                      <Text style={s.btnTxt}>Save assignments</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <View style={[s.assignPanel, s.assignListPanel, isReadOnly && s.assignListPanelFull]}>
+                <View style={s.assignListHeader}>
+                  <Text style={s.assignPanelTitle}>Current assignments</Text>
+                  <Text style={s.assignListCount}>{groupedAssignments.length} teacher(s)</Text>
+                </View>
+                <ScrollView
+                  style={s.assignListScroll}
+                  contentContainerStyle={s.assignListScrollContent}
+                  nestedScrollEnabled
+                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                >
+                  {groupedAssignments.length === 0 ? (
+                    <Text style={s.hintCompact}>No class assignments yet.</Text>
+                  ) : groupedAssignments.map((group) => (
+                    <View key={group.teacher?.id || group.teacher?.name} style={s.teacherGroup}>
+                      <Text style={s.assignName}>
+                        {group.teacher?.name || "Teacher"}
+                        {inactiveUserSuffix(group.teacher)}
+                      </Text>
+                      {group.rows.map((row) => (
+                        <View key={`${row.sectionLabel}-${row.subjects}`} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text style={s.assignMeta} numberOfLines={2}>
+                              {row.sectionLabel} · {stdLabel(row.stdName)} · {row.subjects}
+                            </Text>
+                          </View>
+                          {!isReadOnly && row.ids.map((id) => (
+                            <TouchableOpacity key={id} onPress={() => removeAssignment(id)} style={s.assignDeleteBtn}>
+                              <Feather name="trash-2" size={15} color="#EF4444" />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          )}
+        </View>
+      ) : (
       <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {loading ? <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} /> : (
           <>
@@ -617,109 +762,10 @@ export default function AcademicAdmin() {
               </View>
             )}
 
-            {tab === "assignments" && (
-              <View style={s.card}>
-                <Text style={s.cardTitle}>Teacher · class · subjects</Text>
-                {!isReadOnly && (
-                  <>
-                    <FormSearchSelect
-                      label="Teacher"
-                      value={assignTeacherId || ""}
-                      options={teacherOptions}
-                      onChange={(id) => setAssignTeacherId(id || null)}
-                      placeholder="Search and select teacher…"
-                      searchPlaceholder="Search teachers…"
-                      required
-                      testID="assign-teacher"
-                    />
-
-                    <Text style={[s.label, { marginTop: 12 }]}>Class assignments</Text>
-                    <Text style={s.fieldHelp}>Map one or more classes; for each class, select the subjects the teacher handles.</Text>
-                    {assignRows.map((row, idx) => (
-                      <View
-                        key={row.key}
-                        style={[
-                          s.assignFormRow,
-                          openAssignRowKey === row.key && s.assignFormRowOpen,
-                        ]}
-                      >
-                        <View style={s.assignFormHeader}>
-                          <Text style={s.assignFormTitle}>Class {idx + 1}</Text>
-                          {assignRows.length > 1 && (
-                            <TouchableOpacity onPress={() => setAssignRows((rows) => rows.filter((r) => r.key !== row.key))}>
-                              <Feather name="trash-2" size={16} color="#EF4444" />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        <FormSelect
-                          label="Class / section"
-                          value={row.sectionId}
-                          options={sectionOptions}
-                          onChange={(sectionId) => updateAssignRow(row.key, { sectionId })}
-                          placeholder="Select class…"
-                          required
-                          testID={`assign-section-${idx}`}
-                        />
-                        <FormMultiSelect
-                          label="Subjects for this class"
-                          values={row.subjectIds}
-                          options={subjectOptions}
-                          onChange={(subjectIds) => updateAssignRow(row.key, { subjectIds })}
-                          onOpenChange={(open) => {
-                            setOpenAssignRowKey((current) => {
-                              if (open) return row.key;
-                              return current === row.key ? null : current;
-                            });
-                          }}
-                          placeholder="Select one or more subjects…"
-                          searchPlaceholder="Search subjects…"
-                          required={!!row.sectionId}
-                          testID={`assign-subjects-${idx}`}
-                        />
-                      </View>
-                    ))}
-                    <View style={s.assignActions}>
-                    <TouchableOpacity
-                      style={s.secondaryBtn}
-                      onPress={() => setAssignRows((rows) => [...rows, newTeacherAssignRow()])}
-                    >
-                      <Text style={s.secondaryBtnTxt}>+ Add another class</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity testID="btn-assign-class" style={[s.btn, { alignSelf: "flex-start", marginTop: 10 }]} onPress={assignClasses}>
-                      <Text style={s.btnTxt}>Save assignments</Text>
-                    </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-                {groupedAssignments.length === 0 ? (
-                  <Text style={s.hint}>No class assignments yet.</Text>
-                ) : groupedAssignments.map((group) => (
-                  <View key={group.teacher?.id || group.teacher?.name} style={s.teacherGroup}>
-                    <Text style={s.assignName}>
-                      {group.teacher?.name || "Teacher"}
-                      {inactiveUserSuffix(group.teacher)}
-                    </Text>
-                    {group.rows.map((row) => (
-                      <View key={`${row.sectionLabel}-${row.subjects}`} style={s.assignRow} testID={`class-assignment-${row.ids[0]}`}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.assignMeta}>
-                            {row.sectionLabel} · {stdLabel(row.stdName)} · {row.subjects}
-                          </Text>
-                        </View>
-                        {!isReadOnly && row.ids.map((id) => (
-                          <TouchableOpacity key={id} onPress={() => removeAssignment(id)} style={{ marginLeft: 8 }}>
-                            <Feather name="trash-2" size={16} color="#EF4444" />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            )}
           </>
         )}
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -736,9 +782,92 @@ const s = StyleSheet.create({
   tabActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
   tabTxt: { fontSize: 12, fontWeight: "700", color: "#475569" },
   tabTxtActive: { color: "#fff" },
-  yearBar: { paddingHorizontal: 20, paddingVertical: 8, backgroundColor: "#EEF2FF" },
+  yearBar: { paddingHorizontal: 20, paddingVertical: 6, backgroundColor: "#EEF2FF" },
   yearBarTxt: { fontSize: 12, fontWeight: "700", color: "#1E40AF" },
   scroll: { padding: 20, paddingBottom: 40 },
+  assignmentsViewport: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  assignmentsShell: {
+    flex: 1,
+    minHeight: 0,
+    gap: 10,
+  },
+  assignmentsShellWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  assignPanel: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+    overflow: "visible",
+    minHeight: 0,
+    flexDirection: "column",
+  },
+  assignPanelOpen: {
+    zIndex: 200,
+    elevation: 200,
+  },
+  assignFormPanel: {
+    flex: 1.05,
+    minWidth: 0,
+  },
+  assignListPanel: {
+    flex: 0.95,
+    minWidth: 0,
+  },
+  assignListPanelFull: {
+    flex: 1,
+  },
+  assignPanelTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  assignListHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    gap: 8,
+  },
+  assignListCount: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  teacherSelectWrap: {
+    position: "relative",
+    zIndex: 2,
+    marginBottom: 8,
+  },
+  teacherSelectWrapOpen: {
+    zIndex: 1200,
+    elevation: 1200,
+  },
+  assignFormScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  assignFormScrollContent: {
+    gap: 6,
+    paddingBottom: 4,
+  },
+  assignListScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  assignListScrollContent: {
+    paddingBottom: 8,
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -754,8 +883,10 @@ const s = StyleSheet.create({
   btn: { backgroundColor: "#1E40AF", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   btnTxt: { color: "#fff", fontWeight: "700", fontSize: 14 },
   hint: { fontSize: 12, color: "#64748B", marginTop: 8 },
+  hintCompact: { fontSize: 12, color: "#64748B", marginTop: 4 },
   label: { fontSize: 12, fontWeight: "700", color: "#64748B", marginBottom: 6, marginTop: 4 },
   fieldHelp: { fontSize: 11, color: "#94A3B8", marginBottom: 10, lineHeight: 16 },
+  fieldHelpCompact: { fontSize: 11, color: "#94A3B8", marginBottom: 8, lineHeight: 15 },
   chipScroll: { flexGrow: 0, marginBottom: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: "#E2E8F0", marginRight: 8, backgroundColor: "#fff" },
   chipActive: { backgroundColor: "#1E40AF", borderColor: "#1E40AF" },
@@ -795,15 +926,29 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
     marginBottom: 8,
   },
+  secondaryBtnCompact: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+  },
   secondaryBtnTxt: { color: "#1E40AF", fontWeight: "700", fontSize: 13 },
+  btnCompact: {
+    backgroundColor: "#1E40AF",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
   assignFormRow: {
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 6,
     backgroundColor: "#F8FAFC",
-    gap: 8,
+    gap: 6,
     position: "relative",
     zIndex: 1,
     overflow: "visible",
@@ -813,14 +958,23 @@ const s = StyleSheet.create({
     elevation: 100,
   },
   assignActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
     position: "relative",
     zIndex: 1,
   },
-  assignFormHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
-  assignFormTitle: { fontSize: 13, fontWeight: "800", color: "#0F172A" },
-  teacherGroup: { marginTop: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
-  assignRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
-  assignName: { fontSize: 14, fontWeight: "700", color: "#0F172A", marginBottom: 4 },
-  assignMeta: { fontSize: 12, color: "#64748B" },
+  assignFormHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  assignFormTitle: { fontSize: 12, fontWeight: "800", color: "#0F172A" },
+  teacherGroup: { marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
+  assignRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#F1F5F9", gap: 6 },
+  assignDeleteBtn: { padding: 4 },
+  assignName: { fontSize: 13, fontWeight: "700", color: "#0F172A", marginBottom: 2 },
+  assignMeta: { fontSize: 12, color: "#64748B", lineHeight: 16 },
   denied: { padding: 24, color: "#64748B", textAlign: "center" },
 });

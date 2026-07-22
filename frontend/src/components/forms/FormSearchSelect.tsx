@@ -13,6 +13,8 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../../theme";
 import type { FormSelectOption } from "./FormSelect";
 
+const MENU_Z = 1000;
+
 type FormSearchSelectProps = {
   label: string;
   value: string;
@@ -23,6 +25,10 @@ type FormSearchSelectProps = {
   required?: boolean;
   disabled?: boolean;
   testID?: string;
+  /** Notifies parent when the menu opens/closes so wrappers can raise stacking order. */
+  onOpenChange?: (open: boolean) => void;
+  /** Compact label + trigger sizing for dense forms. */
+  compact?: boolean;
 };
 
 export function FormSearchSelect({
@@ -35,10 +41,18 @@ export function FormSearchSelect({
   required,
   disabled,
   testID,
+  onOpenChange,
+  compact,
 }: FormSearchSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const rootRef = useRef<RNView>(null);
+
+  const setMenuOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) setQuery("");
+    onOpenChange?.(next);
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -57,10 +71,7 @@ export function FormSearchSelect({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => {
-      setOpen(false);
-      setQuery("");
-    };
+    const close = () => setMenuOpen(false);
     if (Platform.OS === "web" && typeof document !== "undefined") {
       const onDocClick = (e: MouseEvent) => {
         const node = rootRef.current as unknown as HTMLElement | null;
@@ -72,17 +83,17 @@ export function FormSearchSelect({
   }, [open]);
 
   return (
-    <View style={s.field}>
-      <Text style={s.label}>
+    <View style={[s.field, open && s.fieldOpen]}>
+      <Text style={[s.label, compact && s.labelCompact]}>
         {label}
         {required ? " *" : ""}
       </Text>
-      <View ref={rootRef} style={s.controlWrap}>
+      <View ref={rootRef} style={[s.controlWrap, open && s.controlWrapOpen]}>
         <Pressable
           testID={testID}
           disabled={disabled}
-          onPress={() => setOpen((v) => !v)}
-          style={[s.trigger, disabled && s.triggerDisabled, open && s.triggerOpen]}
+          onPress={() => setMenuOpen(!open)}
+          style={[s.trigger, compact && s.triggerCompact, disabled && s.triggerDisabled, open && s.triggerOpen]}
         >
           <Text
             style={[s.triggerText, !selectedLabel && s.placeholderText]}
@@ -96,7 +107,7 @@ export function FormSearchSelect({
         {open && (
           <View style={s.menu}>
             <View style={s.searchWrap}>
-              <Feather name="search" size={14} color={colors.hint} />
+              <Feather name="search" size={14} color={colors.muted} />
               <TextInput
                 testID={testID ? `${testID}-search` : undefined}
                 value={query}
@@ -112,7 +123,11 @@ export function FormSearchSelect({
                 </Pressable>
               )}
             </View>
-            <ScrollView style={s.menuScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={s.menuScroll}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
               {filtered.length === 0 ? (
                 <Text style={s.empty}>No matches</Text>
               ) : (
@@ -124,10 +139,14 @@ export function FormSearchSelect({
                       testID={testID ? `${testID}-opt-${opt.value}` : undefined}
                       onPress={() => {
                         onChange(opt.value);
-                        setOpen(false);
-                        setQuery("");
+                        setMenuOpen(false);
                       }}
-                      style={[s.menuItem, checked && s.menuItemActive]}
+                      style={({ pressed, hovered }) => [
+                        s.menuItem,
+                        checked && s.menuItemActive,
+                        Platform.OS === "web" && hovered && !checked ? s.menuItemHover : null,
+                        pressed ? s.menuItemPressed : null,
+                      ]}
                     >
                       <Text style={[s.menuItemText, checked && s.menuItemTextActive]}>
                         {opt.label}
@@ -146,9 +165,12 @@ export function FormSearchSelect({
 }
 
 const s = StyleSheet.create({
-  field: { flex: 1, minWidth: 0, zIndex: 1 },
-  label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
-  controlWrap: { position: "relative", zIndex: 10 },
+  field: { flex: 1, minWidth: 0 },
+  fieldOpen: { zIndex: MENU_Z, elevation: MENU_Z },
+  label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 6 },
+  labelCompact: { fontSize: 11, marginBottom: 4 },
+  controlWrap: { position: "relative" },
+  controlWrapOpen: { zIndex: MENU_Z, elevation: MENU_Z },
   trigger: {
     flexDirection: "row",
     alignItems: "center",
@@ -158,13 +180,17 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  triggerCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   triggerOpen: { borderColor: colors.primary, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   triggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },
-  triggerText: { flex: 1, fontSize: 15, color: colors.ink, fontWeight: "500" },
-  placeholderText: { color: colors.hint, fontWeight: "400" },
+  triggerText: { flex: 1, fontSize: 14, color: colors.ink, fontWeight: "600" },
+  placeholderText: { color: colors.muted2, fontWeight: "400" },
   menu: {
     position: "absolute",
     top: "100%",
@@ -176,10 +202,15 @@ const s = StyleSheet.create({
     borderColor: colors.primary,
     borderBottomLeftRadius: radii.md,
     borderBottomRightRadius: radii.md,
-    maxHeight: 280,
-    zIndex: 20,
+    maxHeight: 260,
+    zIndex: MENU_Z + 1,
+    elevation: MENU_Z + 1,
+    overflow: "hidden",
     ...Platform.select({
-      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      web: {
+        boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
+        isolation: "isolate",
+      } as object,
       default: {},
     }),
   },
@@ -187,28 +218,35 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface2,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
     color: colors.ink,
+    fontWeight: "500",
     paddingVertical: 0,
     ...Platform.select({ web: { outlineStyle: "none" } as object, default: {} }),
   },
-  menuScroll: { maxHeight: 220 },
+  menuScroll: { maxHeight: 200 },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderSoft,
+    backgroundColor: colors.surface,
   },
-  menuItemActive: { backgroundColor: colors.primarySofter },
-  menuItemText: { fontSize: 14, color: colors.ink, fontWeight: "500", flex: 1 },
+  menuItemHover: { backgroundColor: colors.primarySofter },
+  menuItemPressed: { backgroundColor: colors.primarySoft },
+  menuItemActive: { backgroundColor: colors.primarySoft },
+  menuItemText: { fontSize: 14, color: colors.ink, fontWeight: "600", flex: 1 },
   menuItemTextActive: { color: colors.primary, fontWeight: "700" },
-  empty: { padding: 14, fontSize: 13, color: colors.muted2, textAlign: "center" },
+  empty: { padding: 12, fontSize: 13, color: colors.muted2, textAlign: "center" },
 });
