@@ -4,13 +4,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, ROLE_COLORS, useAuth, userHasPermission } from "./auth";
-import { BusinessEntity, Permission, UserRole, normalizeRole } from "./rbac";
+import { BusinessEntity, Permission, UserRole, normalizeRole, canAddDirectoryTeacher } from "./rbac";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "./coachAccess";
 import { getManageListMeta } from "./manageKinds";
-import { consumeManageDirectoryToast } from "./manageDirectoryToast";
+import { consumeManageDirectoryToast, setManageDirectoryToast } from "./manageDirectoryToast";
 import { colors } from "./theme";
 import { PlayerRosterListView } from "./PlayerRosterListView";
 import { StudentRosterListView } from "./StudentRosterListView";
+import { AddTeacherModal } from "./components/teachers/AddTeacherModal";
 
 type TeacherStatusFilter = "all" | "active" | "inactive";
 
@@ -55,8 +56,10 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<TeacherStatusFilter>("all");
+  const [addTeacherOpen, setAddTeacherOpen] = useState(false);
   const meta = getManageListMeta(kind)!;
   const isTeacherList = kind === "teacher";
+  const canAddDirectoryTeacherBtn = isTeacherList && canAddDirectoryTeacher(user);
   const role = normalizeRole(user?.role || "");
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
@@ -69,7 +72,6 @@ export function RosterManageList({ kind }: { kind: string }) {
   const isStudent = kind === "student";
   const isTeacher = role === UserRole.PWS_TEACHER;
   const canAdd = (() => {
-    // PWS teacher login accounts are created under System & Settings → Manage Users & Rosters.
     if (isTeacherList) return false;
     if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
@@ -269,6 +271,19 @@ export function RosterManageList({ kind }: { kind: string }) {
         )}
       </View>
 
+      {isTeacherList && canAddDirectoryTeacherBtn && (
+        <View style={s.teacherActionRow} testID="teacher-add-action-row">
+          <TouchableOpacity
+            testID="add-teacher-btn"
+            style={[s.addTeacherBtn, { backgroundColor: meta.tint }]}
+            onPress={() => setAddTeacherOpen(true)}
+          >
+            <Feather name="plus" size={16} color="#fff" />
+            <Text style={s.addTeacherText}>Add Teacher</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {isTeacherList && (
         <View style={s.toggleRow} testID="teacher-status-filters">
           {TEACHER_STATUS_FILTERS.map(({ key, label }) => {
@@ -303,6 +318,10 @@ export function RosterManageList({ kind }: { kind: string }) {
              <Text style={s.emptyText}>
                {isTeacherList && hasTeacherCriteria
                  ? "No teachers found matching this criteria."
+                 : isTeacherList
+                   ? canAddDirectoryTeacherBtn
+                     ? "No teachers yet. Tap Add Teacher to create one."
+                     : "No teachers yet."
                  : search.trim()
                    ? `No matches for "${search.trim()}".`
                    : `No ${meta.label.toLowerCase()} yet. Tap Add to create one.`}
@@ -339,6 +358,18 @@ export function RosterManageList({ kind }: { kind: string }) {
           );
         })}
       </ScrollView>
+
+      <AddTeacherModal
+        visible={addTeacherOpen}
+        onClose={() => setAddTeacherOpen(false)}
+        onCreated={(message) => {
+          if (message) {
+            setToastMessage(message);
+            setManageDirectoryToast(message);
+          }
+          void load();
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -352,6 +383,21 @@ const s = StyleSheet.create({
   addBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   addText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8, marginHorizontal: 20, marginTop: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#E2E8F0" },
+  teacherActionRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  addTeacherBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  addTeacherText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   searchInput: { flex: 1, fontSize: 14, color: "#0F172A", padding: 0 },
   toggleRow: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 10 },
   typeScroll: { maxHeight: 44, marginTop: 8 },

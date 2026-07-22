@@ -32,7 +32,7 @@ export const MANAGE_LIST_META: Record<string, ManageListMeta> = {
     label: "Teachers",
     tint: "#1E40AF",
     isUser: true,
-    subtitle: (u) => `${u.email} · ${u.department || u.organization}`,
+    subtitle: (u) => `${u.personal_email || u.email || u.mobile || ""}${u.qualification ? ` · ${u.qualification}` : u.department ? ` · ${u.department}` : ""}`,
   },
   parent: {
     label: "Parents / Guardians",

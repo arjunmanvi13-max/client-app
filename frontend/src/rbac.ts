@@ -120,6 +120,18 @@ export function isSuperAdminUser(user: RBACUser | null | undefined): boolean {
   return false;
 }
 
+/** PWS Principal — excludes Vice Principal and other PWS Admin designations. */
+export function isPrincipalUser(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "principal") return true;
+  if (user.designation === "PRINCIPAL") return true;
+  return false;
+}
+
+export function canAddDirectoryTeacher(user: RBACUser | null | undefined): boolean {
+  return isSuperAdminUser(user) || isPrincipalUser(user);
+}
+
 // ---------------------------------------------------------------------------
 // Role → permission matrix
 // ---------------------------------------------------------------------------
