@@ -12,6 +12,7 @@ import { colors } from "./theme";
 import { PlayerRosterListView } from "./PlayerRosterListView";
 import { StudentRosterListView } from "./StudentRosterListView";
 import { AddTeacherModal } from "./components/teachers/AddTeacherModal";
+import { getApiError } from "./ScreenStates";
 
 type TeacherStatusFilter = "all" | "active" | "inactive";
 
@@ -57,6 +58,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<TeacherStatusFilter>("all");
   const [addTeacherOpen, setAddTeacherOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const meta = getManageListMeta(kind)!;
   const isTeacherList = kind === "teacher";
   const canAddDirectoryTeacherBtn = isTeacherList && canAddDirectoryTeacher(user);
@@ -97,6 +99,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   const load = useCallback(async () => {
     if (coachBlocked) return;
     setLoading(true);
+    setLoadError(null);
     try {
       if (meta.isUser) {
         const params: Record<string, string | boolean> = { role: kind };
@@ -124,6 +127,9 @@ export function RosterManageList({ kind }: { kind: string }) {
         const { data } = await api.get("/people", { params });
         setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
       }
+    } catch (e: any) {
+      setItems([]);
+      setLoadError(getApiError(e, "Could not load records. Please try again."));
     } finally { setLoading(false); }
   }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
 
@@ -245,6 +251,16 @@ export function RosterManageList({ kind }: { kind: string }) {
           <Text style={s.toastTxt}>{toastMessage}</Text>
           <TouchableOpacity onPress={() => setToastMessage(null)} hitSlop={8}>
             <Feather name="x" size={16} color={colors.muted} />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {loadError ? (
+        <View style={s.loadErrorBanner} testID="directory-load-error">
+          <Feather name="alert-circle" size={16} color="#991B1B" />
+          <Text style={s.loadErrorTxt}>{loadError}</Text>
+          <TouchableOpacity onPress={() => { void load(); }} hitSlop={8} testID="directory-retry">
+            <Text style={s.retryTxt}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -441,4 +457,19 @@ const s = StyleSheet.create({
     borderColor: "#A7F3D0",
   },
   toastTxt: { flex: 1, fontSize: 13, fontWeight: "700", color: "#065F46" },
+  loadErrorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  loadErrorTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: "#991B1B" },
+  retryTxt: { fontSize: 12, fontWeight: "800", color: "#1E40AF" },
 });

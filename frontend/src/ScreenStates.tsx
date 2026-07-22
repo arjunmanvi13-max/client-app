@@ -6,7 +6,19 @@ import { colors, spacing, radii } from "./theme";
 type IconName = React.ComponentProps<typeof Feather>["name"];
 
 export function getApiError(e: any, fallback = "Something went wrong. Please try again."): string {
-  const d = e?.response?.data?.detail;
+  if (!e?.response) {
+    if (e?.code === "ERR_NETWORK" || e?.message === "Network Error") {
+      return "Unable to reach the server. Check your internet connection, or try again once the API is back online.";
+    }
+    if (e?.code === "ECONNABORTED") {
+      return "The request timed out. Please try again.";
+    }
+  }
+  if (e?.response?.status === 502 || e?.response?.status === 503) {
+    return "The server is temporarily unavailable. Please try again in a few minutes.";
+  }
+  const data = e?.response?.data;
+  const d = typeof data === "string" ? data : data?.detail ?? data?.message;
   if (typeof d === "string") return d;
   if (Array.isArray(d)) return d.map((x: any) => x?.msg || String(x)).join(", ");
   return e?.message || fallback;

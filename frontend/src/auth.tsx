@@ -5,7 +5,8 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import type { Permission } from "./rbac";
 import { hasPermission, BusinessEntity } from "./rbac";
 
-const API_BASE = `${process.env.EXPO_PUBLIC_BACKEND_URL}/api`;
+const BACKEND_URL = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
+const API_BASE = BACKEND_URL ? `${BACKEND_URL}/api` : "/api";
 const TOKEN_KEY = "pws_alpha_token";
 
 // SecureStore is unavailable on web; fall back to localStorage
@@ -25,6 +26,10 @@ const storage = {
 };
 
 export const api = axios.create({ baseURL: API_BASE, timeout: 20000 });
+
+if (!BACKEND_URL && typeof __DEV__ !== "undefined" && __DEV__) {
+  console.warn("EXPO_PUBLIC_BACKEND_URL is not set — API calls will fail unless proxied.");
+}
 
 api.interceptors.request.use(async (config) => {
   const token = await storage.getItem(TOKEN_KEY);

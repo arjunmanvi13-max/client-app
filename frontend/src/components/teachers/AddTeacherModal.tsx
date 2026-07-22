@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { api } from "../../auth";
+import { getApiError } from "../../ScreenStates";
 import { useBreakpoint } from "../../useBreakpoint";
 import { colors, spacing } from "../../theme";
 import { FormSectionCard } from "../forms/FormSectionCard";
@@ -168,7 +169,7 @@ export function AddTeacherModal({
       reset();
       onClose();
     } catch (e: any) {
-      setSubmitError(e?.response?.data?.detail || "Failed to add teacher. Please try again.");
+      setSubmitError(getApiError(e, "Failed to add teacher. Please try again."));
     } finally {
       setSubmitting(false);
     }
