@@ -67,8 +67,12 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+function normalizeAadhaarNumber(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 12);
+}
+
 function isValidAadhaar(value: string): boolean {
-  return /^\d{12}$/.test(value.replace(/\D/g, ""));
+  return /^[A-Z0-9]{12}$/.test(normalizeAadhaarNumber(value));
 }
 
 function validateForm(form: FormState): FormErrors {
@@ -82,7 +86,7 @@ function validateForm(form: FormState): FormErrors {
   if (!form.personalEmail.trim()) errors.personalEmail = "Personal email is required";
   else if (!isValidEmail(form.personalEmail)) errors.personalEmail = "Enter a valid email address";
   if (!form.aadhaarNumber.trim()) errors.aadhaarNumber = "Aadhaar number is required";
-  else if (!isValidAadhaar(form.aadhaarNumber)) errors.aadhaarNumber = "Aadhaar must be exactly 12 digits";
+  else if (!isValidAadhaar(form.aadhaarNumber)) errors.aadhaarNumber = "Aadhaar must be exactly 12 uppercase alphanumeric characters";
   if (!form.qualification) errors.qualification = "Qualification is required";
   if (form.qualification === "Other" && !form.qualificationOther.trim()) {
     errors.qualificationOther = "Specify qualification when Other is selected";
@@ -145,7 +149,7 @@ export function AddTeacherModal({
       address: form.address.trim(),
       mobile: normalizeIndianMobile(form.mobile),
       personal_email: form.personalEmail.trim().toLowerCase(),
-      aadhaar_number: form.aadhaarNumber.replace(/\D/g, ""),
+      aadhaar_number: normalizeAadhaarNumber(form.aadhaarNumber),
       qualification: form.qualification,
       qualification_other: showQualificationOther ? form.qualificationOther.trim() : null,
       last_job: form.lastJob.trim(),
@@ -276,13 +280,15 @@ export function AddTeacherModal({
                 <FormTextField
                   label="Aadhaar Number"
                   required
-                  secureTextEntry
                   value={form.aadhaarNumber}
-                  onChangeText={(v) => setField("aadhaarNumber", v.replace(/\D/g, "").slice(0, 12))}
-                  placeholder="12-digit Aadhaar"
-                  keyboardType="number-pad"
+                  onChangeText={(v) => setField("aadhaarNumber", normalizeAadhaarNumber(v))}
+                  placeholder="12-character Aadhaar"
                   maxLength={12}
                   testID="teacher-aadhaar"
+                  secureTextEntry={Platform.OS !== "web"}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  hint="Uppercase letters and numbers only (12 characters)."
                 />
                 {renderError("aadhaarNumber")}
               </View>
