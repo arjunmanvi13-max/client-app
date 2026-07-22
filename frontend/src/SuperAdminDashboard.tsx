@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Pressable,
   Modal,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -58,10 +59,40 @@ function formatDueLabel(due?: string) {
   return formatDate(iso);
 }
 
+const ZONE = {
+  finance: { bg: "#EFF6FF", border: "#BFDBFE", accent: "#2563EB" },
+  registry: { bg: "#F0FDF4", border: "#BBF7D0", accent: "#16A34A" },
+  people: { bg: "#FAF5FF", border: "#E9D5FF", accent: "#9333EA" },
+  workflow: { bg: "#FFFBEB", border: "#FDE68A", accent: "#D97706" },
+} as const;
+
+type ZoneKey = keyof typeof ZONE;
+
+function ZoneCard({ zone, style, children }: { zone: ZoneKey; style?: object; children: ReactNode }) {
+  const z = ZONE[zone];
+  return (
+    <View style={[s.zoneCard, { backgroundColor: z.bg, borderColor: z.border, borderLeftColor: z.accent }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function CardHead({ icon, title, action }: { icon: keyof typeof Feather.glyphMap; title: string; action?: ReactNode }) {
+  return (
+    <View style={s.cardHeadRow}>
+      <View style={s.cardHead}>
+        <Feather name={icon} size={14} color={colors.muted2} />
+        <Text style={s.cardTitle}>{title}</Text>
+      </View>
+      {action}
+    </View>
+  );
+}
+
 export default function SuperAdminDashboard() {
   const { user } = useAuth();
   const router = useRouter();
-  const { horizontalPadding, contentMaxWidth, isWide } = useBreakpoint();
+  const { horizontalPadding, contentMaxWidth, isWide, height } = useBreakpoint();
   const [entity, setEntity] = useState<Entity>("both");
   const [bundle, setBundle] = useState<Awaited<ReturnType<typeof fetchSuperAdminDashboardBundle>> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,26 +245,34 @@ export default function SuperAdminDashboard() {
     { label: "Reports", icon: "bar-chart-2" as const, href: "/reports" },
   ];
 
+  const categoryFinanceRows = finance.byCategory.filter((row) => row.expected > 0 || row.collected > 0);
+
   return (
     <SafeAreaView style={s.safe} edges={["top"]} testID="super-admin-dashboard">
       <ScrollView
+        style={isWide ? s.scrollViewport : undefined}
         contentContainerStyle={[
           s.scroll,
+          isWide && s.scrollWide,
           {
             paddingHorizontal: horizontalPadding,
             maxWidth: contentMaxWidth,
             alignSelf: contentMaxWidth ? "center" : undefined,
             width: contentMaxWidth ? "100%" : undefined,
+            minHeight: isWide ? height - 48 : undefined,
           },
         ]}
+        showsVerticalScrollIndicator={!isWide}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* Header */}
         <View style={[s.header, isWide && s.headerWide]}>
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>Dashboard · {formatDate(data?.today)}</Text>
-            <Text style={s.h1}>Hello, {user.name.split(" ")[0]}</Text>
-            <Text style={s.sub}>{isSuperAdmin ? "Operations snapshot — PWS & ALPHA" : "ALPHA Sports Academy operations"}</Text>
+            <Text style={[s.h1, isWide && s.h1Wide]}>Hello, {user.name.split(" ")[0]}</Text>
+            {!isWide && (
+              <Text style={s.sub}>{isSuperAdmin ? "Operations snapshot — PWS & ALPHA" : "ALPHA Sports Academy operations"}</Text>
+            )}
           </View>
 
           <View style={[s.headerActions, isWide && s.headerActionsWide]}>
@@ -255,9 +294,9 @@ export default function SuperAdminDashboard() {
             )}
 
             <TouchableOpacity testID="quick-action" style={s.quickBtn} onPress={() => setQuickOpen(true)}>
-              <Feather name="plus" size={16} color="#fff" />
+              <Feather name="plus" size={15} color="#fff" />
               <Text style={s.quickBtnTxt}>Quick Action</Text>
-              <Feather name="chevron-down" size={14} color="#fff" />
+              <Feather name="chevron-down" size={13} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
@@ -267,112 +306,119 @@ export default function SuperAdminDashboard() {
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : (
-          <View style={s.bento}>
-            <View style={[s.topGrid, isWide && s.topGridWide]}>
-            {/* Left column — Financial + headcount */}
-            <View style={[s.colMain, isWide && s.colMainWide]}>
-              <View style={s.card}>
-                <View style={s.cardHead}>
-                  <Feather name="dollar-sign" size={18} color={colors.hint} />
-                  <Text style={s.cardTitle}>Financial Command Center</Text>
+          <View style={[s.bento, isWide && s.bentoWide]}>
+            {/* Row 1 — Financial Command Center */}
+            <ZoneCard zone="finance" style={isWide ? s.financeZoneWide : undefined}>
+              <CardHead icon="dollar-sign" title="Financial Command Center" />
+
+              <View style={[s.financeTop, isWide && s.financeTopWide]}>
+                <View style={s.financeHero}>
+                  <View style={s.financeHeroTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.microLabel}>Collection vs exposure</Text>
+                      <Text style={s.heroValue}>
+                        {inr(finance.received)} <Text style={s.heroMuted}>collected</Text>
+                      </Text>
+                    </View>
+                    <Text style={s.targetLbl}>Exposure {inr(finance.target)}</Text>
+                  </View>
+                  <View style={s.progressTrack}>
+                    <View style={[s.progressFill, { width: `${finance.progress}%` }]} />
+                  </View>
+                  <Text style={s.progressCaption}>{finance.progress}% of fee exposure collected</Text>
                 </View>
 
-                <View style={s.financeGrid}>
-                  <View style={[s.financeHero, isWide && s.financeHeroWide]}>
-                    <View style={s.financeHeroTop}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.microLabel}>Collection vs outstanding exposure</Text>
-                        <Text style={s.heroValue}>
-                          {inr(finance.received)} <Text style={s.heroMuted}>collected</Text>
-                        </Text>
-                      </View>
-                      <Text style={s.targetLbl}>Exposure: {inr(finance.target)}</Text>
-                    </View>
-                    <View style={s.progressTrack}>
-                      <View style={[s.progressFill, { width: `${finance.progress}%` }]} />
-                    </View>
-                    <Text style={s.progressCaption}>{finance.progress}% of fee exposure collected</Text>
+                <View style={[s.financeMetrics, isWide && s.financeMetricsWide]}>
+                  <View style={[s.miniCard, s.miniCardGreen]}>
+                    <Text style={s.microLabel}>Daily collection</Text>
+                    <Text style={s.miniValueGreen}>{inr(finance.collectedToday)}</Text>
+                    <Text style={s.miniHint}>{finance.txn} txn today</Text>
                   </View>
-
-                  <View style={s.financeRow}>
-                    <View style={[s.miniCard, s.miniCardGreen]}>
-                      <Text style={s.microLabel}>Daily collection</Text>
-                      <Text style={s.miniValueGreen}>{inr(finance.collectedToday)}</Text>
-                      <Text style={s.miniHint}>{finance.txn} transactions today</Text>
+                  <View style={[s.miniCard, s.miniCardInset]}>
+                    <Text style={s.microLabel}>Monthly revenue</Text>
+                    <View style={s.dueRowCompact}>
+                      <Text style={s.dueLbl}>Expected</Text>
+                      <Text style={s.dueVal}>{inr(finance.expectedMonthly)}</Text>
                     </View>
-                    <View style={[s.miniCard, s.miniCardInset]}>
-                      <Text style={s.microLabel}>Monthly revenue</Text>
-                      <View style={s.dueRow}>
-                        <Text style={s.dueLbl}>Expected</Text>
-                        <Text style={s.dueVal}>{inr(finance.expectedMonthly)}</Text>
-                      </View>
-                      <View style={s.dueRow}>
-                        <Text style={s.dueLbl}>Collected</Text>
-                        <Text style={[s.dueVal, { color: "#047857" }]}>{inr(finance.collectedMonthly)}</Text>
-                      </View>
-                      <View style={[s.dueRow, { borderBottomWidth: 0 }]}>
-                        <Text style={s.dueLbl}>Collection gap</Text>
-                        <Text style={[s.dueVal, { color: finance.collectionGap > 0 ? "#D97706" : colors.ink }]}>
-                          {inr(finance.collectionGap)}
-                        </Text>
-                      </View>
+                    <View style={s.dueRowCompact}>
+                      <Text style={s.dueLbl}>Collected</Text>
+                      <Text style={[s.dueVal, s.dueValGreen]}>{inr(finance.collectedMonthly)}</Text>
                     </View>
-                    <View style={[s.miniCard, s.miniCardInset]}>
-                      <Text style={s.microLabel}>Aging dues</Text>
-                      <View style={s.dueRow}>
-                        <Text style={s.dueLbl}>Current month</Text>
-                        <Text style={s.dueVal}>{inr(finance.monthlyDues)}</Text>
-                      </View>
-                      <View style={[s.dueRow, { borderBottomWidth: 0 }]}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Text style={s.dueLbl}>Overdue (&gt; 1 mo)</Text>
-                          <Feather name="alert-triangle" size={11} color={colors.warning} />
-                        </View>
-                        <Text style={[s.dueVal, { color: "#D97706", fontWeight: "800" }]}>{inr(finance.historicalDues)}</Text>
-                      </View>
+                    <View style={[s.dueRowCompact, s.dueRowLast]}>
+                      <Text style={s.dueLbl}>Gap</Text>
+                      <Text style={[s.dueVal, finance.collectionGap > 0 && s.dueValWarn]}>{inr(finance.collectionGap)}</Text>
                     </View>
                   </View>
-
-                  {finance.byCategory.length > 0 && (
-                    <View style={s.categoryFinanceList}>
-                      {finance.byCategory.filter((row) => row.expected > 0 || row.collected > 0).map((row) => (
-                        <View key={row.category} style={s.categoryFinanceRow}>
-                          <Text style={s.categoryFinanceLabel}>{row.category}</Text>
-                          <Text style={s.categoryFinanceVal}>
-                            {inr(row.collected)} / {inr(row.expected)}
-                            {row.gap > 0 ? ` · gap ${inr(row.gap)}` : ""}
-                          </Text>
-                        </View>
-                      ))}
+                  <View style={[s.miniCard, s.miniCardInset]}>
+                    <Text style={s.microLabel}>Aging dues</Text>
+                    <View style={s.dueRowCompact}>
+                      <Text style={s.dueLbl}>Current mo.</Text>
+                      <Text style={s.dueVal}>{inr(finance.monthlyDues)}</Text>
                     </View>
-                  )}
+                    <View style={[s.dueRowCompact, s.dueRowLast]}>
+                      <View style={s.dueLblRow}>
+                        <Text style={s.dueLbl}>Overdue</Text>
+                        <Feather name="alert-triangle" size={10} color={colors.warning} />
+                      </View>
+                      <Text style={[s.dueVal, s.dueValWarn, s.dueValBold]}>{inr(finance.historicalDues)}</Text>
+                    </View>
+                  </View>
                 </View>
               </View>
 
-              {(showPwsEnrollment || showAlphaEnrollment) && (
-                <View style={s.card}>
-                  <View style={s.cardHead}>
-                    <Feather name="layers" size={18} color={colors.hint} />
-                    <Text style={s.cardTitle}>Enrollment vs capacity</Text>
+              {categoryFinanceRows.length > 0 && (
+                <View style={s.duesTable}>
+                  <View style={[s.duesTableRow, s.duesTableHead]}>
+                    <Text style={[s.duesCell, s.duesCellCat, s.duesHeadTxt]}>Category</Text>
+                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Collected</Text>
+                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Expected</Text>
+                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Gap</Text>
                   </View>
+                  {categoryFinanceRows.map((row, idx) => (
+                    <View
+                      key={row.category}
+                      style={[s.duesTableRow, idx < categoryFinanceRows.length - 1 && s.duesTableRowBorder]}
+                    >
+                      <Text style={[s.duesCell, s.duesCellCat, s.duesCatTxt]} numberOfLines={1}>{row.category}</Text>
+                      <Text style={[s.duesCell, s.duesCellNum, s.duesNumTxt]}>{inr(row.collected)}</Text>
+                      <Text style={[s.duesCell, s.duesCellNum, s.duesNumMuted]}>{inr(row.expected)}</Text>
+                      <Text style={[s.duesCell, s.duesCellNum, row.gap > 0 ? s.duesGapTxt : s.duesNumMuted]}>
+                        {inr(row.gap)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ZoneCard>
+
+            {/* Row 2 — Enrollment + Attendance */}
+            <View style={[s.midRow, isWide && s.midRowWide]}>
+              <ZoneCard zone="registry" style={s.midCol}>
+                {(showPwsEnrollment || showAlphaEnrollment) && (
+                  <>
+                  <CardHead
+                    icon="layers"
+                    title="Enrollment vs capacity"
+                    action={
+                      <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
+                        <Text style={s.link}>Baselines →</Text>
+                      </TouchableOpacity>
+                    }
+                  />
 
                   {showPwsEnrollment && (
                     <View style={s.enrollmentBlock}>
                       <Text style={s.enrollmentSectionTitle}>
-                        PWS classes · {metrics?.pws_total_active ?? 0}/{metrics?.pws_total_baseline ?? 0} total
+                        PWS · {metrics?.pws_total_active ?? 0}/{metrics?.pws_total_baseline ?? 0}
                       </Text>
-                      <View style={s.enrollmentList}>
-                        {pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0).slice(0, 6).map((row) => (
-                          <View key={row.key} style={s.enrollmentRow}>
-                            <View style={s.enrollmentTop}>
-                              <Text style={s.enrollmentCat}>{row.label}</Text>
-                              <Text style={s.enrollmentCount}>{row.active}/{row.baseline || "—"}</Text>
-                            </View>
-                            {row.baseline > 0 ? (
-                              <Text style={[s.enrollmentGap, row.gap === 0 && s.enrollmentGapFull]}>
-                                {row.gap > 0 ? `${row.gap} seat${row.gap === 1 ? "" : "s"} available` : "At capacity"}
-                              </Text>
-                            ) : null}
+                      <View style={s.enrollmentTable}>
+                        {pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0).slice(0, isWide ? 8 : 5).map((row) => (
+                          <View key={row.key} style={s.enrollmentTableRow}>
+                            <Text style={s.enrollmentCat} numberOfLines={1}>{row.label}</Text>
+                            <Text style={s.enrollmentCount}>
+                              {row.active}/{row.baseline || "—"}
+                              {row.baseline > 0 && row.gap > 0 ? ` · ${row.gap}` : ""}
+                            </Text>
                           </View>
                         ))}
                       </View>
@@ -380,160 +426,160 @@ export default function SuperAdminDashboard() {
                   )}
 
                   {showAlphaEnrollment && (
-                    <View style={[s.enrollmentBlock, showPwsEnrollment && { marginTop: 10 }]}>
-                      <Text style={s.enrollmentSectionTitle}>ALPHA by category & sport</Text>
-                      <View style={s.enrollmentList}>
-                        {alphaEnrollmentRows.map((row) => (
-                          <View key={row.key} style={s.enrollmentRow}>
-                            <Text style={s.enrollmentCat}>{row.category}</Text>
-                            {(["cricket", "football"] as const).map((sport) => {
-                              const cell = row.sports?.[sport];
-                              if (!cell) return null;
-                              return (
-                                <Text key={sport} style={s.enrollmentSportLine}>
-                                  {sport.charAt(0).toUpperCase() + sport.slice(1)}: {cell.active}/{cell.baseline || "—"}
-                                  {cell.baseline > 0 && cell.gap > 0 ? ` · ${cell.gap} open` : ""}
-                                </Text>
-                              );
-                            })}
+                    <View style={[s.enrollmentBlock, showPwsEnrollment && { marginTop: 6 }]}>
+                      <Text style={s.enrollmentSectionTitle}>ALPHA · category × sport</Text>
+                      {isWide ? (
+                        <View style={s.duesTable}>
+                          <View style={[s.duesTableRow, s.duesTableHead]}>
+                            <Text style={[s.duesCell, s.duesCellCat, s.duesHeadTxt]}>Category</Text>
+                            <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Cricket</Text>
+                            <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Football</Text>
                           </View>
-                        ))}
-                      </View>
+                          {alphaEnrollmentRows.map((row, idx) => (
+                            <View key={row.key} style={[s.duesTableRow, idx < alphaEnrollmentRows.length - 1 && s.duesTableRowBorder]}>
+                              <Text style={[s.duesCell, s.duesCellCat, s.duesCatTxt]} numberOfLines={1}>{row.category}</Text>
+                              {(["cricket", "football"] as const).map((sport) => {
+                                const cell = row.sports?.[sport];
+                                return (
+                                  <Text key={sport} style={[s.duesCell, s.duesCellNum, s.enrollmentCellTxt]}>
+                                    {cell ? `${cell.active}/${cell.baseline || "—"}` : "—"}
+                                  </Text>
+                                );
+                              })}
+                            </View>
+                          ))}
+                        </View>
+                      ) : (
+                        <View style={s.enrollmentTable}>
+                          {alphaEnrollmentRows.map((row) => (
+                            <View key={row.key} style={s.enrollmentTableRow}>
+                              <Text style={s.enrollmentCat} numberOfLines={1}>{row.category}</Text>
+                              <Text style={s.enrollmentCount}>
+                                {(["cricket", "football"] as const)
+                                  .map((sport) => {
+                                    const cell = row.sports?.[sport];
+                                    if (!cell) return null;
+                                    return `${sport.slice(0, 1).toUpperCase()}${sport.slice(1, 3)} ${cell.active}/${cell.baseline || "—"}`;
+                                  })
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                     </View>
                   )}
+                  </>
+                )}
 
-                  <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
-                    <Text style={s.link}>Configure baselines →</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                {!showPwsEnrollment && !showAlphaEnrollment && (
+                  <CardHead icon="database" title="System registry" />
+                )}
 
-              <Pressable
-                testID="tile-people"
-                style={({ hovered }: any) => [s.headcountBadge, hovered && { opacity: 0.92 }]}
-                onPress={() => router.push("/directory")}
-              >
-                <View style={s.headcountIcon}>
-                  <Feather name="users" size={18} color="#fff" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.microLabel}>Total active system registry</Text>
-                  <Text style={s.headcountValue}>{data?.active_people ?? 0} headcount profiles active</Text>
-                </View>
-                <Feather name="chevron-right" size={18} color={colors.primary} />
-              </Pressable>
-            </View>
+                <Pressable
+                  testID="tile-people"
+                  style={({ hovered }: any) => [
+                    s.headcountStrip,
+                    !(showPwsEnrollment || showAlphaEnrollment) && { marginTop: 0 },
+                    hovered && { opacity: 0.92 },
+                  ]}
+                  onPress={() => router.push("/directory")}
+                >
+                  <Feather name="users" size={14} color={ZONE.registry.accent} />
+                  <Text style={s.headcountStripTxt}>
+                    <Text style={s.headcountStripNum}>{data?.active_people ?? 0}</Text> active registry
+                  </Text>
+                  <Feather name="chevron-right" size={14} color={ZONE.registry.accent} />
+                </Pressable>
+              </ZoneCard>
 
-            {/* Right column — Attendance matrix */}
-            <View style={[s.colSide, isWide && s.colSideWide]}>
-              <View style={[s.card, { flex: 1 }]}>
-                <View style={s.cardHead}>
-                  <Feather name="users" size={18} color={colors.hint} />
-                  <Text style={s.cardTitle}>Real-Time Attendance</Text>
-                </View>
+              <ZoneCard zone="people" style={s.midCol}>
+                <CardHead icon="users" title="Real-Time Attendance" />
 
                 <View style={s.attList}>
                   {attendanceRows.map((row) => {
                     const active = row.stats.present + row.stats.late;
                     const width = pct(row.stats.marked, row.roster);
                     return (
-                      <View
-                        key={row.id}
-                        style={[s.attRow, row.pending && s.attRowWarn]}
-                      >
-                        <View style={s.attRowTop}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Feather name={row.icon} size={14} color={colors.ink2} />
+                      <View key={row.id} style={[s.attRow, row.pending && s.attRowWarn]}>
+                        <View style={s.attRowMain}>
+                          <View style={s.attRowLeft}>
+                            <Feather name={row.icon} size={12} color={row.tint} />
                             <Text style={s.attLabel}>{row.label}</Text>
                           </View>
                           <Text style={s.attRatio}>
-                            <Text style={{ color: row.tint, fontWeight: "800" }}>{active}</Text>
-                            {" / "}{row.roster}
+                            <Text style={{ color: row.tint, fontWeight: "800" }}>{active}</Text>/{row.roster}
                           </Text>
                         </View>
-                        <View style={s.progressTrack}>
-                          <View style={[s.progressFill, { width: `${width}%`, backgroundColor: row.tint }]} />
+                        <View style={s.progressTrackThin}>
+                          <View style={[s.progressFillThin, { width: `${width}%`, backgroundColor: row.tint }]} />
                         </View>
-                        <Text style={s.attMeta}>
-                          {row.stats.present} pres · {row.stats.absent} abs · {row.stats.late} late · {row.stats.leave} leave
+                        <Text style={s.attMeta} numberOfLines={1}>
+                          {row.stats.present}P · {row.stats.absent}A · {row.stats.late}L · {row.stats.leave}Lv
+                          {row.pending ? " · pending" : ""}
                         </Text>
-                        {row.pending && (
-                          <View style={s.pendingPill}>
-                            <Feather name="alert-circle" size={10} color="#92400E" />
-                            <Text style={s.pendingTxt}>Attendance pending</Text>
-                          </View>
-                        )}
                       </View>
                     );
                   })}
-
                   {attendanceRows.length === 0 && (
-                    <Text style={s.emptyHint}>Attendance breakdown unavailable for this entity filter.</Text>
+                    <Text style={s.emptyHint}>No attendance data for this filter.</Text>
                   )}
                 </View>
-              </View>
-            </View>
+              </ZoneCard>
             </View>
 
-            {/* Bottom row — Tasks & Approvals */}
-            <View style={[s.colBottom, isWide && s.colBottomWide]}>
-              <View style={s.card}>
-                <View style={s.cardHeadRow}>
-                  <View style={s.cardHead}>
-                    <Feather name="check-square" size={16} color={colors.hint} />
-                    <Text style={s.cardTitle}>Allocated open tasks ({openTaskCount})</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}>
-                    <Text style={s.link}>View all</Text>
-                  </TouchableOpacity>
-                </View>
-
+            {/* Row 3 — Tasks & Approvals */}
+            <View style={[s.workflowRow, isWide && s.workflowRowWide]}>
+              <ZoneCard zone="workflow" style={s.workflowCol}>
+                <CardHead
+                  icon="check-square"
+                  title={`Open tasks (${openTaskCount})`}
+                  action={
+                    <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}>
+                      <Text style={s.link}>All →</Text>
+                    </TouchableOpacity>
+                  }
+                />
                 {openTasks.length === 0 ? (
-                  <Text style={s.emptyHint}>No open tasks right now.</Text>
+                  <Text style={s.emptyHintCompact}>No open tasks.</Text>
                 ) : (
-                  <View>
-                    {openTasks.slice(0, 3).map((task, idx) => {
-                      const pr = priorityStyle(task.priority);
-                      return (
-                        <TouchableOpacity
-                          key={task.id}
-                          testID={`task-row-${task.id}`}
-                          style={[s.taskRow, idx < openTasks.length - 1 && s.taskRowBorder]}
-                          onPress={() => router.push(`/task/${task.id}` as any)}
-                        >
-                          <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
-                          <View style={s.taskMeta}>
-                            <View style={[s.priorityPill, { backgroundColor: pr.bg }]}>
-                              <Text style={[s.priorityTxt, { color: pr.fg }]}>{pr.label}</Text>
-                            </View>
-                            <Text style={s.taskDue}>{formatDueLabel(task.due_date)}</Text>
+                  openTasks.slice(0, isWide ? 2 : 3).map((task, idx) => {
+                    const pr = priorityStyle(task.priority);
+                    return (
+                      <TouchableOpacity
+                        key={task.id}
+                        testID={`task-row-${task.id}`}
+                        style={[s.taskRowCompact, idx > 0 && s.taskRowBorder]}
+                        onPress={() => router.push(`/task/${task.id}` as any)}
+                      >
+                        <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
+                        <View style={s.taskMeta}>
+                          <View style={[s.priorityPill, { backgroundColor: pr.bg }]}>
+                            <Text style={[s.priorityTxt, { color: pr.fg }]}>{pr.label}</Text>
                           </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                          <Text style={s.taskDue}>{formatDueLabel(task.due_date)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
                 )}
-              </View>
+              </ZoneCard>
 
-              <View style={[s.card, s.approvalsCard]}>
-                <View style={s.cardHead}>
-                  <Feather name="clock" size={16} color={colors.hint} />
-                  <Text style={s.cardTitle}>Pending approvals ({pendingApprovals})</Text>
-                </View>
-
+              <ZoneCard zone="workflow" style={s.workflowCol}>
+                <CardHead icon="clock" title={`Pending approvals (${pendingApprovals})`} />
                 {pendingApprovals === 0 ? (
-                  <View style={s.caughtUp}>
-                    <Feather name="check-circle" size={28} color={colors.success} />
-                    <Text style={s.caughtUpTitle}>You are completely caught up!</Text>
-                    <Text style={s.caughtUpSub}>No organizational approvals require operations signoff.</Text>
+                  <View style={s.caughtUpCompact}>
+                    <Feather name="check-circle" size={16} color={colors.success} />
+                    <Text style={s.caughtUpCompactTxt}>All caught up — no approvals pending</Text>
                   </View>
                 ) : (
-                  <TouchableOpacity style={s.approvalCta} onPress={() => router.push("/admin/approvals")}>
-                    <Text style={s.approvalCtaTxt}>{pendingApprovals} approval(s) need review</Text>
-                    <Feather name="arrow-right" size={16} color={colors.primary} />
+                  <TouchableOpacity style={s.approvalCtaCompact} onPress={() => router.push("/admin/approvals")}>
+                    <Text style={s.approvalCtaTxt}>{pendingApprovals} need review</Text>
+                    <Feather name="arrow-right" size={14} color={colors.primary} />
                   </TouchableOpacity>
                 )}
-              </View>
+              </ZoneCard>
             </View>
           </View>
         )}
@@ -562,152 +608,193 @@ export default function SuperAdminDashboard() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 20, paddingBottom: 100 },
-  header: { marginBottom: 20, gap: 16 },
-  headerWide: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 20 },
-  overline: { fontSize: 11, fontWeight: "700", letterSpacing: 1, color: colors.hint, textTransform: "uppercase" },
-  h1: { fontSize: 24, fontWeight: "800", color: colors.ink, marginTop: 4 },
-  sub: { fontSize: 13, color: colors.muted2, marginTop: 4 },
-  headerActions: { gap: 10 },
-  headerActionsWide: { alignItems: "flex-end" },
-  segment: { flexDirection: "row", backgroundColor: "#CBD5E1", borderRadius: radii.md, padding: 4, ...shadow.sm },
-  segmentBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  scrollViewport: { flex: 1 },
+  scroll: { padding: 16, paddingBottom: 100 },
+  scrollWide: { paddingVertical: 10, paddingBottom: 12, flexGrow: 1 },
+  header: { marginBottom: 12, gap: 10 },
+  headerWide: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingBottom: 10,
+    marginBottom: 8,
+  },
+  overline: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8, color: colors.hint, textTransform: "uppercase" },
+  h1: { fontSize: 22, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  h1Wide: { fontSize: 20, marginTop: 0 },
+  sub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  headerActions: { gap: 8 },
+  headerActionsWide: { flexDirection: "row", alignItems: "center", gap: 10 },
+  segment: { flexDirection: "row", backgroundColor: "#CBD5E1", borderRadius: radii.md, padding: 3, ...shadow.sm },
+  segmentBtn: { paddingHorizontal: 12, paddingVertical: Platform.OS === "web" ? 6 : 5, borderRadius: 6, minHeight: 32, justifyContent: "center" },
   segmentBtnActive: { backgroundColor: colors.surface, ...shadow.sm },
-  segmentTxt: { fontSize: 13, fontWeight: "600", color: colors.muted },
+  segmentTxt: { fontSize: 12, fontWeight: "600", color: colors.muted },
   segmentTxtActive: { color: colors.ink, fontWeight: "700" },
   quickBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "web" ? 8 : 7,
     borderRadius: radii.md,
+    minHeight: 40,
     alignSelf: "flex-start",
   },
-  quickBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 13 },
-  bento: { gap: 16 },
-  topGrid: { gap: 16 },
-  topGridWide: { flexDirection: "row", alignItems: "stretch" },
-  colMain: { gap: 16 },
-  colMainWide: { flex: 2 },
-  colSide: {},
-  colSideWide: { flex: 1 },
-  colBottom: { gap: 16 },
-  colBottomWide: { flexDirection: "row", width: "100%" },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+  quickBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  bento: { gap: 10 },
+  bentoWide: { gap: 8, flex: 1 },
+  zoneCard: {
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
+    borderLeftWidth: 3,
+    padding: 10,
     ...shadow.sm,
+  },
+  financeZoneWide: { flexShrink: 0 },
+  financeTop: { gap: 8 },
+  financeTopWide: { flexDirection: "row", gap: 8, alignItems: "stretch" },
+  financeHero: {
+    backgroundColor: "rgba(255,255,255,0.65)",
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "rgba(191,219,254,0.8)",
+    padding: 10,
     flex: 1,
   },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 14 },
-  cardHeadRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
-  cardTitle: { fontSize: 11, fontWeight: "800", letterSpacing: 0.6, color: colors.muted2, textTransform: "uppercase" },
-  financeGrid: { gap: 12 },
-  financeHero: { backgroundColor: colors.surface2, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderSoft, padding: 14 },
-  financeHeroWide: {},
-  financeHeroTop: { flexDirection: "row", justifyContent: "space-between", gap: 12, marginBottom: 10 },
-  microLabel: { fontSize: 10, fontWeight: "700", color: colors.hint, textTransform: "uppercase", letterSpacing: 0.4 },
-  heroValue: { fontSize: 22, fontWeight: "800", color: colors.ink, marginTop: 4 },
-  heroMuted: { fontSize: 12, fontWeight: "500", color: colors.muted2 },
-  targetLbl: { fontSize: 11, fontWeight: "700", color: colors.hint },
-  progressTrack: { height: 8, borderRadius: 99, backgroundColor: colors.borderSoft, overflow: "hidden" },
-  progressFill: { height: 8, borderRadius: 99, backgroundColor: colors.success },
-  progressCaption: { marginTop: 6, fontSize: 11, fontWeight: "600", color: colors.success, textAlign: "right" },
-  financeRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  miniCard: { flex: 1, minWidth: 140, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderSoft, padding: 12 },
+  financeHeroTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 6 },
+  financeMetrics: { gap: 6 },
+  financeMetricsWide: { flex: 1.4, flexDirection: "row", gap: 6 },
+  microLabel: { fontSize: 9, fontWeight: "700", color: colors.hint, textTransform: "uppercase", letterSpacing: 0.4 },
+  heroValue: { fontSize: 18, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  heroMuted: { fontSize: 11, fontWeight: "500", color: colors.muted2 },
+  targetLbl: { fontSize: 10, fontWeight: "700", color: colors.hint, alignSelf: "flex-start" },
+  progressTrack: { height: 6, borderRadius: 99, backgroundColor: "rgba(148,163,184,0.35)", overflow: "hidden" },
+  progressFill: { height: 6, borderRadius: 99, backgroundColor: colors.success },
+  progressCaption: { marginTop: 4, fontSize: 10, fontWeight: "600", color: colors.success, textAlign: "right" },
+  miniCard: { flex: 1, minWidth: 100, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderSoft, padding: 8 },
   miniCardGreen: { backgroundColor: "#ECFDF5" },
-  miniCardInset: { backgroundColor: colors.surface, ...shadow.sm },
-  miniValueGreen: { fontSize: 22, fontWeight: "800", color: "#047857", marginTop: 4 },
-  miniHint: { fontSize: 11, color: colors.muted2, marginTop: 4 },
-  dueRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-  dueLbl: { fontSize: 11, color: colors.muted2 },
-  dueVal: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
-  headcountBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: colors.primarySofter,
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: radii.lg,
-    padding: 14,
-  },
-  headcountIcon: { backgroundColor: colors.primary, borderRadius: radii.md, padding: 8 },
-  headcountValue: { fontSize: 16, fontWeight: "800", color: colors.ink, marginTop: 2 },
-  attList: { gap: 10 },
-  attRow: { borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radii.md, padding: 10, gap: 6 },
-  attRowWarn: { borderColor: "#FDE68A", backgroundColor: "#FFFBEB" },
-  attRowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  attLabel: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
-  attRatio: { fontSize: 13, fontWeight: "600", color: colors.muted2 },
-  attMeta: { fontSize: 10, color: colors.muted2 },
-  pendingPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    alignSelf: "flex-start",
-    backgroundColor: colors.warningSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.pill,
-  },
-  pendingTxt: { fontSize: 10, fontWeight: "700", color: "#92400E" },
-  link: { fontSize: 12, fontWeight: "700", color: colors.primary },
-  taskRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, gap: 10 },
-  taskRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-  taskTitle: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.ink2 },
-  taskMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
-  priorityPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.pill },
-  priorityTxt: { fontSize: 10, fontWeight: "800" },
-  taskDue: { fontSize: 11, color: colors.hint },
-  approvalsCard: { justifyContent: "space-between" },
-  caughtUp: { alignItems: "center", justifyContent: "center", paddingVertical: 24, gap: 6 },
-  caughtUpTitle: { fontSize: 14, fontWeight: "700", color: colors.ink2 },
-  caughtUpSub: { fontSize: 12, color: colors.hint, textAlign: "center", maxWidth: 260 },
-  approvalCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: colors.primarySofter,
-    borderRadius: radii.md,
-    padding: 14,
-    marginTop: 8,
-  },
-  approvalCtaTxt: { fontSize: 14, fontWeight: "700", color: colors.primary },
-  emptyHint: { fontSize: 12, color: colors.hint, paddingVertical: 8 },
-  categoryFinanceList: { gap: 6, marginTop: 4 },
-  categoryFinanceRow: {
+  miniCardInset: { backgroundColor: "rgba(255,255,255,0.7)" },
+  miniValueGreen: { fontSize: 16, fontWeight: "800", color: "#047857", marginTop: 2 },
+  miniHint: { fontSize: 10, color: colors.muted2, marginTop: 2 },
+  dueRowCompact: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 8,
-    paddingVertical: 6,
+    alignItems: "center",
+    marginTop: 4,
+    paddingBottom: 3,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
   },
-  categoryFinanceLabel: { fontSize: 11, fontWeight: "700", color: colors.muted },
-  categoryFinanceVal: { fontSize: 11, fontWeight: "600", color: colors.ink2, flexShrink: 1, textAlign: "right" },
-  enrollmentList: { gap: 8 },
-  enrollmentBlock: { gap: 6 },
-  enrollmentSectionTitle: { fontSize: 11, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.4 },
-  enrollmentSportLine: { fontSize: 11, color: colors.muted, marginTop: 2 },
-  enrollmentRow: {
+  dueRowLast: { borderBottomWidth: 0, paddingBottom: 0 },
+  dueLblRow: { flexDirection: "row", alignItems: "center", gap: 3 },
+  dueLbl: { fontSize: 10, color: colors.muted2 },
+  dueVal: { fontSize: 11, fontWeight: "700", color: colors.ink2 },
+  dueValGreen: { color: "#047857" },
+  dueValWarn: { color: "#D97706" },
+  dueValBold: { fontWeight: "800" },
+  duesTable: {
+    marginTop: 8,
+    borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: radii.md,
-    padding: 10,
-    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    overflow: "hidden",
   },
-  enrollmentTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  enrollmentCat: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
-  enrollmentCount: { fontSize: 12, fontWeight: "600", color: colors.muted },
-  enrollmentGap: { fontSize: 11, fontWeight: "700", color: colors.success },
-  enrollmentGapFull: { color: colors.warning },
-  enrollmentGapMuted: { fontSize: 11, color: colors.hint },
+  duesTableHead: { backgroundColor: "rgba(241,245,249,0.9)" },
+  duesTableRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4, paddingHorizontal: 8 },
+  duesTableRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  duesCell: { fontSize: 10 },
+  duesCellCat: { flex: 1.2, paddingRight: 6 },
+  duesCellNum: { flex: 0.8, textAlign: "right" },
+  duesHeadTxt: { fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.3 },
+  duesCatTxt: { fontWeight: "700", color: colors.ink2 },
+  duesNumTxt: { fontWeight: "700", color: colors.ink },
+  duesNumMuted: { fontWeight: "600", color: colors.muted2 },
+  duesGapTxt: { fontWeight: "800", color: "#D97706" },
+  midRow: { gap: 8 },
+  midRowWide: { flexDirection: "row", alignItems: "stretch", flex: 1, minHeight: 0 },
+  midCol: { flex: 1 },
+  midColFull: { flex: 1 },
+  enrollmentBlock: { gap: 4 },
+  enrollmentSectionTitle: { fontSize: 9, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.4 },
+  enrollmentTable: { gap: 2 },
+  enrollmentTableRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(148,163,184,0.2)",
+  },
+  enrollmentCellTxt: { fontWeight: "700", color: colors.ink2 },
+  enrollmentCat: { flex: 1, fontSize: 11, fontWeight: "700", color: colors.ink2 },
+  enrollmentCount: { fontSize: 10, fontWeight: "600", color: colors.muted, textAlign: "right" },
+  headcountStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  headcountStripTxt: { flex: 1, fontSize: 11, fontWeight: "600", color: colors.ink2 },
+  headcountStripNum: { fontWeight: "800", color: "#16A34A", fontSize: 13 },
+  attList: { gap: 4 },
+  attRow: {
+    borderWidth: 1,
+    borderColor: "rgba(233,213,255,0.8)",
+    borderRadius: radii.sm,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    gap: 3,
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  attRowWarn: { borderColor: "#FDE68A", backgroundColor: "#FFFBEB" },
+  attRowMain: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  attRowLeft: { flexDirection: "row", alignItems: "center", gap: 5 },
+  attLabel: { fontSize: 11, fontWeight: "700", color: colors.ink2 },
+  attRatio: { fontSize: 11, fontWeight: "600", color: colors.muted2 },
+  progressTrackThin: { height: 4, borderRadius: 99, backgroundColor: "rgba(148,163,184,0.3)", overflow: "hidden" },
+  progressFillThin: { height: 4, borderRadius: 99 },
+  attMeta: { fontSize: 9, color: colors.muted2 },
+  workflowRow: { gap: 8 },
+  workflowRowWide: { flexDirection: "row", flexShrink: 0 },
+  workflowCol: { flex: 1 },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 0 },
+  cardHeadRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
+  cardTitle: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5, color: colors.muted2, textTransform: "uppercase" },
+  link: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  taskRowCompact: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 5, gap: 8 },
+  taskRowBorder: { borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  taskTitle: { flex: 1, fontSize: 12, fontWeight: "600", color: colors.ink2 },
+  taskMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  priorityPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill },
+  priorityTxt: { fontSize: 9, fontWeight: "800" },
+  taskDue: { fontSize: 10, color: colors.hint },
+  caughtUpCompact: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
+  caughtUpCompactTxt: { fontSize: 11, fontWeight: "600", color: colors.ink2, flex: 1 },
+  approvalCtaCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.65)",
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  approvalCtaTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
+  emptyHint: { fontSize: 11, color: colors.hint, paddingVertical: 4 },
+  emptyHintCompact: { fontSize: 11, color: colors.hint, paddingVertical: 2 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", justifyContent: "flex-start", alignItems: "flex-end", padding: 24, paddingTop: 80 },
   quickMenu: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, minWidth: 220, padding: 8, ...shadow.md },
   quickMenuTitle: { fontSize: 11, fontWeight: "800", color: colors.hint, textTransform: "uppercase", paddingHorizontal: 10, paddingVertical: 8 },
