@@ -46,6 +46,11 @@ export function taskDueDate(task: TaskRecord): string | undefined {
   return task.due_date || task.deadline;
 }
 
+export function isTaskOpen(status: string): boolean {
+  const normalized = status.toLowerCase();
+  return normalized === "open" || normalized === "assigned";
+}
+
 export function isTaskCompleted(status: string): boolean {
   return status === "completed" || status === "reviewed" || status === "cancelled";
 }

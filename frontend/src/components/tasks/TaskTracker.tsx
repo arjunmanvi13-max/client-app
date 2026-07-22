@@ -23,6 +23,7 @@ import { TaskTable } from "./TaskTable";
 import {
   matchesTaskSearch,
   matchesTaskStatusFilter,
+  isTaskOpen,
   type TaskRecord,
   type TaskStatusFilter,
   type TaskViewTab,
@@ -40,6 +41,20 @@ const STATUS_FILTERS: { key: TaskStatusFilter; label: string }[] = [
   { key: "overdue", label: "Overdue" },
 ];
 
+const EMPTY_TASKS_BY_TAB: Record<TaskViewTab, TaskRecord[]> = {
+  assigned_to_me: [],
+  assigned_by_me: [],
+};
+
+function scopeTasksForTab(rows: TaskRecord[], tab: TaskViewTab, uid?: string): TaskRecord[] {
+  if (!uid) return rows;
+  return rows.filter((task) =>
+    tab === "assigned_to_me"
+      ? task.assignee_id === uid || (task.assignee_ids || []).includes(uid)
+      : task.created_by === uid,
+  );
+}
+
 export default function TaskTracker() {
   const router = useRouter();
   const { user } = useAuth();
@@ -48,7 +63,7 @@ export default function TaskTracker() {
   const [viewTab, setViewTab] = useState<TaskViewTab>("assigned_to_me");
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [tasksByTab, setTasksByTab] = useState<Record<TaskViewTab, TaskRecord[]>>(EMPTY_TASKS_BY_TAB);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -66,29 +81,25 @@ export default function TaskTracker() {
   const load = useCallback(async () => {
     setError("");
     try {
-      const params: Record<string, boolean> =
-        viewTab === "assigned_to_me"
-          ? { assigned_to_me: true }
-          : { created_by_me: true };
-      const { data } = await api.get("/tasks", { params });
-      const rows = Array.isArray(data) ? data : [];
       const uid = user?.id;
-      const scoped = uid
-        ? rows.filter((task: TaskRecord) =>
-            viewTab === "assigned_to_me"
-              ? task.assignee_id === uid || (task.assignee_ids || []).includes(uid)
-              : task.created_by === uid,
-          )
-        : rows;
-      setTasks(uid ? scoped : rows);
+      const [assignedRes, createdRes] = await Promise.all([
+        api.get("/tasks", { params: { assigned_to_me: true } }),
+        api.get("/tasks", { params: { created_by_me: true } }),
+      ]);
+      const assignedRows = Array.isArray(assignedRes.data) ? assignedRes.data : [];
+      const createdRows = Array.isArray(createdRes.data) ? createdRes.data : [];
+      setTasksByTab({
+        assigned_to_me: scopeTasksForTab(assignedRows, "assigned_to_me", uid),
+        assigned_by_me: scopeTasksForTab(createdRows, "assigned_by_me", uid),
+      });
     } catch (e: any) {
       setError(getApiError(e, "Could not load tasks."));
-      setTasks([]);
+      setTasksByTab(EMPTY_TASKS_BY_TAB);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [viewTab, user?.id]);
+  }, [user?.id]);
 
   useEffect(() => {
     setLoading(true);
@@ -99,6 +110,16 @@ export default function TaskTracker() {
     setRefreshing(true);
     load();
   };
+
+  const tasks = tasksByTab[viewTab];
+
+  const openCounts = useMemo(
+    () => ({
+      assigned_to_me: tasksByTab.assigned_to_me.filter((task) => isTaskOpen(task.status)).length,
+      assigned_by_me: tasksByTab.assigned_by_me.filter((task) => isTaskOpen(task.status)).length,
+    }),
+    [tasksByTab],
+  );
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -111,7 +132,14 @@ export default function TaskTracker() {
     setBusyId(task.id);
     try {
       const { data } = await api.patch(`/tasks/${task.id}`, patch);
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, ...data } : t)));
+      setTasksByTab((prev) => {
+        const merge = (list: TaskRecord[]) =>
+          list.map((t) => (t.id === task.id ? { ...t, ...data } : t));
+        return {
+          assigned_to_me: merge(prev.assigned_to_me),
+          assigned_by_me: merge(prev.assigned_by_me),
+        };
+      });
       return data;
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Could not update task.");
@@ -189,7 +217,15 @@ export default function TaskTracker() {
                 onPress={() => setViewTab(tab.key)}
                 style={[s.viewTab, active && s.viewTabActive]}
               >
-                <Text style={[s.viewTabText, active && s.viewTabTextActive]}>{tab.label}</Text>
+                <View style={s.viewTabLabelRow}>
+                  <Text style={[s.viewTabText, active && s.viewTabTextActive]}>{tab.label}</Text>
+                  <Text
+                    testID={`view-tab-open-count-${tab.key}`}
+                    style={s.viewTabOpenCount}
+                  >
+                    ({openCounts[tab.key]})
+                  </Text>
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -335,8 +371,10 @@ const s = StyleSheet.create({
     borderBottomColor: "transparent",
   },
   viewTabActive: { borderBottomColor: "#1E40AF" },
+  viewTabLabelRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   viewTabText: { fontSize: 14, fontWeight: "700", color: colors.muted },
   viewTabTextActive: { color: "#1E40AF" },
+  viewTabOpenCount: { fontSize: 14, fontWeight: "800", color: "#16A34A" },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
