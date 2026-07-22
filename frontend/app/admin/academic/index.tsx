@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl, Pressable, Platform,
@@ -87,7 +87,10 @@ export default function AcademicAdmin() {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("years");
   const [loading, setLoading] = useState(true);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const loadSeqRef = useRef(0);
+  const assignmentsLoadSeqRef = useRef(0);
 
   const [years, setYears] = useState<any[]>([]);
   const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
@@ -153,7 +156,7 @@ export default function AcademicAdmin() {
     const map = new Map<string, { teacher: any; rows: Map<string, GroupedAssignmentRow> }>();
     for (const a of classAssignments) {
       const tid = a.teacher_user_id;
-      const sectionId = a.section_id || "";
+      const sectionId = a.section_id || a.section?.id || "";
       if (!tid || !sectionId) continue;
       if (!map.has(tid)) {
         map.set(tid, { teacher: a.teacher, rows: new Map() });
@@ -218,24 +221,47 @@ export default function AcademicAdmin() {
       || "Teacher";
   }, [editingTeacherId, teachers, groupedAssignments]);
 
-  const load = useCallback(async () => {
+  const loadClassAssignments = useCallback(async (yearId: string) => {
+    const seq = ++assignmentsLoadSeqRef.current;
+    setAssignmentsLoading(true);
+    try {
+      const { data } = await api.get("/academic/class-assignments", {
+        params: { academic_year_id: yearId },
+      });
+      if (seq !== assignmentsLoadSeqRef.current) return;
+      setClassAssignments(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      if (seq !== assignmentsLoadSeqRef.current) return;
+      console.error("Failed to load class assignments", e);
+      setClassAssignments([]);
+    } finally {
+      if (seq === assignmentsLoadSeqRef.current) setAssignmentsLoading(false);
+    }
+  }, []);
+
+  const load = useCallback(async (forceYearId?: string) => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const [yearsRes, usersRes] = await Promise.all([
         api.get("/academic/years"),
         api.get("/users/directory", { params: { role: "teacher" } }).catch(() => ({ data: [] })),
       ]);
+      if (seq !== loadSeqRef.current) return;
       setYears(yearsRes.data);
       setTeachers(usersRes.data);
-      const yid = selectedYearId || yearsRes.data.find((y: any) => y.status === "open")?.id || yearsRes.data[0]?.id;
-      if (yid && !selectedYearId) setSelectedYearId(yid);
+      const yid = forceYearId
+        || selectedYearId
+        || yearsRes.data.find((y: any) => y.status === "open")?.id
+        || yearsRes.data[0]?.id;
+      if (yid && yid !== selectedYearId) setSelectedYearId(yid);
       if (yid) {
         const results = await Promise.allSettled([
           api.get("/academic/grades", { params: { academic_year_id: yid } }),
           api.get("/academic/sections", { params: { academic_year_id: yid } }),
           api.get("/academic/subjects", { params: { academic_year_id: yid } }),
-          api.get("/academic/class-assignments", { params: { academic_year_id: yid } }),
         ]);
+        if (seq !== loadSeqRef.current) return;
         const pick = <T,>(idx: number, fallback: T): T => {
           const r = results[idx];
           return r.status === "fulfilled" ? r.value.data : fallback;
@@ -243,18 +269,24 @@ export default function AcademicAdmin() {
         setGrades(pick(0, []));
         setSections(pick(1, []));
         setSubjects(pick(2, []));
-        setClassAssignments(pick(3, []));
         const failed = results.filter((r) => r.status === "rejected");
         if (failed.length === results.length) {
           throw (failed[0] as PromiseRejectedResult).reason;
         }
+        await loadClassAssignments(yid);
+      } else {
+        setGrades([]);
+        setSections([]);
+        setSubjects([]);
+        setClassAssignments([]);
       }
     } catch (e: any) {
+      if (seq !== loadSeqRef.current) return;
       Alert.alert("Error", e?.response?.data?.detail || "Failed to load academic data");
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
-  }, [selectedYearId]);
+  }, [selectedYearId, loadClassAssignments]);
 
   useEffect(() => {
     if (!grades.length) return;
@@ -263,11 +295,15 @@ export default function AcademicAdmin() {
     }
   }, [grades, sectionGradeId]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const loadRef = useRef(load);
+  useEffect(() => { loadRef.current = load; }, [load]);
+
+  useFocusEffect(useCallback(() => { void loadRef.current(); }, []));
 
   useEffect(() => {
-    if (selectedYearId) load();
-  }, [selectedYearId]);
+    if (tab !== "assignments" || !selectedYearId || loading) return;
+    void loadClassAssignments(selectedYearId);
+  }, [tab, selectedYearId, loading, loadClassAssignments]);
 
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
@@ -695,7 +731,9 @@ export default function AcademicAdmin() {
               <View style={[s.assignPanel, s.assignListPanel, isReadOnly && s.assignListPanelFull]}>
                 <View style={s.assignListHeader}>
                   <Text style={s.assignPanelTitle}>Current assignments</Text>
-                  <Text style={s.assignListCount}>{groupedAssignments.length} teacher(s)</Text>
+                  <Text style={s.assignListCount}>
+                    {assignmentsLoading ? "Loading…" : `${groupedAssignments.length} teacher(s)`}
+                  </Text>
                 </View>
                 <ScrollView
                   style={s.assignListScroll}
@@ -703,7 +741,9 @@ export default function AcademicAdmin() {
                   nestedScrollEnabled
                   refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
                 >
-                  {groupedAssignments.length === 0 ? (
+                  {assignmentsLoading ? (
+                    <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} />
+                  ) : groupedAssignments.length === 0 ? (
                     <Text style={s.hintCompact}>No class assignments yet.</Text>
                   ) : groupedAssignments.map((group) => {
                     const teacherId = group.teacherId;
@@ -779,7 +819,7 @@ export default function AcademicAdmin() {
                 <Text style={s.cardTitle}>Academic years</Text>
                 {years.map((y) => (
                   <View key={y.id} style={s.yearRow} testID={`year-${y.id}`}>
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => setSelectedYearId(y.id)}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => { setSelectedYearId(y.id); void load(y.id); }}>
                       <Text style={[s.yearName, selectedYearId === y.id && { color: "#1E40AF" }]}>{y.name}</Text>
                       <Text style={s.yearMeta}>{formatDate(y.start_date)} → {formatDate(y.end_date)}</Text>
                     </TouchableOpacity>
