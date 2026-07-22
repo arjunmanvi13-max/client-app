@@ -1,5 +1,7 @@
 /** Task assignee role filter chips and list filtering. */
 import { isActiveUser } from "./userStatus";
+import { userHasPermission } from "./auth";
+import { BusinessEntity, Permission } from "./rbac";
 
 export type AssigneeRoleFilter =
   | "all"
@@ -74,5 +76,84 @@ export function filterAssigneeUsers(
     if (!matchesAssigneeRoleFilter(user, roleFilter)) return false;
     if (!q) return true;
     return assigneeSearchText(user).includes(q);
+  });
+}
+
+const NON_ASSIGNABLE_ROLES = new Set(["student", "player", "parent"]);
+
+const PWS_DELEGATE_ROLES = new Set([
+  "teacher",
+  "pws_teacher",
+  "staff",
+  "warden",
+  "librarian",
+  "pws_accounts",
+]);
+
+const ALPHA_DELEGATE_ROLES = new Set([
+  "coach",
+  "alpha_coach",
+  "alpha_accounts",
+]);
+
+const ADMIN_DELEGATE_ROLES = new Set([
+  ...PWS_DELEGATE_ROLES,
+  ...ALPHA_DELEGATE_ROLES,
+  "principal",
+  "vice_principal",
+  "pws_admin",
+  "alpha_admin",
+  "admin",
+  "sports_admin",
+]);
+
+/** Filter directory users the current user may delegate tasks to. */
+export function filterAssignableUsersForCreator(
+  currentUser: { id?: string; role?: string; permissions?: string[] } | null | undefined,
+  users: AssigneeUser[],
+): AssigneeUser[] {
+  if (!currentUser?.id) return [];
+  const allowedRoles = new Set<string>();
+
+  if (
+    userHasPermission(currentUser, Permission.MANAGE_ACCESS)
+    || normalizeRole(currentUser.role) === "super_admin"
+  ) {
+    return users.filter((user) => {
+      if (user.id === currentUser.id) return false;
+      return !NON_ASSIGNABLE_ROLES.has(normalizeRole(user.role));
+    });
+  }
+
+  if (userHasPermission(currentUser, Permission.CREATE_TEACHER_TASKS, BusinessEntity.PWS)) {
+    PWS_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+  }
+  if (userHasPermission(currentUser, Permission.CREATE_COACH_TASKS, BusinessEntity.ALPHA)) {
+    ALPHA_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+  }
+  if (userHasPermission(currentUser, Permission.MANAGE_PWS_TASKS, BusinessEntity.PWS)) {
+    PWS_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+  }
+  if (userHasPermission(currentUser, Permission.MANAGE_ALPHA_TASKS, BusinessEntity.ALPHA)) {
+    ALPHA_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+  }
+
+  const creatorRole = normalizeRole(currentUser.role);
+  if (allowedRoles.size === 0) {
+    if (["principal", "vice_principal", "pws_admin"].includes(creatorRole)) {
+      PWS_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+    } else if (["alpha_admin", "admin", "sports_admin"].includes(creatorRole)) {
+      ALPHA_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+    } else if (ADMIN_DELEGATE_ROLES.has(creatorRole)) {
+      ADMIN_DELEGATE_ROLES.forEach((role) => allowedRoles.add(role));
+    }
+  }
+
+  if (allowedRoles.size === 0) return [];
+
+  return users.filter((user) => {
+    if (user.id === currentUser.id) return false;
+    if (!isActiveUser(user)) return false;
+    return allowedRoles.has(normalizeRole(user.role));
   });
 }
