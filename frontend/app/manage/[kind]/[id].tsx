@@ -369,16 +369,14 @@ export default function ManageEdit() {
   const [teacherBaseline, setTeacherBaseline] = useState<TeacherFormSnapshot | null>(null);
   const [teacherAssignmentsReady, setTeacherAssignmentsReady] = useState(false);
   const [hasLoginAccount, setHasLoginAccount] = useState(true);
-  const [personalEmail, setPersonalEmail] = useState("");
-  const [dateOfBirth, setDateOfBirth] = useState("");
-  const [qualification, setQualification] = useState("");
-  const [qualificationOther, setQualificationOther] = useState("");
-  const [lastJob, setLastJob] = useState("");
-  const [guardianName, setGuardianName] = useState("");
-  const [guardianMobile, setGuardianMobile] = useState("");
-  const [referenceName, setReferenceName] = useState("");
-  const [referenceMobile, setReferenceMobile] = useState("");
-  const [aadhaarMasked, setAadhaarMasked] = useState("");
+  const [teacherPersonalEmail, setTeacherPersonalEmail] = useState("");
+  const [teacherDateOfBirth, setTeacherDateOfBirth] = useState("");
+  const [teacherQualification, setTeacherQualification] = useState("");
+  const [teacherQualificationOther, setTeacherQualificationOther] = useState("");
+  const [teacherLastJob, setTeacherLastJob] = useState("");
+  const [teacherReferenceName, setTeacherReferenceName] = useState("");
+  const [teacherReferenceMobile, setTeacherReferenceMobile] = useState("");
+  const [teacherAadhaarMasked, setTeacherAadhaarMasked] = useState("");
   const [unsavedModalVisible, setUnsavedModalVisible] = useState(false);
   const [pendingLeaveAction, setPendingLeaveAction] = useState<(() => void) | null>(null);
   const [loginUserStatusModal, setLoginUserStatusModal] = useState<UserStatusConfirmAction | null>(null);
@@ -469,7 +467,9 @@ export default function ManageEdit() {
               u = data;
             } catch (e: any) {
               if (e?.response?.status === 405 || e?.response?.status === 404 || e?.response?.status === 403) {
-                const { data: all } = await api.get("/users", { params: { include_deactivated: true } });
+                const fallbackParams: Record<string, string | boolean> = { include_deactivated: true };
+                if (kindParam) fallbackParams.role = kindParam;
+                const { data: all } = await api.get("/users", { params: fallbackParams });
                 u = (Array.isArray(all) ? all : []).find((x: any) => x.id === id);
               } else {
                 throw e;
@@ -487,16 +487,16 @@ export default function ManageEdit() {
             setOrganization(u.organization);
             const loginReady = u.has_login_account !== false && !!u.email;
             setHasLoginAccount(loginReady);
-            setPersonalEmail(u.personal_email || "");
-            setDateOfBirth(u.date_of_birth ? formatDate(u.date_of_birth) : "");
-            setQualification(u.qualification || "");
-            setQualificationOther(u.qualification_other || "");
-            setLastJob(u.last_job || "");
+            setTeacherPersonalEmail(u.personal_email || "");
+            setTeacherDateOfBirth(u.date_of_birth ? formatDate(u.date_of_birth) : "");
+            setTeacherQualification(u.qualification || "");
+            setTeacherQualificationOther(u.qualification_other || "");
+            setTeacherLastJob(u.last_job || "");
             setGuardianName(u.guardian_name || "");
-            setGuardianMobile(u.guardian_mobile || "");
-            setReferenceName(u.reference_name || "");
-            setReferenceMobile(u.reference_mobile || "");
-            setAadhaarMasked(u.aadhaar_number_masked || "");
+            setGuardianPhone(u.guardian_mobile || "");
+            setTeacherReferenceName(u.reference_name || "");
+            setTeacherReferenceMobile(u.reference_mobile || "");
+            setTeacherAadhaarMasked(u.aadhaar_number_masked || "");
             setDepartment(u.department || ""); setPhone(u.phone || "");
             setCanManage(u.can_manage || []);
             setCoachPermissions(u.coach_permissions || []);
@@ -1452,16 +1452,16 @@ export default function ManageEdit() {
               } : undefined}
               resetBusy={resetBusy}
               hasLoginAccount={hasLoginAccount}
-              personalEmail={personalEmail}
-              dateOfBirth={dateOfBirth === "—" ? "" : dateOfBirth}
-              qualification={qualification}
-              qualificationOther={qualificationOther}
-              lastJob={lastJob}
+              personalEmail={teacherPersonalEmail}
+              dateOfBirth={teacherDateOfBirth === "—" ? "" : teacherDateOfBirth}
+              qualification={teacherQualification}
+              qualificationOther={teacherQualificationOther}
+              lastJob={teacherLastJob}
               guardianName={guardianName}
-              guardianMobile={guardianMobile}
-              referenceName={referenceName}
-              referenceMobile={referenceMobile}
-              aadhaarMasked={aadhaarMasked}
+              guardianMobile={guardianPhone}
+              referenceName={teacherReferenceName}
+              referenceMobile={teacherReferenceMobile}
+              aadhaarMasked={teacherAadhaarMasked}
             />
           )}
 
