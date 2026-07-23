@@ -1110,7 +1110,7 @@ export default function ManageEdit() {
         else { delete body.kind; await api.patch(`/people/${id}`, body); }
       } else {
         const body: any = {
-          name, kind, organization, group: group || null, sport: sport || null, is_resident: isResident,
+          name, kind: kindParam, organization, group: group || null, sport: sport || null, is_resident: isResident,
           gender: gender || null,
           email: personEmail || null,
           mobile: mobile || null,
@@ -1169,7 +1169,7 @@ export default function ManageEdit() {
         ? detail
         : Array.isArray(detail)
           ? detail.map((d: any) => d?.msg || JSON.stringify(d)).join("\n")
-          : "Failed to save";
+          : (e?.message && typeof e.message === "string" ? e.message : "Failed to save");
       const isDuplicate = typeof message === "string" && message.toLowerCase().includes("name and date of birth");
       showError(isDuplicate ? "Duplicate entry" : "Error", message);
     } finally { setSaving(false); }
