@@ -447,33 +447,44 @@ function ModuleBlock({
 }) {
   const state = moduleNodeState(mod, draft);
   const children = mod.children || [];
+  const singleLeafChild = children.length === 1 && !(children[0].children?.length) ? children[0] : null;
+  const subCategories = children.length > 1 || (children.length === 1 && children[0].children?.length);
 
   return (
     <View style={[children.length > 0 && s.nestedGroup, depth > 0 && { marginLeft: 12 }]}>
       <View
-        style={[s.moduleRow, depth > 0 && s.moduleRowNested, children.length > 0 && s.moduleRowParent]}
-        testID={`mod-${mod.id}`}
+        style={[
+          s.moduleRow,
+          depth > 0 && s.moduleRowNested,
+          children.length > 0 && s.moduleRowParent,
+          singleLeafChild && s.subCategoryRow,
+        ]}
+        testID={`mod-${singleLeafChild?.id ?? mod.id}`}
       >
         <View style={{ flex: 1 }}>
-          <Text style={[s.moduleLabel, children.length > 0 && s.moduleLabelParent]}>{mod.label}</Text>
+          <Text style={[s.moduleLabel, children.length > 0 && s.moduleLabelParent, singleLeafChild && s.subCategoryLabel]}>
+            {mod.label}
+          </Text>
         </View>
         <HierarchySwitch
           state={state}
           disabled={locked}
           onToggle={(enabled) => onToggleNode(mod, enabled)}
-          testID={`toggle-${mod.id}`}
+          testID={`toggle-${singleLeafChild?.id ?? mod.id}`}
         />
       </View>
-      {children.map((child) => (
-        <ModuleBlock
-          key={child.id}
-          mod={child}
-          draft={draft}
-          locked={locked}
-          onToggleNode={onToggleNode}
-          depth={depth + 1}
-        />
-      ))}
+      {subCategories
+        ? children.map((child) => (
+          <ModuleBlock
+            key={child.id}
+            mod={child}
+            draft={draft}
+            locked={locked}
+            onToggleNode={onToggleNode}
+            depth={depth + 1}
+          />
+        ))
+        : null}
     </View>
   );
 }
@@ -538,8 +549,16 @@ const s = StyleSheet.create({
   moduleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, borderRadius: radii.sm },
   moduleRowNested: { marginLeft: 8, backgroundColor: colors.surface2 },
   moduleRowParent: { marginBottom: 2 },
+  subCategoryRow: {
+    marginTop: 4,
+    marginBottom: 4,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+  },
   moduleLabel: { fontSize: 13, fontWeight: "600", color: colors.ink2 },
   moduleLabelParent: { fontSize: 12, fontWeight: "700" },
+  subCategoryLabel: { fontSize: 12, fontWeight: "800", color: colors.ink2, textTransform: "uppercase", letterSpacing: 0.4 },
   saveBtn: {
     marginTop: 20,
     flexDirection: "row",
