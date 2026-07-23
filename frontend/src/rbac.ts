@@ -65,6 +65,7 @@ export enum Permission {
 
   // PWS Teachers
   MARK_STUDENT_ATTENDANCE = "MARK_STUDENT_ATTENDANCE",
+  MARK_TEACHER_ATTENDANCE = "MARK_TEACHER_ATTENDANCE",
   MANAGE_MARKS_ASSESSMENT = "MANAGE_MARKS_ASSESSMENT",
   MANAGE_TEACHER_TASKS = "MANAGE_TEACHER_TASKS",
 
@@ -334,8 +335,9 @@ export function hasPermission(
     [Permission.RUN_PWS_REPORTS]: ["access_reports"],
     [Permission.RUN_ALPHA_REPORTS]: ["access_reports"],
     [Permission.MARK_STUDENT_ATTENDANCE]: ["mark_student_attendance"],
+    [Permission.MARK_TEACHER_ATTENDANCE]: ["mark_teacher_attendance"],
     [Permission.MARK_PLAYER_ATTENDANCE]: ["mark_player_attendance"],
-    [Permission.MARK_PWS_ATTENDANCE]: ["mark_student_attendance", "mark_staff_attendance"],
+    [Permission.MARK_PWS_ATTENDANCE]: ["mark_student_attendance", "mark_staff_attendance", "mark_teacher_attendance"],
     [Permission.MARK_ALPHA_ATTENDANCE]: ["mark_player_attendance", "mark_coach_attendance"],
     [Permission.MANAGE_PLAYERS]: ["add_players", "edit_players", "view_players"],
     [Permission.ADD_PWS_STUDENTS]: ["add_students", "edit_students"],
@@ -388,6 +390,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.ADD_ALPHA_PLAYERS]: "Add ALPHA players",
   [Permission.RUN_ALPHA_REPORTS]: "Run ALPHA reports",
   [Permission.MARK_STUDENT_ATTENDANCE]: "Mark student attendance",
+  [Permission.MARK_TEACHER_ATTENDANCE]: "Mark teacher attendance",
   [Permission.MANAGE_MARKS_ASSESSMENT]: "Marks & assessment",
   [Permission.MANAGE_TEACHER_TASKS]: "Manage teacher tasks",
   [Permission.MARK_PLAYER_ATTENDANCE]: "Mark player attendance",
