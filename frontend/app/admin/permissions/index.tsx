@@ -15,6 +15,15 @@ import { api, useAuth } from "../../../src/auth";
 import { isSuperAdminUser } from "../../../src/rbac";
 import { getApiError } from "../../../src/ScreenStates";
 import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, isApprovedLoginUserType, resolveRouteParam, type LoginUserType } from "../../../src/userClassification";
+import {
+  allLeafIds,
+  applyGroupToggle,
+  applyNodeToggle,
+  countEnabledLeaves,
+  groupNodeState,
+  moduleNodeState,
+  type ToggleState,
+} from "../../../src/categoryPermissionsUtil";
 import { colors, radii, shadow } from "../../../src/theme";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 
@@ -46,20 +55,6 @@ type CategoryDetail = {
   updated_at?: string | null;
   updated_by_name?: string | null;
 };
-
-function leafModuleIds(nodes: ModuleNode[]): string[] {
-  const out: string[] = [];
-  const walk = (n: ModuleNode) => {
-    if (n.children?.length) n.children.forEach(walk);
-    else out.push(n.id);
-  };
-  nodes.forEach(walk);
-  return out;
-}
-
-function allLeafIds(catalog: CategoryDetail["catalog"]): string[] {
-  return catalog.flatMap((g) => g.modules.flatMap((m) => leafModuleIds([m])));
-}
 
 function permissionsApiError(e: any, fallback: string): string {
   const status = e?.response?.status;
@@ -151,9 +146,20 @@ export default function CategoryPermissionsScreen() {
     return Object.keys(draft).some((k) => !!draft[k] !== !!savedSnapshot[k]);
   }, [draft, savedSnapshot, detail]);
 
-  const toggle = (id: string, value?: boolean) => {
+  const selectedCounts = useMemo(() => {
+    if (!detail) return null;
+    return countEnabledLeaves(detail.catalog, draft);
+  }, [detail, draft]);
+
+  const toggleNode = (node: ModuleNode, enabled: boolean) => {
     if (detail?.locked) return;
-    setDraft((prev) => ({ ...prev, [id]: value ?? !prev[id] }));
+    setDraft((prev) => applyNodeToggle(prev, node, enabled));
+    setSaveMsg("");
+  };
+
+  const toggleGroup = (groupModules: ModuleNode[], enabled: boolean) => {
+    if (detail?.locked) return;
+    setDraft((prev) => applyGroupToggle(prev, groupModules, enabled));
     setSaveMsg("");
   };
 
@@ -277,6 +283,9 @@ export default function CategoryPermissionsScreen() {
             {categories.map((cat) => {
               const meta = CATALOG_BY_CODE[cat.user_type];
               const active = selected === cat.user_type;
+              const counts = active && selectedCounts
+                ? selectedCounts
+                : { enabled: cat.enabled_count, total: cat.total_count };
               return (
                 <TouchableOpacity
                   key={cat.user_type}
@@ -291,7 +300,7 @@ export default function CategoryPermissionsScreen() {
                     <Text style={[s.catName, active && s.catNameActive]}>{cat.display_name}</Text>
                     <View style={s.catMetaRow}>
                       <Text style={s.catMeta}>
-                        {cat.entity_scope} · {cat.enabled_count}/{cat.total_count} modules
+                        {cat.entity_scope} · {counts.enabled}/{counts.total} modules
                         {cat.locked ? " · Locked" : ""}
                       </Text>
                       <TouchableOpacity
@@ -349,14 +358,24 @@ export default function CategoryPermissionsScreen() {
 
                 {detail.catalog.map((group) => (
                   <View key={group.id} style={s.group}>
-                    <Text style={s.groupLabel}>{group.label}</Text>
+                    <View style={s.groupHead}>
+                      <Text style={s.groupLabel}>{group.label}</Text>
+                      {!detail.locked ? (
+                        <HierarchySwitch
+                          state={groupNodeState(group.modules, draft)}
+                          disabled={false}
+                          onToggle={(enabled) => toggleGroup(group.modules, enabled)}
+                          testID={`toggle-group-${group.id}`}
+                        />
+                      ) : null}
+                    </View>
                     {group.modules.map((mod) => (
                       <ModuleBlock
                         key={mod.id}
                         mod={mod}
                         draft={draft}
                         locked={!!detail.locked}
-                        onToggle={toggle}
+                        onToggleNode={toggleNode}
                       />
                     ))}
                   </View>
@@ -386,45 +405,75 @@ export default function CategoryPermissionsScreen() {
   );
 }
 
+function HierarchySwitch({
+  state,
+  disabled,
+  onToggle,
+  testID,
+}: {
+  state: ToggleState;
+  disabled?: boolean;
+  onToggle: (enabled: boolean) => void;
+  testID?: string;
+}) {
+  const on = state === "on";
+  return (
+    <Switch
+      value={on}
+      onValueChange={onToggle}
+      disabled={disabled}
+      trackColor={{
+        false: state === "partial" ? "#FDE68A" : colors.border,
+        true: "#99F6E4",
+      }}
+      thumbColor={state === "partial" ? "#D97706" : on ? "#0F766E" : "#f4f3f4"}
+      testID={testID}
+    />
+  );
+}
+
 function ModuleBlock({
   mod,
   draft,
   locked,
-  onToggle,
+  onToggleNode,
   depth = 0,
 }: {
   mod: ModuleNode;
   draft: Record<string, boolean>;
   locked: boolean;
-  onToggle: (id: string, value?: boolean) => void;
+  onToggleNode: (node: ModuleNode, enabled: boolean) => void;
   depth?: number;
 }) {
+  const state = moduleNodeState(mod, draft);
   const children = mod.children || [];
-  if (children.length) {
-    return (
-      <View style={[s.nestedGroup, depth > 0 && { marginLeft: 12 }]}>
-        <Text style={s.nestedParent}>{mod.label}</Text>
-        {children.map((child) => (
-          <ModuleBlock key={child.id} mod={child} draft={draft} locked={locked} onToggle={onToggle} depth={depth + 1} />
-        ))}
-      </View>
-    );
-  }
 
-  const enabled = !!draft[mod.id];
   return (
-    <View style={[s.moduleRow, depth > 0 && s.moduleRowNested]} testID={`mod-${mod.id}`}>
-      <View style={{ flex: 1 }}>
-        <Text style={s.moduleLabel}>{mod.label}</Text>
+    <View style={[children.length > 0 && s.nestedGroup, depth > 0 && { marginLeft: 12 }]}>
+      <View
+        style={[s.moduleRow, depth > 0 && s.moduleRowNested, children.length > 0 && s.moduleRowParent]}
+        testID={`mod-${mod.id}`}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[s.moduleLabel, children.length > 0 && s.moduleLabelParent]}>{mod.label}</Text>
+        </View>
+        <HierarchySwitch
+          state={state}
+          disabled={locked}
+          onToggle={(enabled) => onToggleNode(mod, enabled)}
+          testID={`toggle-${mod.id}`}
+        />
       </View>
-      <Switch
-        value={enabled}
-        onValueChange={(v) => onToggle(mod.id, v)}
-        disabled={locked}
-        trackColor={{ false: colors.border, true: "#99F6E4" }}
-        thumbColor={enabled ? "#0F766E" : "#f4f3f4"}
-        testID={`toggle-${mod.id}`}
-      />
+      {children.map((child) => (
+        <ModuleBlock
+          key={child.id}
+          mod={child}
+          draft={draft}
+          locked={locked}
+          onToggleNode={onToggleNode}
+          depth={depth + 1}
+        />
+      ))}
     </View>
   );
 }
@@ -483,12 +532,14 @@ const s = StyleSheet.create({
   bulkBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: colors.borderSoft },
   bulkTxt: { fontSize: 11, fontWeight: "700", color: colors.primary },
   group: { marginBottom: 18 },
-  groupLabel: { fontSize: 10, fontWeight: "800", letterSpacing: 0.6, color: colors.muted2, textTransform: "uppercase", marginBottom: 8 },
+  groupHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 12 },
+  groupLabel: { flex: 1, fontSize: 10, fontWeight: "800", letterSpacing: 0.6, color: colors.muted2, textTransform: "uppercase" },
   nestedGroup: { marginBottom: 8, paddingLeft: 4, borderLeftWidth: 2, borderLeftColor: colors.borderSoft },
-  nestedParent: { fontSize: 12, fontWeight: "700", color: colors.ink2, marginBottom: 6, marginLeft: 8 },
   moduleRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10, paddingHorizontal: 8, borderRadius: radii.sm },
   moduleRowNested: { marginLeft: 8, backgroundColor: colors.surface2 },
+  moduleRowParent: { marginBottom: 2 },
   moduleLabel: { fontSize: 13, fontWeight: "600", color: colors.ink2 },
+  moduleLabelParent: { fontSize: 12, fontWeight: "700" },
   saveBtn: {
     marginTop: 20,
     flexDirection: "row",
