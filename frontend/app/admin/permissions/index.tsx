@@ -462,7 +462,11 @@ function ModuleBlock({
         testID={`mod-${singleLeafChild?.id ?? mod.id}`}
       >
         <View style={{ flex: 1 }}>
-          <Text style={[s.moduleLabel, children.length > 0 && s.moduleLabelParent, singleLeafChild && s.subCategoryLabel]}>
+          <Text style={[
+            s.moduleLabel,
+            children.length > 0 && !singleLeafChild && s.moduleLabelParent,
+            singleLeafChild && s.subCategoryLabel,
+          ]}>
             {mod.label}
           </Text>
         </View>
@@ -558,7 +562,7 @@ const s = StyleSheet.create({
   },
   moduleLabel: { fontSize: 13, fontWeight: "600", color: colors.ink2 },
   moduleLabelParent: { fontSize: 12, fontWeight: "700" },
-  subCategoryLabel: { fontSize: 12, fontWeight: "800", color: colors.ink2, textTransform: "uppercase", letterSpacing: 0.4 },
+  subCategoryLabel: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
   saveBtn: {
     marginTop: 20,
     flexDirection: "row",
