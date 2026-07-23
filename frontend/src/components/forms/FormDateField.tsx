@@ -74,14 +74,20 @@ export function FormDateField({
           placeholderTextColor={colors.hint}
           keyboardType="number-pad"
           maxLength={10}
-          style={[s.input, compact && s.inputCompact, readOnly && s.inputReadonly]}
+          style={[
+            s.input,
+            compact && s.inputCompact,
+            s.inputWithTrailing,
+            compact && s.inputWithTrailingCompact,
+            readOnly && s.inputReadonly,
+          ]}
         />
         <Pressable
           onPress={openPicker}
           disabled={readOnly}
           style={({ pressed }) => [
-            s.iconBtn,
-            compact && s.iconBtnCompact,
+            s.trailingIconBtn,
+            compact && s.trailingIconBtnCompact,
             pressed && !readOnly && s.iconBtnPressed,
           ]}
           accessibilityRole="button"
@@ -99,14 +105,19 @@ export function FormDateField({
                 const iso = e.target?.value;
                 if (iso) onChangeText(formatDate(iso));
               },
+              tabIndex: -1,
+              "aria-hidden": true,
               style: {
                 position: "absolute",
+                top: 0,
+                right: 0,
+                width: compact ? 32 : 40,
+                height: "100%",
                 opacity: 0,
-                width: 1,
-                height: 1,
-                right: 8,
-                bottom: 8,
-                pointerEvents: "none",
+                border: "none",
+                padding: 0,
+                margin: 0,
+                cursor: "pointer",
               },
             })
           : null}
@@ -117,7 +128,7 @@ export function FormDateField({
 }
 
 const s = StyleSheet.create({
-  wrap: { gap: 8 },
+  wrap: { gap: 8, width: "100%", minWidth: 0 },
   wrapCompact: { gap: 4 },
   label: { fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 0.2 },
   labelCompact: { fontSize: 10, letterSpacing: 0.15 },
@@ -129,7 +140,9 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.md,
     minHeight: 46,
+    width: "100%",
     position: "relative",
+    overflow: "hidden",
     ...Platform.select({
       web: {
         transition: "border-color 0.15s ease, box-shadow 0.15s ease",
@@ -141,24 +154,31 @@ const s = StyleSheet.create({
   inputWrapReadonly: { backgroundColor: colors.surface2 },
   input: {
     flex: 1,
+    minWidth: 0,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    paddingRight: 8,
     fontSize: 15,
     color: colors.ink,
     ...Platform.select({ web: { outlineStyle: "none" } as object, default: {} }),
   },
   inputCompact: { paddingHorizontal: 10, paddingVertical: 7, fontSize: 13 },
+  inputWithTrailing: { paddingRight: 40 },
+  inputWithTrailingCompact: { paddingRight: 32 },
   inputReadonly: { color: colors.muted2 },
-  iconBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  trailingIconBtn: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+    alignItems: "center",
+    justifyContent: "center",
     ...Platform.select({
       web: { cursor: "pointer" } as object,
       default: {},
     }),
   },
-  iconBtnCompact: { paddingHorizontal: 10, paddingVertical: 7 },
+  trailingIconBtnCompact: { width: 32 },
   iconBtnPressed: { opacity: 0.65 },
   fieldHint: { fontSize: 11, color: colors.hint, lineHeight: 15 },
   fieldHintCompact: { fontSize: 10, lineHeight: 13 },
