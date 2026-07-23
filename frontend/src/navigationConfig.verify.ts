@@ -58,6 +58,14 @@ function run() {
   const reportPaths = flattenLeafItems(superGroups).filter((i) => i.label === "Report Cards");
   assert(reportPaths.length === 1, "Report Cards appears exactly once");
 
+  const directoryGroup = NAVIGATION_GROUPS.find((g) => g.id === "directory");
+  assert(!!directoryGroup, "Directory group exists");
+  assert(
+    directoryGroup?.children.map((c) => c.id).join(",") === "directory-master,staff,coaches,teachers,students,players",
+    "Directory items are flat without nested wrappers",
+  );
+  assert(!directoryGroup?.children.some((c) => c.children?.length), "Directory has no nested dropdown items");
+
   const attendanceParent = NAVIGATION_GROUPS.find((g) => g.id === "operations")?.children.find((c) => c.id === "attendance");
   assert(attendanceParent?.children?.some((c) => c.id === "attendance-take"), "Attendance expands to Take Attendance");
   assert(attendanceParent?.children?.some((c) => c.id === "attendance-reports"), "Attendance expands to Attendance Reports");
