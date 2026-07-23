@@ -102,3 +102,28 @@ export function isValidDisplayDate(value: string): boolean {
 export function dateHelpText(): string {
   return `Format: ${DATE_PLACEHOLDER} (e.g. ${formatDate(toISODate())})`;
 }
+
+/** Mask typed digits into DD/MM/YYYY with basic day/month bounds. */
+export function maskDisplayDateInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (!digits) return "";
+
+  let day = digits.slice(0, 2);
+  let month = digits.slice(2, 4);
+  const year = digits.slice(4, 8);
+
+  if (day.length === 2) {
+    const dayNum = parseInt(day, 10);
+    if (dayNum === 0) day = "01";
+    else if (dayNum > 31) day = "31";
+  }
+  if (month.length === 2) {
+    const monthNum = parseInt(month, 10);
+    if (monthNum === 0) month = "01";
+    else if (monthNum > 12) month = "12";
+  }
+
+  if (digits.length <= 2) return day;
+  if (digits.length <= 4) return `${day}/${month}`;
+  return `${day}/${month}/${year}`;
+}

@@ -254,6 +254,8 @@ export default function ManageEdit() {
   })();
   const canDelete = canEdit && !isNew && !isTeacherUserForm
     && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
+  const isPrincipal = user?.role === "principal";
+  const canManageStudentStatus = isStudentKind && !isNew && (isSuper || isPrincipal);
   const readOnly = !isNew && !canEdit;
 
   useEffect(() => {
@@ -330,7 +332,9 @@ export default function ManageEdit() {
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
   const [boardingClass, setBoardingClass] = useState("");
   const [boardingSectionLetter, setBoardingSectionLetter] = useState("");
-  const [dateOfAdmission, setDateOfAdmission] = useState<string>(isNew && isPlayerKind ? formatDate(toISODate()) : "");
+  const [dateOfAdmission, setDateOfAdmission] = useState<string>(
+    isNew && (isPlayerKind || isStudentKind) ? formatDate(toISODate()) : "",
+  );
   const [dob, setDob] = useState<string>("");
   const [transportFeeMonthly, setTransportFeeMonthly] = useState<string>("");
   const [hostelFeeOverride, setHostelFeeOverride] = useState<string>("");
@@ -889,6 +893,20 @@ export default function ManageEdit() {
       Alert.alert("Date of Admission is required");
       return;
     }
+    if (isStudentKind) {
+      if (!dateOfAdmission.trim()) {
+        showError("Required field", "Date of Admission is required.");
+        return;
+      }
+      if (!isValidDisplayDate(dateOfAdmission)) {
+        showError("Invalid date", `Date of Admission — ${dateHelpText()}`);
+        return;
+      }
+      if (dob.trim() && !isValidDisplayDate(dob)) {
+        showError("Invalid date", `Date of Birth — ${dateHelpText()}`);
+        return;
+      }
+    }
     if (isCoachKind && isLoginUserKind && !(await confirmSportChangeIfNeeded())) return;
     if (isLoginUserKind && !(await confirmUserTypeChangeIfNeeded())) return;
     setSaving(true);
@@ -1209,6 +1227,48 @@ export default function ManageEdit() {
     );
   };
 
+  const onStudentStatusAction = () => {
+    if (!canManageStudentStatus) return;
+    const studentName = name.trim() || "this student";
+    if (status === "active") {
+      confirmAction(
+        "Deactivate student?",
+        `Are you sure you want to deactivate ${studentName}? They will no longer appear in active rosters.`,
+        async () => {
+          try {
+            const { data } = await api.post(`/people/${id}/deactivate`);
+            if (data?.approval_required) {
+              const msg = "Deactivation request submitted for Super Admin approval.";
+              if (Platform.OS === "web") {
+                // eslint-disable-next-line no-undef
+                if (typeof window !== "undefined") window.alert(msg);
+              } else {
+                Alert.alert("Request submitted", msg);
+              }
+              return;
+            }
+            setStatus("deactivated");
+          } catch (e: any) {
+            showError("Error", e?.response?.data?.detail || "Failed to deactivate student");
+          }
+        },
+      );
+      return;
+    }
+    confirmAction(
+      "Activate student?",
+      `Reactivate ${studentName}? They will appear in active rosters again.`,
+      async () => {
+        try {
+          await api.post(`/people/${id}/activate`);
+          setStatus("active");
+        } catch (e: any) {
+          showError("Error", e?.response?.data?.detail || "Failed to activate student");
+        }
+      },
+    );
+  };
+
   const onPdfPreviewDone = () => {
     setPdfPreviewVisible(false);
     const action = pendingLeaveAction;
@@ -1326,6 +1386,22 @@ export default function ManageEdit() {
               saving={saving}
               saveLabel={isNew ? "Save Student" : "Save changes"}
               readOnly={readOnly}
+              statusBadge={
+                !isNew && status === "deactivated"
+                  ? { label: "Deactivated", tone: "deactivated" }
+                  : undefined
+              }
+              secondaryAction={
+                canManageStudentStatus
+                  ? {
+                      label: status === "active" ? "Deactivate Student" : "Activate Student",
+                      onPress: onStudentStatusAction,
+                      testID: status === "active" ? "btn-student-deactivate" : "btn-student-activate",
+                      icon: status === "active" ? "user-x" : "user-check",
+                      tone: status === "active" ? "destructive" : "success",
+                    }
+                  : undefined
+              }
             />
           )}
 

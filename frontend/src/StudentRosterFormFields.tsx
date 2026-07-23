@@ -9,13 +9,13 @@ import {
   type PwsStudentType,
   type TransportDistance,
 } from "./pwsFeeStructure";
-import { DATE_PLACEHOLDER } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { colors, formColors, radii, spacing } from "./theme";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
 import { FormTextField } from "./components/forms/FormTextField";
+import { FormDateField } from "./components/forms/FormDateField";
 import { CLASS_PREFIX, matchAcademicSection, sectionLabelCandidates } from "./academicStructure";
 
 export { CLASS_PREFIX } from "./academicStructure";
@@ -305,14 +305,12 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
               setIsResident(v === "Boarding");
             }}
           />
-          <FormTextField
+          <FormDateField
             label="Date of Admission"
             required
             testID="field-admission-date"
             value={dateOfAdmission}
             onChangeText={setDateOfAdmission}
-            placeholder={DATE_PLACEHOLDER}
-            trailingIcon="calendar"
             readOnly={readOnly}
           />
         </FormFieldGrid>
@@ -320,7 +318,7 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
 
       {/* Cards 2 & 3 — two-column personal + contact */}
       <View style={[s.splitRow, isWide && s.splitRowWide]}>
-        <FormSectionCard title="Personal Details" style={isWide ? s.splitCol : undefined} testID="student-personal-card">
+        <FormSectionCard overline="Personal Details" style={isWide ? s.splitCol : undefined} testID="student-personal-card">
           <FormFieldGrid columns={2} isWide={isWide}>
             <FormTextField
               label="First Name"
@@ -342,13 +340,11 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
           </FormFieldGrid>
 
           <FormFieldGrid columns={2} isWide={isWide}>
-            <FormTextField
+            <FormDateField
               label="Date of Birth"
               testID="field-student-dob"
               value={dob}
               onChangeText={setDob}
-              placeholder={DATE_PLACEHOLDER}
-              trailingIcon="calendar"
               readOnly={readOnly}
             />
             <FormTextField
@@ -396,57 +392,59 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
             />
           </FormFieldGrid>
 
-          <FormFieldGrid columns={1} isWide={isWide}>
+          <FormTextField
+            label="Email"
+            testID="field-student-email"
+            value={personEmail}
+            onChangeText={setPersonEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            placeholder="student@email.com"
+            readOnly={readOnly}
+          />
+        </FormSectionCard>
+
+        <FormSectionCard overline="Contact & Parent Details" style={isWide ? s.splitCol : undefined} testID="student-contact-card">
+          <FormFieldGrid columns={2} isWide={isWide}>
             <FormTextField
-              label="Email"
-              testID="field-student-email"
-              value={personEmail}
-              onChangeText={setPersonEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="student@email.com"
+              label="Father's Name"
+              testID="field-father-name"
+              value={guardianName}
+              onChangeText={setGuardianName}
+              placeholder="Father's full name"
+              readOnly={readOnly}
+            />
+            <FormTextField
+              label="Mother's Name"
+              testID="field-mother-name"
+              value={motherName}
+              onChangeText={setMotherName}
+              placeholder="Mother's full name"
               readOnly={readOnly}
             />
           </FormFieldGrid>
-        </FormSectionCard>
-
-        <FormSectionCard title="Contact & Parent Details" style={isWide ? s.splitCol : undefined} testID="student-contact-card">
-          <FormTextField
-            label="Father's Name"
-            testID="field-father-name"
-            value={guardianName}
-            onChangeText={setGuardianName}
-            placeholder="Father's full name"
-            readOnly={readOnly}
-          />
-          <FormTextField
-            label="Mother's Name"
-            testID="field-mother-name"
-            value={motherName}
-            onChangeText={setMotherName}
-            placeholder="Mother's full name"
-            readOnly={readOnly}
-          />
-          <FormTextField
-            label="Primary Mobile"
-            testID="field-guardian-phone"
-            value={guardianPhone}
-            onChangeText={setGuardianPhone}
-            keyboardType="phone-pad"
-            placeholder="+91 98765 43210"
-            leadingIcon="phone"
-            readOnly={readOnly}
-          />
-          <FormTextField
-            label="Emergency Contact"
-            testID="field-student-phone"
-            value={mobile}
-            onChangeText={setMobile}
-            keyboardType="phone-pad"
-            placeholder="+91 alternate number"
-            leadingIcon="phone-call"
-            readOnly={readOnly}
-          />
+          <FormFieldGrid columns={2} isWide={isWide}>
+            <FormTextField
+              label="Primary Mobile"
+              testID="field-guardian-phone"
+              value={guardianPhone}
+              onChangeText={setGuardianPhone}
+              keyboardType="phone-pad"
+              placeholder="+91 98765 43210"
+              leadingIcon="phone"
+              readOnly={readOnly}
+            />
+            <FormTextField
+              label="Emergency Contact"
+              testID="field-student-phone"
+              value={mobile}
+              onChangeText={setMobile}
+              keyboardType="phone-pad"
+              placeholder="+91 alternate number"
+              leadingIcon="phone-call"
+              readOnly={readOnly}
+            />
+          </FormFieldGrid>
           <FormTextField
             label="Address"
             testID="field-address"
@@ -548,10 +546,10 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
 }
 
 const s = StyleSheet.create({
-  root: { gap: 0 },
+  root: { gap: spacing.sm },
   splitRow: { gap: spacing.xl },
   splitRowWide: { flexDirection: "row", alignItems: "flex-start" },
-  splitCol: { flex: 1, minWidth: 0, marginBottom: spacing.xl },
+  splitCol: { flex: 1, minWidth: 0 },
   fieldBlock: { gap: 10 },
   fieldLabel: { fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 0.2 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

@@ -2,6 +2,15 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Platform }
 import { Feather } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
 
+type HeaderSecondaryAction = {
+  label: string;
+  onPress: () => void;
+  testID?: string;
+  icon?: keyof typeof Feather.glyphMap;
+  tone?: "destructive" | "success" | "neutral";
+  disabled?: boolean;
+};
+
 type FormPageHeaderProps = {
   breadcrumb: string;
   title: string;
@@ -11,6 +20,8 @@ type FormPageHeaderProps = {
   saveLabel?: string;
   readOnly?: boolean;
   testID?: string;
+  statusBadge?: { label: string; tone: "active" | "deactivated" };
+  secondaryAction?: HeaderSecondaryAction;
 };
 
 export function FormPageHeader({
@@ -22,14 +33,80 @@ export function FormPageHeader({
   saveLabel = "Save Student",
   readOnly,
   testID = "form-page-header",
+  statusBadge,
+  secondaryAction,
 }: FormPageHeaderProps) {
   return (
     <View style={s.wrap} testID={testID}>
       <View style={s.left}>
         <Text style={s.breadcrumb}>{breadcrumb}</Text>
-        <Text style={s.title}>{title}</Text>
+        <View style={s.titleRow}>
+          <Text style={s.title}>{title}</Text>
+          {statusBadge ? (
+            <View
+              style={[
+                s.statusBadge,
+                statusBadge.tone === "active" ? s.statusBadgeActive : s.statusBadgeDeactivated,
+              ]}
+              testID="form-status-badge"
+            >
+              <Feather
+                name={statusBadge.tone === "active" ? "check-circle" : "slash"}
+                size={12}
+                color={statusBadge.tone === "active" ? "#16A34A" : colors.muted2}
+              />
+              <Text
+                style={[
+                  s.statusBadgeTxt,
+                  { color: statusBadge.tone === "active" ? "#16A34A" : colors.muted2 },
+                ]}
+              >
+                {statusBadge.label}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
       <View style={s.actions}>
+        {secondaryAction ? (
+          <TouchableOpacity
+            testID={secondaryAction.testID}
+            onPress={secondaryAction.onPress}
+            disabled={secondaryAction.disabled}
+            style={[
+              s.secondaryBtn,
+              secondaryAction.tone === "destructive" && s.secondaryBtnDestructive,
+              secondaryAction.tone === "success" && s.secondaryBtnSuccess,
+              secondaryAction.tone === "neutral" && s.secondaryBtnNeutral,
+              secondaryAction.disabled && s.secondaryBtnDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={secondaryAction.label}
+          >
+            {secondaryAction.icon ? (
+              <Feather
+                name={secondaryAction.icon}
+                size={15}
+                color={
+                  secondaryAction.tone === "destructive"
+                    ? colors.danger
+                    : secondaryAction.tone === "success"
+                      ? "#16A34A"
+                      : colors.ink
+                }
+              />
+            ) : null}
+            <Text
+              style={[
+                s.secondaryBtnTxt,
+                secondaryAction.tone === "destructive" && s.secondaryBtnTxtDestructive,
+                secondaryAction.tone === "success" && s.secondaryBtnTxtSuccess,
+              ]}
+            >
+              {secondaryAction.label}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           testID="form-cancel-btn"
           onPress={onCancel}
@@ -73,6 +150,13 @@ const s = StyleSheet.create({
     flexWrap: "wrap",
   },
   left: { flex: 1, minWidth: 220 },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: 6,
+  },
   breadcrumb: {
     fontSize: 10,
     fontWeight: "700",
@@ -84,16 +168,55 @@ const s = StyleSheet.create({
     fontSize: 28,
     fontWeight: "800",
     color: colors.ink,
-    marginTop: 6,
     letterSpacing: -0.5,
     lineHeight: 34,
   },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radii.pill,
+  },
+  statusBadgeActive: { backgroundColor: "#DCFCE7" },
+  statusBadgeDeactivated: { backgroundColor: colors.borderSoft },
+  statusBadgeTxt: { fontSize: 12, fontWeight: "800" },
   actions: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     flexWrap: "wrap",
   },
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    ...Platform.select({
+      web: { cursor: "pointer", transition: "border-color 0.15s ease, background-color 0.15s ease" } as object,
+      default: {},
+    }),
+  },
+  secondaryBtnDestructive: {
+    borderColor: "#FECACA",
+    backgroundColor: colors.dangerSoft,
+  },
+  secondaryBtnSuccess: {
+    borderColor: "#BBF7D0",
+    backgroundColor: "#F0FDF4",
+  },
+  secondaryBtnNeutral: {
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  secondaryBtnDisabled: { opacity: 0.55 },
+  secondaryBtnTxt: { fontSize: 13, fontWeight: "700", color: colors.ink },
+  secondaryBtnTxtDestructive: { color: colors.danger },
+  secondaryBtnTxtSuccess: { color: "#16A34A" },
   cancelBtn: {
     paddingHorizontal: 18,
     paddingVertical: 11,
