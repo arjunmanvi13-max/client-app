@@ -17,7 +17,18 @@ export const APPROVED_LOGIN_USER_TYPES: LoginUserType[] = [
   UserRole.ALPHA_COACH,
 ];
 
-export type PwsAdminDesignation = "PRINCIPAL" | "VICE_PRINCIPAL";
+export type PwsAdminDesignation =
+  | "PRINCIPAL"
+  | "VICE_PRINCIPAL"
+  | "ACADEMIC_HEAD"
+  | "EVENT_COORDINATOR";
+
+export const PWS_ADMIN_DESIGNATIONS: PwsAdminDesignation[] = [
+  "PRINCIPAL",
+  "VICE_PRINCIPAL",
+  "ACADEMIC_HEAD",
+  "EVENT_COORDINATOR",
+];
 
 export type UserTypeCatalogItem = {
   code: LoginUserType;
@@ -53,9 +64,9 @@ export const USER_TYPE_CATALOG: UserTypeCatalogItem[] = [
     displayName: "PWS Admin",
     entityScope: "PWS",
     category: "Administration",
-    description: "PWS administration — Principal and Vice Principal",
-    manageDescription: "PWS administration — Principal and Vice Principal",
-    allowedDesignations: ["PRINCIPAL", "VICE_PRINCIPAL"],
+    description: "PWS administration — Principal, Vice Principal, Academic Head, Event Coordinator",
+    manageDescription: "PWS administration — Principal, Vice Principal, Academic Head, Event Coordinator",
+    allowedDesignations: [...PWS_ADMIN_DESIGNATIONS],
     requiresAssignedSport: false,
     requiresAssignedVenue: false,
     icon: "book",
@@ -150,7 +161,9 @@ export function legacyRoleForUserType(
   switch (userType) {
     case UserRole.SUPER_ADMIN: return "super_admin";
     case UserRole.PWS_ADMIN:
-      return designation === "VICE_PRINCIPAL" ? "vice_principal" : "principal";
+      if (designation === "VICE_PRINCIPAL") return "vice_principal";
+      if (designation === "PRINCIPAL") return "principal";
+      return "pws_admin";
     case UserRole.ALPHA_ADMIN: return "admin";
     case UserRole.PWS_ACCOUNTS: return "pws_accounts";
     case UserRole.ALPHA_ACCOUNTS: return "alpha_accounts";
@@ -189,6 +202,14 @@ export function entityScopeLabel(scope: string): string {
 export function designationLabel(d?: string | null): string {
   if (!d) return "";
   return d.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function pwsAdminDesignationLabel(d: PwsAdminDesignation): string {
+  return designationLabel(d);
+}
+
+export function isPwsAdminDesignation(value: string | null | undefined): value is PwsAdminDesignation {
+  return !!value && (PWS_ADMIN_DESIGNATIONS as string[]).includes(value);
 }
 
 export function userDisplayLabel(user: {

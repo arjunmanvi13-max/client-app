@@ -19,6 +19,7 @@ import {
   resolveRouteParam,
   type LoginUserType,
   type PwsAdminDesignation,
+  isPwsAdminDesignation,
 } from "../../../src/userClassification";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
 import { getManageListMeta, resolveManageId, resolveManageKind } from "../../../src/manageKinds";
@@ -33,6 +34,7 @@ import {
 import { StudentRosterFormFields, resolveSectionMatch } from "../../../src/StudentRosterFormFields";
 import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
+import { PwsAdminUserFormFields } from "../../../src/PwsAdminUserFormFields";
 import {
   TeacherUserFormFields,
   assignmentsToClassRows,
@@ -195,6 +197,7 @@ export default function ManageEdit() {
   const isManageUsersLoginForm = isLoginUserKind && !isCoachUserForm;
   const isStructuredUserForm = isCoachUserForm || isTeacherUserForm || isManageUsersLoginForm;
   const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
+  const isPwsAdminUserForm = isManageUsersLoginForm && isPwsAdminKind;
   const isPlayerKind = kindParam === "player";
   const isStaffKind = kindParam === "staff";
   const isStudentKind = kindParam === "student";
@@ -507,7 +510,7 @@ export default function ManageEdit() {
             setCoachType(u.coach_type === "assistant" ? "assistant" : "head");
             setLoadedUserType(u.user_type || kindParam || null);
             setLoadedDesignation(u.designation || null);
-            if (u.designation) setDesignation(u.designation);
+            if (isPwsAdminDesignation(u.designation)) setDesignation(u.designation);
             if (isTeacherUserForm) {
               setMobile(u.mobile || u.phone || "");
               setAddress(u.address || "");
@@ -1465,7 +1468,53 @@ export default function ManageEdit() {
             />
           )}
 
-          {!isStudentKind && !isPlayerKind && !isCoachUserForm && !isTeacherUserForm && (
+          {isPwsAdminUserForm && (
+            <PwsAdminUserFormFields
+              readOnly={readOnly}
+              isNew={isNew}
+              isSuper={isSuper}
+              canManageUsersRosters={canManageUsersRosters}
+              displayTitle={displayTitle}
+              entityScope={typeCatalog?.entityScope || organization}
+              name={name}
+              setName={setName}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              phone={phone}
+              setPhone={setPhone}
+              department={department}
+              setDepartment={setDepartment}
+              designation={designation}
+              setDesignation={setDesignation}
+              customizePerms={customizePerms}
+              setCustomizePerms={setCustomizePerms}
+              toggleModulePerm={toggleModulePerm}
+              isModulePermChecked={isModulePermChecked}
+              userStatus={userStatus}
+              onToggleUserStatus={!isNew && canManageUsersRosters ? () => {
+                onLoginUserStatusAction(userStatus === "active" ? "deactivate" : "reactivate");
+              } : undefined}
+              resetPwdVal={resetPwdVal}
+              setResetPwdVal={setResetPwdVal}
+              onResetPassword={!isNew && canManageUsersRosters ? async () => {
+                setResetBusy(true);
+                try {
+                  await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
+                  setResetPwdVal("");
+                  Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
+                  if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
+                } catch (e: any) {
+                  const msg = e?.response?.data?.detail || "Failed";
+                  if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                } finally { setResetBusy(false); }
+              } : undefined}
+              resetBusy={resetBusy}
+            />
+          )}
+
+          {!isStudentKind && !isPlayerKind && !isCoachUserForm && !isTeacherUserForm && !isPwsAdminUserForm && (
             <>
               <Text style={s.label}>Name *</Text>
               <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
@@ -1580,7 +1629,7 @@ export default function ManageEdit() {
             />
           )}
 
-          {isLoginUserKind && !isCoachUserForm && (
+          {isLoginUserKind && !isCoachUserForm && !isPwsAdminUserForm && (
             <>
               <Text style={s.label}>User Type</Text>
               <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" }]} testID="field-user-type">
@@ -1623,7 +1672,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && (
+          {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && !isPwsAdminUserForm && (
             <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
               <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || canManageUsersRosters} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !canManageUsersRosters && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
