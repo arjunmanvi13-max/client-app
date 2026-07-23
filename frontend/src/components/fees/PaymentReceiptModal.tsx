@@ -102,6 +102,9 @@ export function PaymentReceiptModal({ receipt, onClose }: Props) {
                 />
                 <View style={s.headerText}>
                   <Text style={s.orgName} numberOfLines={2}>{branding.displayName}</Text>
+                  {!!branding.affiliationLine && (
+                    <Text style={s.orgAffiliation} numberOfLines={2}>{branding.affiliationLine}</Text>
+                  )}
                   {!!branding.addressLine && (
                     <Text style={s.orgAddress} numberOfLines={2}>{branding.addressLine}</Text>
                   )}
@@ -252,7 +255,8 @@ const s = StyleSheet.create({
   logo: { width: 52, height: 52 },
   headerText: { flex: 1, minWidth: 0, paddingTop: 2 },
   orgName: { fontSize: 14, fontWeight: "800", color: colors.ink, lineHeight: 18 },
-  orgAddress: { fontSize: 10, color: colors.muted, marginTop: 2, lineHeight: 14, fontWeight: "500" },
+  orgAffiliation: { fontSize: 10, color: colors.muted, marginTop: 2, lineHeight: 14, fontWeight: "500" },
+  orgAddress: { fontSize: 10, color: colors.muted, marginTop: 1, lineHeight: 14, fontWeight: "500" },
   receiptLabel: { fontSize: 11, color: colors.hint, marginTop: 3, fontWeight: "600" },
   paidPill: {
     flexDirection: "row", alignItems: "center", gap: 4,

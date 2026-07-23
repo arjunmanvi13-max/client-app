@@ -55,6 +55,7 @@ export type PaymentReceiptBranding = {
   entityId: "pws" | "alpha";
   displayName: string;
   shortName: string;
+  affiliationLine?: string;
   addressLines: string[];
   receiptTitle: string;
   receiptPrefix: string;

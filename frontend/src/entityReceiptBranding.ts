@@ -13,6 +13,7 @@ export type EntityReceiptBrandingConfig = {
   entityId: "pws" | "alpha";
   displayName: string;
   shortName: string;
+  affiliationLine?: string;
   addressLines: string[];
   logoSource: ImageSourcePropType;
   logoAlt: string;
@@ -26,7 +27,8 @@ export const ENTITY_RECEIPT_BRANDING: Record<EntityCode, EntityReceiptBrandingCo
     entityId: "pws",
     displayName: "Prarambhika World School",
     shortName: "PWS",
-    addressLines: ["Balua Ahmedpur", "Patna 801113"],
+    affiliationLine: "Affiliated to CBSE, New Delhi. Affiliation No. 330564",
+    addressLines: ["Balua, Ahmedpur", "Patna 801113"],
     logoSource: require("../assets/brand/prarambhika-world-school-logo.png"),
     logoAlt: "Prarambhika World School logo",
     receiptPrefix: "PWS",
@@ -84,6 +86,7 @@ export function resolveReceiptBranding(
     entityId: assetBase.entityId,
     displayName: server?.displayName ?? base.displayName,
     shortName: server?.shortName ?? base.shortName,
+    affiliationLine: server?.affiliationLine ?? base.affiliationLine,
     addressLines: server?.addressLines ?? base.addressLines,
     receiptTitle: server?.receiptTitle ?? base.receiptTitle,
     receiptPrefix: server?.receiptPrefix ?? base.receiptPrefix,
