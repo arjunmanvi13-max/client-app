@@ -64,6 +64,7 @@ import {
 } from "../../../src/teachers/teacherFormState";
 import { setManageDirectoryToast } from "../../../src/manageDirectoryToast";
 import { formColors } from "../../../src/theme";
+import { useBreakpoint } from "../../../src/useBreakpoint";
 import { useDirtyLeaveGuard } from "../../../src/useDirtyLeaveGuard";
 import { ErrorState } from "../../../src/ScreenStates";
 
@@ -257,6 +258,8 @@ export default function ManageEdit() {
   const isPrincipal = user?.role === "principal";
   const canManageStudentStatus = isStudentKind && !isNew && (isSuper || isPrincipal);
   const readOnly = !isNew && !canEdit;
+  const { isDesktop, isWide: layoutWide } = useBreakpoint();
+  const studentSingleScreen = isStudentKind && isDesktop;
 
   useEffect(() => {
     if (isNew && isTeacherUserForm) {
@@ -1351,7 +1354,15 @@ export default function ManageEdit() {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={(isStudentKind || isStructuredUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll}>
+        <ScrollView
+          style={studentSingleScreen ? s.scrollStudentViewport : undefined}
+          contentContainerStyle={[
+            (isStudentKind || isStructuredUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll,
+            studentSingleScreen && s.scrollStudentSingleScreen,
+          ]}
+          scrollEnabled={!studentSingleScreen}
+          showsVerticalScrollIndicator={!studentSingleScreen}
+        >
           {isCoachUserForm && (
             <FormPageHeader
               breadcrumb="SYSTEM & SETTINGS · ALPHA COACHES"
@@ -1379,6 +1390,7 @@ export default function ManageEdit() {
 
           {isStudentKind && (
             <FormPageHeader
+              compact={layoutWide}
               breadcrumb="DIRECTORY · STUDENTS"
               title={isNew ? "Add New Student" : readOnly ? "View Student" : "Edit Student"}
               onCancel={() => router.back()}
@@ -2105,7 +2117,19 @@ export default function ManageEdit() {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F4F5F7" },
   safeStudent: { backgroundColor: formColors.pageBg },
+  scrollStudentViewport: { flex: 1 },
   scrollStudent: { padding: 24, paddingBottom: 48, maxWidth: 1200, alignSelf: "center", width: "100%" },
+  scrollStudentSingleScreen: {
+    padding: 14,
+    paddingBottom: 14,
+    maxWidth: "100%",
+    flexGrow: 1,
+    height: "100%",
+    ...Platform.select({
+      web: { minHeight: "calc(100vh - 72px)", overflow: "hidden" } as object,
+      default: {},
+    }),
+  },
   header: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 8, gap: 8 },
   backBtn: { padding: 8 },
   h1: { fontSize: 18, fontWeight: "700", color: "#0F172A", textTransform: "capitalize", flex: 1 },

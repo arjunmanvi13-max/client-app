@@ -24,6 +24,7 @@ type FormDateFieldProps = Omit<TextInputProps, "value" | "onChangeText"> & {
   value: string;
   onChangeText: (value: string) => void;
   readOnly?: boolean;
+  compact?: boolean;
 };
 
 export function FormDateField({
@@ -33,6 +34,7 @@ export function FormDateField({
   value,
   onChangeText,
   readOnly,
+  compact,
   testID,
   ...rest
 }: FormDateFieldProps) {
@@ -54,14 +56,14 @@ export function FormDateField({
   };
 
   return (
-    <View style={s.wrap}>
+    <View style={[s.wrap, compact && s.wrapCompact]}>
       {label ? (
-        <Text style={s.label}>
+        <Text style={[s.label, compact && s.labelCompact]}>
           {label}
           {required ? " *" : ""}
         </Text>
       ) : null}
-      <View style={[s.inputWrap, readOnly && s.inputWrapReadonly]}>
+      <View style={[s.inputWrap, compact && s.inputWrapCompact, readOnly && s.inputWrapReadonly]}>
         <TextInput
           {...rest}
           testID={testID}
@@ -72,17 +74,21 @@ export function FormDateField({
           placeholderTextColor={colors.hint}
           keyboardType="number-pad"
           maxLength={10}
-          style={[s.input, readOnly && s.inputReadonly]}
+          style={[s.input, compact && s.inputCompact, readOnly && s.inputReadonly]}
         />
         <Pressable
           onPress={openPicker}
           disabled={readOnly}
-          style={({ pressed }) => [s.iconBtn, pressed && !readOnly && s.iconBtnPressed]}
+          style={({ pressed }) => [
+            s.iconBtn,
+            compact && s.iconBtnCompact,
+            pressed && !readOnly && s.iconBtnPressed,
+          ]}
           accessibilityRole="button"
           accessibilityLabel={`Open calendar for ${label}`}
           testID={testID ? `${testID}-calendar` : undefined}
         >
-          <Feather name="calendar" size={16} color={readOnly ? colors.hint : colors.muted} />
+          <Feather name="calendar" size={compact ? 14 : 16} color={readOnly ? colors.hint : colors.muted} />
         </Pressable>
         {Platform.OS === "web" && !readOnly
           ? createElement("input", {
@@ -105,14 +111,16 @@ export function FormDateField({
             })
           : null}
       </View>
-      {hint ? <Text style={s.fieldHint}>{hint}</Text> : null}
+      {hint ? <Text style={[s.fieldHint, compact && s.fieldHintCompact]}>{hint}</Text> : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
   wrap: { gap: 8 },
+  wrapCompact: { gap: 4 },
   label: { fontSize: 12, fontWeight: "700", color: colors.muted, letterSpacing: 0.2 },
+  labelCompact: { fontSize: 10, letterSpacing: 0.15 },
   inputWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -129,6 +137,7 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
+  inputWrapCompact: { minHeight: 36, borderRadius: radii.sm },
   inputWrapReadonly: { backgroundColor: colors.surface2 },
   input: {
     flex: 1,
@@ -139,6 +148,7 @@ const s = StyleSheet.create({
     color: colors.ink,
     ...Platform.select({ web: { outlineStyle: "none" } as object, default: {} }),
   },
+  inputCompact: { paddingHorizontal: 10, paddingVertical: 7, fontSize: 13 },
   inputReadonly: { color: colors.muted2 },
   iconBtn: {
     paddingHorizontal: 14,
@@ -148,6 +158,8 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
+  iconBtnCompact: { paddingHorizontal: 10, paddingVertical: 7 },
   iconBtnPressed: { opacity: 0.65 },
   fieldHint: { fontSize: 11, color: colors.hint, lineHeight: 15 },
+  fieldHintCompact: { fontSize: 10, lineHeight: 13 },
 });

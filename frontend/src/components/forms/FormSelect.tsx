@@ -48,6 +48,16 @@ const webSelectStyle: Record<string, string | number> = {
   MozAppearance: "none",
 };
 
+const webSelectStyleCompact: Record<string, string | number> = {
+  paddingTop: 7,
+  paddingBottom: 7,
+  paddingLeft: 10,
+  paddingRight: 28,
+  fontSize: 13,
+  borderRadius: radii.sm,
+  minHeight: 36,
+};
+
 function WebNativeSelect({
   value,
   options,
@@ -55,6 +65,7 @@ function WebNativeSelect({
   placeholder,
   disabled,
   testID,
+  compact,
 }: Omit<FormSelectProps, "label" | "required">) {
   return (
     <View style={s.webSelectWrap}>
@@ -65,6 +76,7 @@ function WebNativeSelect({
         onChange={(e) => onChange(e.target.value)}
         style={{
           ...webSelectStyle,
+          ...(compact ? webSelectStyleCompact : {}),
           opacity: disabled ? 0.85 : 1,
           cursor: disabled ? "not-allowed" : "pointer",
           backgroundColor: disabled ? colors.surface2 : colors.surface,
@@ -93,6 +105,7 @@ function InlineSelect({
   placeholder,
   disabled,
   testID,
+  compact,
 }: Omit<FormSelectProps, "label" | "required">) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<RNView>(null);
@@ -117,7 +130,12 @@ function InlineSelect({
         testID={testID}
         disabled={disabled}
         onPress={() => setOpen((v) => !v)}
-        style={[s.trigger, disabled && s.triggerDisabled, open && s.triggerOpen]}
+        style={[
+          s.trigger,
+          compact && s.triggerCompact,
+          disabled && s.triggerDisabled,
+          open && s.triggerOpen,
+        ]}
       >
         <Text style={[s.triggerText, !selected && s.placeholderText]} numberOfLines={1}>
           {selected?.label || placeholder || "Select…"}
@@ -161,7 +179,7 @@ export function FormSelect({
   testID,
   compact,
 }: FormSelectProps) {
-  const controlProps = { value, options, onChange, placeholder, disabled, testID };
+  const controlProps = { value, options, onChange, placeholder, disabled, testID, compact };
 
   return (
     <View style={s.field}>
@@ -202,6 +220,12 @@ const s = StyleSheet.create({
     borderRadius: radii.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  triggerCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minHeight: 36,
+    borderRadius: radii.sm,
   },
   triggerOpen: { borderColor: colors.primary, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   triggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },

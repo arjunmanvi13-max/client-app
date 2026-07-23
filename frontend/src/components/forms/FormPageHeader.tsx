@@ -22,6 +22,7 @@ type FormPageHeaderProps = {
   testID?: string;
   statusBadge?: { label: string; tone: "active" | "deactivated" };
   secondaryAction?: HeaderSecondaryAction;
+  compact?: boolean;
 };
 
 export function FormPageHeader({
@@ -35,13 +36,14 @@ export function FormPageHeader({
   testID = "form-page-header",
   statusBadge,
   secondaryAction,
+  compact,
 }: FormPageHeaderProps) {
   return (
-    <View style={s.wrap} testID={testID}>
+    <View style={[s.wrap, compact && s.wrapCompact]} testID={testID}>
       <View style={s.left}>
-        <Text style={s.breadcrumb}>{breadcrumb}</Text>
-        <View style={s.titleRow}>
-          <Text style={s.title}>{title}</Text>
+        <Text style={[s.breadcrumb, compact && s.breadcrumbCompact]}>{breadcrumb}</Text>
+        <View style={[s.titleRow, compact && s.titleRowCompact]}>
+          <Text style={[s.title, compact && s.titleCompact]}>{title}</Text>
           {statusBadge ? (
             <View
               style={[
@@ -75,6 +77,7 @@ export function FormPageHeader({
             disabled={secondaryAction.disabled}
             style={[
               s.secondaryBtn,
+              compact && s.secondaryBtnCompact,
               secondaryAction.tone === "destructive" && s.secondaryBtnDestructive,
               secondaryAction.tone === "success" && s.secondaryBtnSuccess,
               secondaryAction.tone === "neutral" && s.secondaryBtnNeutral,
@@ -110,7 +113,7 @@ export function FormPageHeader({
         <TouchableOpacity
           testID="form-cancel-btn"
           onPress={onCancel}
-          style={s.cancelBtn}
+          style={[s.cancelBtn, compact && s.cancelBtnCompact]}
           accessibilityRole="button"
           accessibilityLabel="Cancel"
         >
@@ -121,7 +124,7 @@ export function FormPageHeader({
             testID="form-save-btn"
             onPress={onSave}
             disabled={saving}
-            style={[s.saveBtn, saving && s.saveBtnDisabled]}
+            style={[s.saveBtn, compact && s.saveBtnCompact, saving && s.saveBtnDisabled]}
             accessibilityRole="button"
             accessibilityLabel={saveLabel}
           >
@@ -149,6 +152,7 @@ const s = StyleSheet.create({
     marginBottom: spacing.xl,
     flexWrap: "wrap",
   },
+  wrapCompact: { marginBottom: 12, gap: spacing.sm, alignItems: "center" },
   left: { flex: 1, minWidth: 220 },
   titleRow: {
     flexDirection: "row",
@@ -157,6 +161,7 @@ const s = StyleSheet.create({
     gap: spacing.sm,
     marginTop: 6,
   },
+  titleRowCompact: { marginTop: 2, gap: 8 },
   breadcrumb: {
     fontSize: 10,
     fontWeight: "700",
@@ -164,6 +169,7 @@ const s = StyleSheet.create({
     letterSpacing: 1.2,
     textTransform: "uppercase",
   },
+  breadcrumbCompact: { fontSize: 9, letterSpacing: 1 },
   title: {
     fontSize: 28,
     fontWeight: "800",
@@ -171,6 +177,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 34,
   },
+  titleCompact: { fontSize: 22, lineHeight: 28 },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -201,6 +208,7 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
+  secondaryBtnCompact: { paddingHorizontal: 10, paddingVertical: 7 },
   secondaryBtnDestructive: {
     borderColor: "#FECACA",
     backgroundColor: colors.dangerSoft,
@@ -229,6 +237,7 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
+  cancelBtnCompact: { paddingHorizontal: 14, paddingVertical: 8 },
   cancelTxt: { fontSize: 14, fontWeight: "700", color: colors.ink },
   saveBtn: {
     flexDirection: "row",
@@ -243,6 +252,7 @@ const s = StyleSheet.create({
       default: {},
     }),
   },
+  saveBtnCompact: { paddingHorizontal: 14, paddingVertical: 8, gap: 6 },
   saveBtnDisabled: { opacity: 0.65 },
   saveTxt: { fontSize: 14, fontWeight: "800", color: "#fff" },
 });
