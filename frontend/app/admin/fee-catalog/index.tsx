@@ -171,14 +171,21 @@ export default function FeeCatalogAdmin() {
   };
 
   const confirmDelete = () => {
-    if (!editItem || !canEditCatalogue) return;
+    if (!editItem || !canEditCatalogue || editSaving || editDeleting) return;
     const itemName = editItem.name;
+    const runDelete = () => deleteItem(itemName);
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`Are you sure you want to delete "${itemName}"? This action cannot be undone.`)) {
+        runDelete();
+      }
+      return;
+    }
     Alert.alert(
       "Delete catalogue item",
       `Are you sure you want to delete "${itemName}"? This action cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: () => deleteItem(itemName) },
+        { text: "Delete", style: "destructive", onPress: runDelete },
       ],
     );
   };
@@ -343,86 +350,112 @@ export default function FeeCatalogAdmin() {
       )}
 
       <Modal visible={!!editItem} animationType="fade" transparent onRequestClose={closeEdit}>
-        <Pressable style={s.modalBackdrop} onPress={closeEdit}>
-          <Pressable style={s.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={s.modalTitle}>Edit catalogue item</Text>
-            {editItem ? (
-              <>
-                <FormLabel required>Name</FormLabel>
-                <TextInput
-                  style={[s.input, !editName.trim() && editErr ? s.inputErr : null]}
-                  value={editName}
-                  onChangeText={setEditName}
-                  testID="edit-catalogue-name"
-                />
-                <FormLabel>Code</FormLabel>
-                <TextInput style={[s.input, s.inputReadonly]} value={editItem.code} editable={false} />
-                <Text style={s.fieldHint}>Code cannot be changed after creation.</Text>
-                <FormLabel required>Amount</FormLabel>
-                <TextInput
-                  style={[s.input, (!editAmount.trim() || isNaN(parseFloat(editAmount))) && editErr ? s.inputErr : null]}
-                  value={editAmount}
-                  onChangeText={setEditAmount}
-                  keyboardType="numeric"
-                  testID="edit-catalogue-amount"
-                />
-                <FormLabel>Category</FormLabel>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 6 }}>
-                  {FEE_TYPES.map((ft) => (
-                    <TouchableOpacity key={ft} style={[s.chip, editFeeType === ft && s.chipOn]} onPress={() => setEditFeeType(ft)}>
-                      <Text style={[s.chipTxt, editFeeType === ft && s.chipTxtOn]}>{ft}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <FormLabel>Billing frequency</FormLabel>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {FREQUENCIES.map((f) => (
-                    <TouchableOpacity key={f} style={[s.chip, editFrequency === f && s.chipOn]} onPress={() => setEditFrequency(f)}>
-                      <Text style={[s.chipTxt, editFrequency === f && s.chipTxtOn]}>{f}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <FormLabel>Status</FormLabel>
-                <View style={s.statusRow}>
-                  {([
-                    { key: true, label: "Active" },
-                    { key: false, label: "Inactive" },
-                  ] as const).map((opt) => (
+        <View style={s.modalOverlay}>
+          <Pressable style={s.modalBackdrop} onPress={closeEdit} accessibilityLabel="Close edit modal" />
+          <View style={s.modalCard}>
+            <ScrollView
+              contentContainerStyle={s.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <View style={s.modalHeader}>
+                <Text style={s.modalTitle}>Edit catalogue item</Text>
+                <TouchableOpacity
+                  onPress={closeEdit}
+                  disabled={editSaving || editDeleting}
+                  style={s.modalCloseBtn}
+                  testID="edit-catalogue-close"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={20} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              {editItem ? (
+                <>
+                  <FormLabel required>Name</FormLabel>
+                  <TextInput
+                    style={[s.input, !editName.trim() && editErr ? s.inputErr : null]}
+                    value={editName}
+                    onChangeText={setEditName}
+                    testID="edit-catalogue-name"
+                  />
+                  <FormLabel>Code</FormLabel>
+                  <TextInput style={[s.input, s.inputReadonly]} value={editItem.code} editable={false} />
+                  <Text style={s.fieldHint}>Code cannot be changed after creation.</Text>
+                  <FormLabel required>Amount</FormLabel>
+                  <TextInput
+                    style={[s.input, (!editAmount.trim() || isNaN(parseFloat(editAmount))) && editErr ? s.inputErr : null]}
+                    value={editAmount}
+                    onChangeText={setEditAmount}
+                    keyboardType="numeric"
+                    testID="edit-catalogue-amount"
+                  />
+                  <FormLabel>Category</FormLabel>
+                  <View style={s.chipWrap}>
+                    {FEE_TYPES.map((ft) => (
+                      <TouchableOpacity key={ft} style={[s.chip, editFeeType === ft && s.chipOn]} onPress={() => setEditFeeType(ft)}>
+                        <Text style={[s.chipTxt, editFeeType === ft && s.chipTxtOn]}>{ft}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <FormLabel>Billing frequency</FormLabel>
+                  <View style={s.chipWrap}>
+                    {FREQUENCIES.map((f) => (
+                      <TouchableOpacity key={f} style={[s.chip, editFrequency === f && s.chipOn]} onPress={() => setEditFrequency(f)}>
+                        <Text style={[s.chipTxt, editFrequency === f && s.chipTxtOn]}>{f}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <FormLabel>Status</FormLabel>
+                  <View style={s.statusRow}>
+                    {([
+                      { key: true, label: "Active" },
+                      { key: false, label: "Inactive" },
+                    ] as const).map((opt) => (
+                      <TouchableOpacity
+                        key={String(opt.key)}
+                        style={[s.statusChip, editActive === opt.key && s.statusChipOn]}
+                        onPress={() => setEditActive(opt.key)}
+                        testID={`edit-catalogue-status-${opt.key ? "active" : "inactive"}`}
+                      >
+                        <Text style={[s.statusChipTxt, editActive === opt.key && s.statusChipTxtOn]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {editErr ? <InlineFieldError message={editErr} /> : null}
+                  <View style={s.modalActions}>
                     <TouchableOpacity
-                      key={String(opt.key)}
-                      style={[s.statusChip, editActive === opt.key && s.statusChipOn]}
-                      onPress={() => setEditActive(opt.key)}
-                      testID={`edit-catalogue-status-${opt.key ? "active" : "inactive"}`}
+                      style={[s.primaryBtn, (editSaving || editDeleting) && s.btnDisabled]}
+                      onPress={saveEdit}
+                      disabled={editSaving || editDeleting}
+                      testID="edit-catalogue-save"
                     >
-                      <Text style={[s.statusChipTxt, editActive === opt.key && s.statusChipTxtOn]}>{opt.label}</Text>
+                      <Text style={s.primaryBtnTxt}>{editSaving ? "Saving…" : "Save changes"}</Text>
                     </TouchableOpacity>
-                  ))}
-                </View>
-                {editErr ? <InlineFieldError message={editErr} /> : null}
-                <TouchableOpacity
-                  style={[s.primaryBtn, (editSaving || editDeleting) && s.btnDisabled]}
-                  onPress={saveEdit}
-                  disabled={editSaving || editDeleting}
-                  testID="edit-catalogue-save"
-                >
-                  <Text style={s.primaryBtnTxt}>{editSaving ? "Saving…" : "Save changes"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.deleteBtn, (editSaving || editDeleting) && s.btnDisabled]}
-                  onPress={confirmDelete}
-                  disabled={editSaving || editDeleting}
-                  testID="edit-catalogue-delete"
-                >
-                  <Feather name="trash-2" size={16} color="#B91C1C" />
-                  <Text style={s.deleteBtnTxt}>{editDeleting ? "Deleting…" : "Delete item"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.cancelBtn} onPress={closeEdit} disabled={editSaving || editDeleting}>
-                  <Text style={s.cancelBtnTxt}>Cancel</Text>
-                </TouchableOpacity>
-              </>
-            ) : null}
-          </Pressable>
-        </Pressable>
+                    <TouchableOpacity
+                      style={[s.deleteBtn, (editSaving || editDeleting) && s.btnDisabled]}
+                      onPress={confirmDelete}
+                      disabled={editSaving || editDeleting}
+                      testID="edit-catalogue-delete"
+                    >
+                      <Feather name="trash-2" size={16} color="#B91C1C" />
+                      <Text style={s.deleteBtnTxt}>{editDeleting ? "Deleting…" : "Delete item"}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.cancelBtn}
+                      onPress={closeEdit}
+                      disabled={editSaving || editDeleting}
+                      testID="edit-catalogue-cancel"
+                    >
+                      <Text style={s.cancelBtnTxt}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : null}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -468,7 +501,14 @@ const s = StyleSheet.create({
   inputErr: { borderColor: "#EF4444", backgroundColor: "#FEF2F2" },
   fieldHint: { fontSize: 11, color: "#94A3B8", marginTop: -4 },
   formErr: { fontSize: 13, color: "#B91C1C", fontWeight: "600", marginTop: 8, textAlign: "center" },
-  primaryBtn: { backgroundColor: "#0891B2", padding: 12, borderRadius: 10, alignItems: "center", marginTop: 4 },
+  primaryBtn: {
+    backgroundColor: "#0891B2",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 4,
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
   primaryBtnTxt: { color: "#fff", fontWeight: "700" },
   listRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#E2E8F0" },
   listRowClickable: {
@@ -486,30 +526,49 @@ const s = StyleSheet.create({
   planLineName: { fontSize: 13, color: "#334155", flex: 1 },
   planLineAmt: { fontSize: 13, fontWeight: "600", color: "#0F172A" },
   ratesSummary: { fontSize: 11, color: "#64748B", marginTop: 6 },
-  modalBackdrop: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
     justifyContent: "center",
+    alignItems: "center",
     padding: 20,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
   },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject },
   modalCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
-    padding: 16,
-    gap: 8,
     maxWidth: 520,
     width: "100%",
-    alignSelf: "center",
+    maxHeight: "90%",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    maxHeight: "90%",
+    overflow: "hidden",
+    zIndex: 1,
+    ...Platform.select({
+      web: { boxShadow: "0 16px 40px rgba(15, 23, 42, 0.18)" } as object,
+      default: {},
+    }),
   },
-  modalTitle: { fontSize: 18, fontWeight: "800", color: "#0F172A", marginBottom: 4 },
+  modalScroll: { padding: 16, paddingBottom: 20, gap: 8 },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  modalCloseBtn: {
+    padding: 6,
+    borderRadius: 8,
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: "#0F172A", flex: 1 },
+  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginVertical: 4 },
   statusRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
   statusChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: "#F1F5F9", borderWidth: 1, borderColor: "#E2E8F0" },
   statusChipOn: { backgroundColor: "#DCFCE7", borderColor: "#86EFAC" },
   statusChipTxt: { fontSize: 12, fontWeight: "700", color: "#64748B" },
   statusChipTxtOn: { color: "#15803D" },
+  modalActions: { gap: 8, marginTop: 8, paddingTop: 4 },
   deleteBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -520,10 +579,18 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FECACA",
     backgroundColor: "#FEF2F2",
-    marginTop: 4,
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
   },
   deleteBtnTxt: { color: "#B91C1C", fontWeight: "700" },
-  cancelBtn: { padding: 10, alignItems: "center" },
+  cancelBtn: {
+    padding: 12,
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
   cancelBtnTxt: { color: "#64748B", fontWeight: "700" },
   btnDisabled: { opacity: 0.6 },
 });
