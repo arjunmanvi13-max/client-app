@@ -4,6 +4,7 @@ export type ApprovalCategory =
   | "user_deactivation"
   | "fee_edit"
   | "fee_concession"
+  | "fee_override_admission"
   | "refund";
 
 export type ApprovalUserRole =
@@ -56,6 +57,7 @@ export const APPROVAL_CATEGORY_FILTERS: Array<{ key: "all" | ApprovalCategory; l
   { key: "user_deactivation", label: "Deactivations" },
   { key: "fee_edit", label: "Fee edits" },
   { key: "fee_concession", label: "Concessions" },
+  { key: "fee_override_admission", label: "Fee overrides" },
   { key: "refund", label: "Refunds" },
 ];
 
@@ -65,6 +67,7 @@ const LEGACY_TYPE_TO_CATEGORY: Record<string, ApprovalCategory> = {
   user_deactivation: "user_deactivation",
   fee_edit: "fee_edit",
   fee_concession: "fee_concession",
+  fee_override_admission: "fee_override_admission",
   refund: "refund",
 };
 
@@ -72,6 +75,7 @@ export const CATEGORY_LABELS: Record<ApprovalCategory, string> = {
   user_deactivation: "User deactivation",
   fee_edit: "Fee edit",
   fee_concession: "Fee concession",
+  fee_override_admission: "Fee override",
   refund: "Refund",
 };
 
@@ -152,6 +156,17 @@ export function financialSummary(req: ApprovalRequest): string[] {
     }
     if (d.fee_type) lines.push(`Type: ${d.fee_type}`);
     if (d.period_month) lines.push(`Period: ${d.period_month}`);
+  }
+  if (req.category === "fee_override_admission") {
+    const defaults = (d.default_fees || {}) as Record<string, unknown>;
+    const custom = (d.custom_fees || {}) as Record<string, unknown>;
+    Object.keys({ ...defaults, ...custom }).forEach((key) => {
+      const defVal = defaults[key];
+      const customVal = custom[key];
+      if (customVal != null) {
+        lines.push(`${key}: ${formatInr(defVal)} → ${formatInr(customVal)}`);
+      }
+    });
   }
   if (req.category === "refund") {
     if (d.amount != null) lines.push(`Refund: ${formatInr(d.amount)}`);

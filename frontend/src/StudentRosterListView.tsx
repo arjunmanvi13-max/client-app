@@ -217,6 +217,7 @@ export function StudentRosterListView({
 
               {pageItems.map((it) => {
                 const isDeact = it.status === "deactivated";
+                const isPendingFee = it.status === "pending_fee_approval";
                 const sectionLabel = it.group || "";
                 const sectionBadge = sectionBadgeStyle(sectionLabel);
                 const classBadge = classBadgeStyle(it.pws_class);
@@ -240,6 +241,11 @@ export function StudentRosterListView({
                         {isDeact && (
                           <View style={s.inactivePill}>
                             <Text style={s.inactivePillTxt}>Inactive</Text>
+                          </View>
+                        )}
+                        {isPendingFee && (
+                          <View style={s.pendingFeePill}>
+                            <Text style={s.pendingFeePillTxt}>Pending Fee Approval</Text>
                           </View>
                         )}
                       </View>
@@ -466,6 +472,15 @@ const s = StyleSheet.create({
     borderRadius: radii.pill,
   },
   inactivePillTxt: { fontSize: 9, fontWeight: "800", color: "#64748B" },
+  pendingFeePill: {
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  pendingFeePillTxt: { fontSize: 9, fontWeight: "800", color: "#B45309" },
   idCell: {
     color: "#475569",
     fontWeight: "600",

@@ -23,6 +23,7 @@ import { useBreakpoint } from "../../src/useBreakpoint";
 import {
   APPROVAL_CATEGORY_FILTERS,
   CATEGORY_LABELS,
+  formatInr,
   financialSummary,
   normalizeApprovalRequest,
   roleBadgeLabel,
@@ -40,20 +41,33 @@ function statusColor(status: ApprovalStatus) {
   return colors.danger;
 }
 
+function feeOverrideRows(req: ApprovalRequest): Array<{ key: string; defaultVal: unknown; customVal: unknown }> {
+  const d = req.details || {};
+  const defaults = (d.default_fees || {}) as Record<string, unknown>;
+  const custom = (d.custom_fees || {}) as Record<string, unknown>;
+  const keys = Array.from(new Set([...Object.keys(defaults), ...Object.keys(custom)]));
+  return keys
+    .filter((key) => custom[key] != null)
+    .map((key) => ({ key, defaultVal: defaults[key], customVal: custom[key] }));
+}
+
 function RequestCard({
   req,
   showActions,
   onApprove,
+  onModify,
   onReject,
 }: {
   req: ApprovalRequest;
   showActions: boolean;
   onApprove: () => void;
+  onModify: () => void;
   onReject: () => void;
 }) {
   const roleBadge = roleBadgeLabel(req);
   const financeLines = financialSummary(req);
   const isFinancial = req.category !== "user_deactivation";
+  const feeRows = req.category === "fee_override_admission" ? feeOverrideRows(req) : [];
 
   return (
     <View style={s.card} testID={`appr-${req.id}`}>
@@ -78,7 +92,23 @@ function RequestCard({
               <Text style={s.roleBadgeTxt}>{roleBadge}</Text>
             </View>
           ) : null}
-          {isFinancial && financeLines.length > 0 && (
+          {req.category === "fee_override_admission" && feeRows.length > 0 && (
+            <View style={s.compareBlock} testID={`fee-compare-${req.id}`}>
+              <View style={s.compareHeader}>
+                <Text style={[s.compareCell, s.compareHead]}>Fee head</Text>
+                <Text style={[s.compareCell, s.compareHead]}>Default</Text>
+                <Text style={[s.compareCell, s.compareHead]}>Requested</Text>
+              </View>
+              {feeRows.map((row) => (
+                <View key={row.key} style={s.compareRow}>
+                  <Text style={[s.compareCell, s.compareKey]}>{row.key}</Text>
+                  <Text style={s.compareCell}>{formatInr(row.defaultVal)}</Text>
+                  <Text style={[s.compareCell, s.compareCustom]}>{formatInr(row.customVal)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          {isFinancial && req.category !== "fee_override_admission" && financeLines.length > 0 && (
             <View style={s.financeBlock}>
               {financeLines.map((line) => (
                 <Text key={line} style={s.financeLine}>{line}</Text>
@@ -102,8 +132,16 @@ function RequestCard({
         <View style={s.actionRow}>
           <TouchableOpacity testID={`appr-approve-${req.id}`} style={s.approveBtn} onPress={onApprove}>
             <Feather name="check" size={14} color="#fff" />
-            <Text style={s.approveTxt}>Approve{req.category === "user_deactivation" ? " Deactivation" : ""}</Text>
+            <Text style={s.approveTxt}>
+              {req.category === "user_deactivation" ? "Approve Deactivation" : "Approve"}
+            </Text>
           </TouchableOpacity>
+          {req.category === "fee_override_admission" && (
+            <TouchableOpacity testID={`appr-modify-${req.id}`} style={s.modifyBtn} onPress={onModify}>
+              <Feather name="edit-2" size={14} color="#1E40AF" />
+              <Text style={s.modifyTxt}>Modify</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity testID={`appr-reject-${req.id}`} style={s.rejectBtn} onPress={onReject}>
             <Feather name="x" size={14} color={colors.danger} />
             <Text style={s.rejectTxt}>Reject</Text>
@@ -123,7 +161,11 @@ export default function Approvals() {
   const [error, setError] = useState("");
   const [statusTab, setStatusTab] = useState<ApprovalStatus>("pending");
   const [categoryFilter, setCategoryFilter] = useState<"all" | ApprovalCategory>("all");
-  const [decision, setDecision] = useState<{ req: ApprovalRequest; action: "approve" | "reject" } | null>(null);
+  const [decision, setDecision] = useState<{
+    req: ApprovalRequest;
+    action: "approve" | "reject" | "modify";
+    modifiedFees?: Record<string, string>;
+  } | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -175,7 +217,17 @@ export default function Approvals() {
     if (!decision) return;
     setBusy(true);
     try {
-      await api.post(`/approval-requests/${decision.req.id}/${decision.action}`, { note: note || undefined });
+      const body: Record<string, unknown> = { note: note || undefined };
+      if (decision.action === "modify" && decision.modifiedFees) {
+        const modified_custom_fees: Record<string, number> = {};
+        for (const [key, val] of Object.entries(decision.modifiedFees)) {
+          const n = parseInt(val, 10);
+          if (!Number.isNaN(n) && n >= 0) modified_custom_fees[key] = n;
+        }
+        body.modified_custom_fees = modified_custom_fees;
+      }
+      const endpointAction = decision.action === "modify" ? "approve" : decision.action;
+      await api.post(`/approval-requests/${decision.req.id}/${endpointAction}`, body);
       setDecision(null);
       setNote("");
       await load();
@@ -184,6 +236,16 @@ export default function Approvals() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const openModifyDecision = (req: ApprovalRequest) => {
+    const rows = feeOverrideRows(req);
+    const modifiedFees: Record<string, string> = {};
+    rows.forEach((row) => {
+      modifiedFees[row.key] = String(row.customVal ?? "");
+    });
+    setDecision({ req, action: "modify", modifiedFees });
+    setNote("");
   };
 
   return (
@@ -263,6 +325,7 @@ export default function Approvals() {
               req={r}
               showActions={statusTab === "pending" && canDecide}
               onApprove={() => { setDecision({ req: r, action: "approve" }); setNote(""); }}
+              onModify={() => openModifyDecision(r)}
               onReject={() => { setDecision({ req: r, action: "reject" }); setNote(""); }}
             />
           ))
@@ -272,10 +335,35 @@ export default function Approvals() {
       <Modal transparent animationType="slide" visible={!!decision} onRequestClose={() => setDecision(null)}>
         <View style={s.modalBg}>
           <View style={s.modalCard}>
-            <Text style={s.modalTitle}>{decision?.action === "approve" ? "Approve request" : "Reject request"}</Text>
+            <Text style={s.modalTitle}>
+              {decision?.action === "approve"
+                ? "Approve request"
+                : decision?.action === "modify"
+                  ? "Modify fees & approve"
+                  : "Reject request"}
+            </Text>
             <Text style={s.modalSub}>
               {decision ? CATEGORY_LABELS[decision.req.category] : ""} · {decision?.req.targetUserName}
             </Text>
+            {decision?.action === "modify" && decision.modifiedFees && (
+              <View style={s.modifyFields}>
+                {Object.entries(decision.modifiedFees).map(([key, val]) => (
+                  <View key={key} style={s.modifyFieldRow}>
+                    <Text style={s.modifyFieldLabel}>{key}</Text>
+                    <TextInput
+                      value={val}
+                      onChangeText={(text) => setDecision((prev) => prev && ({
+                        ...prev,
+                        modifiedFees: { ...prev.modifiedFees!, [key]: text.replace(/[^0-9]/g, "") },
+                      }))}
+                      keyboardType="number-pad"
+                      style={s.modifyFieldInput}
+                      testID={`modify-fee-${key}`}
+                    />
+                  </View>
+                ))}
+              </View>
+            )}
             <TextInput
               placeholder="Optional note"
               placeholderTextColor={colors.hint}
@@ -295,7 +383,11 @@ export default function Approvals() {
                 onPress={submitDecision}
                 testID="appr-modal-confirm"
               >
-                {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>Confirm {decision?.action}</Text>}
+                {busy ? <ActivityIndicator color="#fff" /> : (
+                  <Text style={s.saveTxt}>
+                    Confirm {decision?.action === "modify" ? "modify & approve" : decision?.action}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -411,6 +503,19 @@ const s = StyleSheet.create({
     gap: 2,
   },
   financeLine: { fontSize: 12, fontWeight: "600", color: colors.ink2 },
+  compareBlock: {
+    marginTop: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    overflow: "hidden",
+  },
+  compareHeader: { flexDirection: "row", backgroundColor: colors.surface2, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  compareRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  compareCell: { flex: 1, paddingHorizontal: 10, paddingVertical: 8, fontSize: 12, color: colors.ink2 },
+  compareHead: { fontWeight: "800", color: colors.muted2, textTransform: "uppercase", fontSize: 10 },
+  compareKey: { fontWeight: "700", color: colors.ink },
+  compareCustom: { fontWeight: "700", color: "#B45309" },
   reason: { fontSize: 12, color: colors.ink2, marginTop: 6, fontStyle: "italic" },
   meta: { fontSize: 11, color: colors.hint, marginTop: 4 },
   actionRow: { flexDirection: "row", gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderSoft, paddingTop: spacing.sm },
@@ -425,6 +530,19 @@ const s = StyleSheet.create({
     borderRadius: radii.md,
   },
   approveTxt: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  modifyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+  },
+  modifyTxt: { color: "#1E40AF", fontSize: 12, fontWeight: "800" },
   rejectBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -445,6 +563,19 @@ const s = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: "800", color: colors.ink },
   modalSub: { fontSize: 12, color: colors.muted2, marginTop: 4 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 12, marginTop: 12, fontSize: 14, minHeight: 60, backgroundColor: colors.surface },
+  modifyFields: { marginTop: 12, gap: 8 },
+  modifyFieldRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  modifyFieldLabel: { width: 120, fontSize: 12, fontWeight: "700", color: colors.ink2 },
+  modifyFieldInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    backgroundColor: colors.surface,
+  },
   cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: radii.md, backgroundColor: colors.surface2, alignItems: "center" },
   cancelTxt: { fontSize: 14, fontWeight: "700", color: colors.muted },
   saveBtn: { flex: 1, paddingVertical: 14, borderRadius: radii.md, backgroundColor: colors.success, alignItems: "center" },

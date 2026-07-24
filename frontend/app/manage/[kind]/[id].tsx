@@ -344,6 +344,7 @@ export default function ManageEdit() {
   const [monthlyFeeOverride, setMonthlyFeeOverride] = useState<string>("");
   const [registrationFeeOverride, setRegistrationFeeOverride] = useState<string>("");
   const [status, setStatus] = useState<"active" | "deactivated">("active");
+  const [pendingFeeApproval, setPendingFeeApproval] = useState(false);
 
   // Optional ad-hoc fee heads to create during admission (Super Admin only)
   const [adhocFees, setAdhocFees] = useState<{ fee_type: string; amount: string; due_date: string }[]>([]);
@@ -585,6 +586,7 @@ export default function ManageEdit() {
             setRegistrationFeeOverride(p.registration_fee_override ? String(p.registration_fee_override) : "");
             setDateOfAdmission(formatDate(p.date_of_admission || ""));
             setStatus(p.status === "deactivated" ? "deactivated" : "active");
+            setPendingFeeApproval(p.status === "pending_fee_approval");
             setParentUserIds(p.parent_user_ids || []);
           } else {
             setRecordFound(false);
@@ -1110,14 +1112,19 @@ export default function ManageEdit() {
         }
         // assigned_coach_id removed — players are centre-based
         if (isNew) {
-          const created = await api.post("/people", body);
+          const { data: created } = await api.post("/people", body);
+          if (created?.approval_required) {
+            setManageDirectoryToast("Custom fee override detected. This request has been sent to the Principal/Super Admin for approval before going live.");
+            router.back();
+            return;
+          }
           // After creating the player, create any ad-hoc fee heads queued during admission
           const validAdhoc = adhocFees.filter((f) => f.fee_type && parseInt(f.amount || "0", 10) > 0 && isValidDisplayDate(f.due_date));
-          if (validAdhoc.length > 0 && isSuper && created?.data?.id) {
+          if (validAdhoc.length > 0 && isSuper && created?.id) {
             try {
               for (const f of validAdhoc) {
                 await api.post("/fees", {
-                  player_id: created.data.id,
+                  player_id: created.id,
                   fee_type: f.fee_type,
                   amount: parseInt(f.amount, 10),
                   due_date: parseToISO(f.due_date) || f.due_date,
@@ -1128,7 +1135,15 @@ export default function ManageEdit() {
             }
           }
         }
-        else { delete body.kind; await api.patch(`/people/${id}`, body); }
+        else {
+          delete body.kind;
+          const { data: updated } = await api.patch(`/people/${id}`, body);
+          if (updated?.approval_required) {
+            setManageDirectoryToast("Custom fee override detected. This request has been sent to the Principal/Super Admin for approval before going live.");
+            router.back();
+            return;
+          }
+        }
       } else {
         const body: any = {
           name, kind: kindParam, organization, group: group || null, sport: sport || null, is_resident: isResident,
@@ -1169,8 +1184,23 @@ export default function ManageEdit() {
           body.centre = organization === "ALPHA" ? (centre || null) : null;
           body.is_resident = false;
         }
-        if (isNew) await api.post("/people", body);
-        else { delete body.kind; await api.patch(`/people/${id}`, body); }
+        if (isNew) {
+          const { data: created } = await api.post("/people", body);
+          if (created?.approval_required) {
+            setManageDirectoryToast("Custom fee override detected. This request has been sent to the Principal/Super Admin for approval before going live.");
+            router.back();
+            return;
+          }
+        }
+        else {
+          delete body.kind;
+          const { data: updated } = await api.patch(`/people/${id}`, body);
+          if (updated?.approval_required) {
+            setManageDirectoryToast("Custom fee override detected. This request has been sent to the Principal/Super Admin for approval before going live.");
+            router.back();
+            return;
+          }
+        }
       }
       if (isTeacherUserForm && !isNew) {
         skipDirtyGuard.current = true;
@@ -1399,7 +1429,9 @@ export default function ManageEdit() {
               saveLabel={isNew ? "Save Student" : "Save changes"}
               readOnly={readOnly}
               statusBadge={
-                !isNew && status === "deactivated"
+                !isNew && pendingFeeApproval
+                  ? { label: "Pending Fee Approval", tone: "deactivated" }
+                  : !isNew && status === "deactivated"
                   ? { label: "Deactivated", tone: "deactivated" }
                   : undefined
               }
