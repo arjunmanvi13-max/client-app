@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -35,7 +35,16 @@ import {
 import { colors, radii, spacing } from "../../src/theme";
 
 const STATUS_TABS: ApprovalStatus[] = ["pending", "approved", "rejected"];
-const RESOLVED_CARD_TTL_MS = 5000;
+
+function mergeLoadedRequests(incoming: ApprovalRequest[], previous: ApprovalRequest[]): ApprovalRequest[] {
+  const prevById = new Map(previous.map((r) => [r.id, r]));
+  return incoming.map((row) => {
+    const prev = prevById.get(row.id);
+    if (!prev) return row;
+    if (prev.status !== "pending" && row.status === "pending") return prev;
+    return row;
+  });
+}
 
 function statusColor(status: ApprovalStatus) {
   if (status === "pending") return "#D97706";
@@ -198,15 +207,16 @@ export default function Approvals() {
   const [note, setNote] = useState("");
   const [noteFocused, setNoteFocused] = useState(false);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
-  const [recentlyResolvedIds, setRecentlyResolvedIds] = useState<string[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const decidingRef = useRef(false);
 
   const canView = userHasPermission(user, Permission.APPROVE_REQUESTS);
   const canDecide = userHasPermission(user, Permission.APPROVE_REQUESTS);
 
   const load = useCallback(async () => {
-    if (!canView) {
-      setLoading(false);
+    if (!canView || decidingRef.current) {
+      if (!canView) setLoading(false);
       return;
     }
     setError("");
@@ -215,10 +225,11 @@ export default function Approvals() {
       const params: Record<string, string> = {};
       if (categoryFilter !== "all") params.category = categoryFilter;
       const { data } = await api.get("/approval-requests", { params });
-      setReqs(Array.isArray(data) ? data.map(normalizeApprovalRequest) : []);
+      const incoming = Array.isArray(data) ? data.map(normalizeApprovalRequest) : [];
+      setReqs((prev) => mergeLoadedRequests(incoming, prev));
     } catch (e: any) {
       setError(getApiError(e, "Could not load approval requests."));
-      setReqs([]);
+      if (!decidingRef.current) setReqs([]);
     } finally {
       setLoading(false);
     }
@@ -227,12 +238,10 @@ export default function Approvals() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  const filtered = useMemo(() => {
-    if (statusTab === "pending") {
-      return reqs.filter((r) => r.status === "pending" || recentlyResolvedIds.includes(r.id));
-    }
-    return reqs.filter((r) => r.status === statusTab);
-  }, [reqs, statusTab, recentlyResolvedIds]);
+  const filtered = useMemo(
+    () => reqs.filter((r) => r.status === statusTab),
+    [reqs, statusTab],
+  );
 
   const pendingCount = useMemo(() => reqs.filter((r) => r.status === "pending").length, [reqs]);
 
@@ -240,13 +249,6 @@ export default function Approvals() {
     setDecision(null);
     setNote("");
     setNoteFocused(false);
-  };
-
-  const markRecentlyResolved = (id: string) => {
-    setRecentlyResolvedIds((prev) => [...prev.filter((x) => x !== id), id]);
-    setTimeout(() => {
-      setRecentlyResolvedIds((prev) => prev.filter((x) => x !== id));
-    }, RESOLVED_CARD_TTL_MS);
   };
 
   const submitDecision = async () => {
@@ -258,6 +260,7 @@ export default function Approvals() {
     const newStatus: ApprovalStatus = action === "reject" ? "rejected" : "approved";
 
     closeModal();
+    decidingRef.current = true;
 
     const optimistic = normalizeApprovalRequest({
       ...req,
@@ -269,7 +272,6 @@ export default function Approvals() {
 
     setSubmittingId(req.id);
     setReqs((prev) => prev.map((r) => (r.id === req.id ? optimistic : r)));
-    if (statusTab === "pending") markRecentlyResolved(req.id);
 
     try {
       const body: Record<string, unknown> = { note: snapshotNote || undefined };
@@ -282,13 +284,20 @@ export default function Approvals() {
         body.modified_custom_fees = modified_custom_fees;
       }
       const { data } = await api.post(`/approval-requests/${req.id}/${endpointAction}`, body);
-      setReqs((prev) => prev.map((r) => (r.id === req.id ? normalizeApprovalRequest(data) : r)));
+      const resolved = normalizeApprovalRequest(data);
+      setReqs((prev) => prev.map((r) => (r.id === req.id ? resolved : r)));
+      if (newStatus === "approved") {
+        setToast(`Approved · ${req.targetUserName}`);
+      } else {
+        setToast(`Rejected · ${req.targetUserName}`);
+      }
+      setTimeout(() => setToast(null), 3500);
     } catch (e: any) {
       setReqs((prev) => prev.map((r) => (r.id === req.id ? req : r)));
-      setRecentlyResolvedIds((prev) => prev.filter((id) => id !== req.id));
       Alert.alert("Error", getApiError(e, "Could not save your decision. Please try again."));
     } finally {
       setSubmittingId(null);
+      decidingRef.current = false;
     }
   };
 
@@ -340,6 +349,13 @@ export default function Approvals() {
           </Text>
         </View>
       </View>
+
+      {toast ? (
+        <View style={s.toastBanner} testID="appr-toast">
+          <Feather name="check-circle" size={16} color={colors.success} />
+          <Text style={s.toastTxt}>{toast}</Text>
+        </View>
+      ) : null}
 
       <View style={[s.filtersWrap, { paddingHorizontal: horizontalPadding }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
@@ -511,6 +527,20 @@ const s = StyleSheet.create({
   pendingPillEmpty: { backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" },
   pendingPillTxt: { fontSize: 11, fontWeight: "800", color: "#B45309" },
   pendingPillTxtEmpty: { color: "#64748B" },
+  toastBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: colors.successSoft,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#A7F3D0",
+  },
+  toastTxt: { flex: 1, fontSize: 13, fontWeight: "700", color: "#065F46" },
   filtersWrap: {
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
