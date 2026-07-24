@@ -152,20 +152,20 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     icon: "credit-card",
     children: [
       {
-        id: "fee-catalog",
-        label: "Fee Catalogue",
-        icon: "layers",
-        href: "/admin/fee-catalog",
-        match: matchPrefix(["/admin/fee-catalog"]),
-        permissions: [Permission.MANAGE_FEES_HEADS],
-      },
-      {
         id: "collect-fees",
         label: "Collect Fees",
         icon: "inbox",
         href: "/fees/collection",
         match: (p) => p.startsWith("/fees/collection") || p.startsWith("/fees/pws-student"),
         permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES],
+      },
+      {
+        id: "fee-catalog",
+        label: "Fee Catalogue",
+        icon: "layers",
+        href: "/admin/fee-catalog",
+        match: matchPrefix(["/admin/fee-catalog"]),
+        permissions: [Permission.MANAGE_FEES_HEADS],
       },
       {
         id: "finance-reports",
