@@ -51,8 +51,10 @@ type StudentRosterListViewProps = {
   items: any[];
   loading: boolean;
   search: string;
+  debouncedSearch: string;
   setSearch: (v: string) => void;
   onSearchSubmit: () => void;
+  onClearSearch: () => void;
   showDeactivated: boolean;
   setShowDeactivated: (v: boolean) => void;
   classFilter: string | null;
@@ -68,8 +70,10 @@ export function StudentRosterListView({
   items,
   loading,
   search,
+  debouncedSearch,
   setSearch,
   onSearchSubmit,
+  onClearSearch,
   showDeactivated,
   setShowDeactivated,
   classFilter,
@@ -98,9 +102,12 @@ export function StudentRosterListView({
   const endIdx = Math.min(safePage * PAGE_SIZE, total);
   const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  const activeSearch = debouncedSearch.trim();
+  const isSearching = activeSearch.length > 0;
+
   useEffect(() => {
     setPage(1);
-  }, [search, showDeactivated, classFilter, total]);
+  }, [debouncedSearch, showDeactivated, classFilter, total]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -131,7 +138,7 @@ export function StudentRosterListView({
               <Text style={s.h1}>Students</Text>
               <View style={s.countBadge}>
                 <Text style={s.countBadgeTxt}>
-                  {search.trim()
+                  {isSearching
                     ? `${total} matching record${total !== 1 ? "s" : ""}`
                     : `${total} record${total !== 1 ? "s" : ""}`}
                 </Text>
@@ -146,7 +153,7 @@ export function StudentRosterListView({
                 testID="people-search"
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search name, ID, phone…"
+                placeholder="Search name, ID, class, section…"
                 placeholderTextColor={colors.hint}
                 style={s.searchInput}
                 onSubmitEditing={onSearchSubmit}
@@ -154,7 +161,7 @@ export function StudentRosterListView({
                 onBlur={() => setSearchFocused(false)}
               />
               {search.length > 0 && (
-                <TouchableOpacity onPress={() => setSearch("")} hitSlop={8}>
+                <TouchableOpacity onPress={onClearSearch} hitSlop={8} testID="clear-search">
                   <Feather name="x" size={15} color={colors.hint} />
                 </TouchableOpacity>
               )}
@@ -198,10 +205,16 @@ export function StudentRosterListView({
           <View style={s.empty}>
             <Feather name="users" size={36} color={colors.hint} />
             <Text style={s.emptyText}>
-              {search.trim()
-                ? `No matches for "${search.trim()}".`
+              {isSearching
+                ? "No matching students found."
                 : "No students yet. Tap Add Student to create one."}
             </Text>
+            {isSearching && (
+              <TouchableOpacity style={s.clearSearchBtn} onPress={onClearSearch} testID="empty-clear-search">
+                <Feather name="x-circle" size={14} color={colors.primary} />
+                <Text style={s.clearSearchTxt}>Clear search</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={!isDesktop}>
@@ -298,7 +311,9 @@ export function StudentRosterListView({
         {!loading && total > 0 && (
           <View style={s.footer}>
             <Text style={s.footerText}>
-              Showing {startIdx}–{endIdx} of {total} student{total !== 1 ? "s" : ""}
+              {isSearching
+                ? `Showing ${startIdx}–${endIdx} of ${total} matching student${total !== 1 ? "s" : ""}`
+                : `Showing ${startIdx}–${endIdx} of ${total} student${total !== 1 ? "s" : ""}`}
             </Text>
             <View style={s.pagination}>
               <TouchableOpacity
@@ -541,4 +556,18 @@ const s = StyleSheet.create({
   pageIndicator: { fontSize: 13, fontWeight: "600", color: colors.muted2, minWidth: 48, textAlign: "center" },
   empty: { alignItems: "center", padding: 40, gap: 8 },
   emptyText: { color: colors.muted, textAlign: "center", fontSize: 13 },
+  clearSearchBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
+  clearSearchTxt: { fontSize: 13, fontWeight: "700", color: colors.primary },
 });

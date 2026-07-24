@@ -98,18 +98,19 @@ export function RosterManageList({ kind }: { kind: string }) {
     }
   }, [isPlayer, isCoachPlayerView, coachScope.assignedSport, coachBlocked]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (searchOverride?: string) => {
     if (coachBlocked) return;
     setLoading(true);
     setLoadError(null);
+    const searchTerm = (searchOverride !== undefined ? searchOverride : debouncedSearch).trim();
     try {
       if (meta.isUser) {
         const params: Record<string, string | boolean> = { role: kind };
         if (isTeacherList) params.include_deactivated = true;
         const { data } = await api.get("/users", { params });
         let rows = data;
-        if (debouncedSearch.trim() && !isTeacherList) {
-          const q = debouncedSearch.trim().toLowerCase();
+        if (searchTerm && !isTeacherList) {
+          const q = searchTerm.toLowerCase();
           rows = rows.filter((u: any) =>
             (u.name || "").toLowerCase().includes(q)
             || (u.email || "").toLowerCase().includes(q)
@@ -119,7 +120,7 @@ export function RosterManageList({ kind }: { kind: string }) {
         setItems(rows);
       } else {
         const params: any = { kind };
-        if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
+        if (searchTerm) params.q = searchTerm;
         if (isPlayer && showDeactivated) params.include_deactivated = true;
         if (isStudent && showDeactivated) params.include_deactivated = true;
         if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
@@ -134,6 +135,11 @@ export function RosterManageList({ kind }: { kind: string }) {
       setLoadError(getApiError(e, "Could not load records. Please try again."));
     } finally { setLoading(false); }
   }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, debouncedSearch, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
+
+  const clearSearch = useCallback(() => {
+    setSearch("");
+    void load("");
+  }, [load]);
 
   const visibleItems = useMemo(() => {
     if (!isTeacherList) return items;
@@ -178,8 +184,10 @@ export function RosterManageList({ kind }: { kind: string }) {
         items={items}
         loading={loading}
         search={search}
+        debouncedSearch={debouncedSearch}
         setSearch={setSearch}
         onSearchSubmit={load}
+        onClearSearch={clearSearch}
         showDeactivated={showDeactivated}
         setShowDeactivated={setShowDeactivated}
         sportFilter={sportFilter}
@@ -207,8 +215,10 @@ export function RosterManageList({ kind }: { kind: string }) {
         items={items}
         loading={loading}
         search={search}
+        debouncedSearch={debouncedSearch}
         setSearch={setSearch}
         onSearchSubmit={load}
+        onClearSearch={clearSearch}
         showDeactivated={showDeactivated}
         setShowDeactivated={setShowDeactivated}
         classFilter={classFilter}
