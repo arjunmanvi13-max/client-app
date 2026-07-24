@@ -17,6 +17,8 @@ import { colors, radii, spacing } from "./theme";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormFieldGrid } from "./components/forms/FormFieldGrid";
+import { FormTextField } from "./components/forms/FormTextField";
+import { FormFileDropzone } from "./components/forms/FormFileDropzone";
 import { PWS_CLASS_OPTIONS, SECTION_LETTERS } from "./StudentRosterFormFields";
 
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
@@ -246,117 +248,135 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
   };
 
   return (
-    <>
-      <FormSectionCard title="Personal Information">
-        <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel required>Player Name</FieldLabel>
-            <TextInput
-              testID="field-name"
-              editable={!readOnly}
-              value={name}
-              onChangeText={setName}
-              placeholder="Full name"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Player ID</FieldLabel>
-            {isNew ? (
-              <View style={[s.input, s.inputReadonly, s.autoIdBox]}>
-                <Text style={s.autoIdTxt} testID="field-player-id-auto">
-                  Auto-assigned on save (starting APL - 150)
-                </Text>
+    <View style={s.formRoot}>
+      <View style={[s.topGrid, isWide && s.topGridWide]}>
+        <FormSectionCard title="Personal Information" compact style={s.sectionCard}>
+          <View style={[s.personalLayout, isWide && s.personalLayoutWide]}>
+            {!readOnly && (
+              <View style={[s.photoCol, isWide && s.photoColWide]}>
+                <FormFileDropzone label="Player photo" compact testID="field-player-photo" />
               </View>
-            ) : (
-              <TextInput
-                testID="field-player-id"
-                editable={false}
-                value={playerId}
-                placeholder="—"
-                placeholderTextColor={colors.hint}
-                style={[s.input, s.inputReadonly]}
-              />
             )}
+            <View style={s.personalFields}>
+              <FormFieldGrid columns={isWide ? 3 : 2} isWide={isWide}>
+                <FormTextField
+                  compact
+                  label="Player Name"
+                  required
+                  testID="field-name"
+                  editable={!readOnly}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Full name"
+                />
+                <View style={s.field}>
+                  <FieldLabel>Player ID</FieldLabel>
+                  {isNew ? (
+                    <View style={[s.input, s.inputReadonly, s.autoIdBox]}>
+                      <Text style={s.autoIdTxt} testID="field-player-id-auto">
+                        Auto-assigned on save
+                      </Text>
+                    </View>
+                  ) : (
+                    <TextInput
+                      testID="field-player-id"
+                      editable={false}
+                      value={playerId}
+                      placeholder="—"
+                      placeholderTextColor={colors.hint}
+                      style={[s.input, s.inputReadonly, s.inputCompact]}
+                    />
+                  )}
+                </View>
+                <FormTextField
+                  compact
+                  label="Date of Birth"
+                  testID="field-dob"
+                  editable={!readOnly}
+                  value={dob}
+                  onChangeText={setDob}
+                  placeholder={DATE_PLACEHOLDER}
+                  hint={dob && calcAge(dob) !== null ? `${formatDate(dob)} · Age ${calcAge(dob)} years` : undefined}
+                />
+              </FormFieldGrid>
+              <FormFieldGrid columns={isWide ? 3 : 2} isWide={isWide}>
+                <FormTextField
+                  compact
+                  label="Mobile Number"
+                  testID="field-mobile"
+                  editable={!readOnly}
+                  value={mobile}
+                  onChangeText={setMobile}
+                  keyboardType="phone-pad"
+                  placeholder="9876543210"
+                />
+                <FormTextField
+                  compact
+                  label="Locality"
+                  testID="field-locality"
+                  editable={!readOnly}
+                  value={locality}
+                  onChangeText={setLocality}
+                  placeholder="e.g. Boring Road"
+                />
+                <FormTextField
+                  compact
+                  label="City"
+                  testID="field-city"
+                  editable={!readOnly}
+                  value={city}
+                  onChangeText={setCity}
+                  placeholder="e.g. Patna"
+                />
+              </FormFieldGrid>
+            </View>
           </View>
-          <View style={s.field}>
-            <FieldLabel>Date of Birth</FieldLabel>
-            <TextInput
-              testID="field-dob"
-              editable={!readOnly}
-              value={dob}
-              onChangeText={setDob}
-              placeholder={DATE_PLACEHOLDER}
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-            {dob && calcAge(dob) !== null && (
-              <Text style={s.dobHelp}>
-                {formatDate(dob)} · Age {calcAge(dob)} years
-              </Text>
-            )}
-          </View>
-        </FormFieldGrid>
+        </FormSectionCard>
 
-        <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel>Mobile Number</FieldLabel>
-            <TextInput
-              testID="field-mobile"
+        <FormSectionCard title="Guardian & Emergency Contact" compact style={s.sectionCard}>
+          <FormFieldGrid columns={2} isWide={isWide}>
+            <FormTextField
+              compact
+              label="Guardian Name"
+              testID="field-father"
               editable={!readOnly}
-              value={mobile}
-              onChangeText={setMobile}
+              value={guardianName}
+              onChangeText={(v) => {
+                setGuardianName(v);
+                setFatherName(v);
+              }}
+              placeholder="Parent / guardian name"
+            />
+            <FormTextField
+              compact
+              label="Contact Number"
+              testID="field-guardian-phone-player"
+              editable={!readOnly}
+              value={guardianPhone}
+              onChangeText={setGuardianPhone}
               keyboardType="phone-pad"
-              placeholder="9876543210"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
+              placeholder="+91 …"
             />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Locality</FieldLabel>
-            <TextInput
-              testID="field-locality"
-              editable={!readOnly}
-              value={locality}
-              onChangeText={setLocality}
-              placeholder="e.g. Boring Road"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>City</FieldLabel>
-            <TextInput
-              testID="field-city"
-              editable={!readOnly}
-              value={city}
-              onChangeText={setCity}
-              placeholder="e.g. Patna"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
-      </FormSectionCard>
+          </FormFieldGrid>
+        </FormSectionCard>
+      </View>
 
-      <FormSectionCard title="Sports & Admission Details" overline="ALPHA Sports Academy">
+      <FormSectionCard title="Academy Details" overline="ALPHA Sports Academy" compact>
         <FormFieldGrid columns={3} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel required>Date of Admission</FieldLabel>
-            <TextInput
-              testID="field-doa"
-              editable={!readOnly}
-              value={dateOfAdmission}
-              onChangeText={setDateOfAdmission}
-              placeholder={DATE_PLACEHOLDER}
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-            <Text style={s.help}>{dateHelpText()}</Text>
-          </View>
+          <FormTextField
+            compact
+            label="Date of Admission"
+            required
+            testID="field-doa"
+            editable={!readOnly}
+            value={dateOfAdmission}
+            onChangeText={setDateOfAdmission}
+            placeholder={DATE_PLACEHOLDER}
+            hint={dateHelpText()}
+          />
           <FormSelect
-            label="Centre"
+            compact
+            label="Location / Campus"
             required
             testID="field-centre"
             value={centre}
@@ -366,6 +386,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             onChange={onCentreChange}
           />
           <FormSelect
+            compact
             label="Player Type"
             required
             testID="field-player-type"
@@ -379,6 +400,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
 
         <FormFieldGrid columns={3} isWide={isWide}>
           <FormSelect
+            compact
             label="Sport"
             required
             testID="field-sport"
@@ -389,6 +411,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             onChange={setSport}
           />
           <FormSelect
+            compact
             label="Skill Level"
             required
             testID="field-skill"
@@ -399,6 +422,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             onChange={(v) => setSkillLevel(v as typeof skillLevel)}
           />
           <FormSelect
+            compact
             label="Slot"
             required
             testID="field-slot"
@@ -460,7 +484,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
         )}
       </FormSectionCard>
 
-      <FormSectionCard title="Fees & Financials" testID="fees-config">
+      <FormSectionCard title="Fees & Financials" testID="fees-config" compact>
         <View style={s.feesUnifiedCard}>
           <View style={s.feesUnifiedHeader}>
             <Feather name="credit-card" size={16} color={colors.primary} />
@@ -754,63 +778,40 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
           </View>
         )}
       </FormSectionCard>
-
-      <FormSectionCard title="Guardian Information">
-        <FormFieldGrid columns={2} isWide={isWide}>
-          <View style={s.field}>
-            <FieldLabel>Guardian Name</FieldLabel>
-            <TextInput
-              testID="field-father"
-              editable={!readOnly}
-              value={guardianName}
-              onChangeText={(v) => {
-                setGuardianName(v);
-                setFatherName(v);
-              }}
-              placeholder="Guardian name"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-          <View style={s.field}>
-            <FieldLabel>Guardian Phone</FieldLabel>
-            <TextInput
-              testID="field-guardian-phone-player"
-              editable={!readOnly}
-              value={guardianPhone}
-              onChangeText={setGuardianPhone}
-              keyboardType="phone-pad"
-              placeholder="+91 …"
-              placeholderTextColor={colors.hint}
-              style={[s.input, readOnly && s.inputReadonly]}
-            />
-          </View>
-        </FormFieldGrid>
-      </FormSectionCard>
-    </>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
+  formRoot: { gap: spacing.md },
+  topGrid: { gap: spacing.md },
+  topGridWide: { flexDirection: "row", alignItems: "stretch", gap: spacing.md },
+  sectionCard: { flex: 1, minWidth: 0 },
+  personalLayout: { gap: spacing.sm },
+  personalLayoutWide: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  photoCol: { width: "100%" },
+  photoColWide: { width: 148, flexShrink: 0 },
+  personalFields: { flex: 1, minWidth: 0, gap: spacing.sm },
   field: { flex: 1, minWidth: 0 },
-  label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
+  label: { fontSize: 11, fontWeight: "700", color: colors.muted, marginBottom: 4 },
   requiredMark: { color: colors.primary },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     minHeight: 46,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingVertical: 10,
+    fontSize: 14,
     color: colors.ink,
   },
+  inputCompact: { minHeight: 36, paddingVertical: 7, fontSize: 13, borderRadius: radii.sm },
   inputReadonly: { backgroundColor: colors.surface2, color: colors.muted2 },
-  autoIdBox: { justifyContent: "center", minHeight: 46 },
-  autoIdTxt: { fontSize: 13, color: colors.muted2, fontWeight: "600" },
-  help: { fontSize: 12, color: colors.muted2, marginTop: 6, lineHeight: 17 },
-  dobHelp: { fontSize: 12, color: "#0F766E", marginTop: 6, fontWeight: "600" },
+  autoIdBox: { justifyContent: "center", minHeight: 36 },
+  autoIdTxt: { fontSize: 12, color: colors.muted2, fontWeight: "600" },
+  help: { fontSize: 11, color: colors.muted2, marginTop: 4, lineHeight: 16 },
+  dobHelp: { fontSize: 11, color: "#0F766E", marginTop: 4, fontWeight: "600" },
   typeHintBox: {
     flexDirection: "row",
     alignItems: "flex-start",

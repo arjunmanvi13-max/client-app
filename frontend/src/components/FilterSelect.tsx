@@ -4,6 +4,9 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../theme";
 import type { FormSelectOption } from "./forms/FormSelect";
 
+/** Uniform height for directory toolbar controls (search, filters, actions). */
+export const TOOLBAR_CONTROL_HEIGHT = 38;
+
 export function FilterSelect({
   value,
   options,
@@ -33,10 +36,11 @@ export function FilterSelect({
             borderStyle: "solid",
             borderColor: colors.border,
             borderRadius: radii.md,
-            paddingTop: 8,
-            paddingBottom: 8,
+            paddingTop: 0,
+            paddingBottom: 0,
             paddingLeft: 10,
             paddingRight: 28,
+            height: TOOLBAR_CONTROL_HEIGHT,
             fontSize: 13,
             color: colors.ink,
             fontWeight: "600",
@@ -124,7 +128,7 @@ function NativeFilterSelect({
   );
 }
 
-export const filterSelectSlotStyle = { minWidth: 130, width: 140, flexShrink: 0 as const };
+export const filterSelectSlotStyle = { minWidth: 120, width: 128, flexShrink: 0 as const };
 
 const s = StyleSheet.create({
   filterSelectWrap: { position: "relative" },
@@ -146,7 +150,7 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.md,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    height: TOOLBAR_CONTROL_HEIGHT,
   },
   filterTriggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },
   filterTriggerTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.ink },

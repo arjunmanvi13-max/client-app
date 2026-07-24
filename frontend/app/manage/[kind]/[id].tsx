@@ -1368,9 +1368,9 @@ export default function ManageEdit() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, (isStudentKind || isStructuredUserForm) && s.safeStudent]} edges={["top"]}>
+    <SafeAreaView style={[s.safe, (isStudentKind || isPlayerKind || isStructuredUserForm) && s.safeStudent]} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        {!isStudentKind && !isStructuredUserForm && (
+        {!isStudentKind && !isPlayerKind && !isStructuredUserForm && (
           <View style={s.header}>
             <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="edit-back">
               <Feather name="x" size={22} color="#0F172A" />
@@ -1387,8 +1387,9 @@ export default function ManageEdit() {
         <ScrollView
           style={studentSingleScreen ? s.scrollStudentViewport : undefined}
           contentContainerStyle={[
-            (isStudentKind || isStructuredUserForm) ? s.scrollStudent : isPlayerKind ? s.scrollPlayer : s.scroll,
+            (isStudentKind || isPlayerKind || isStructuredUserForm) ? s.scrollStudent : s.scroll,
             studentSingleScreen && s.scrollStudentSingleScreen,
+            isPlayerKind && s.scrollPlayer,
           ]}
           scrollEnabled={!studentSingleScreen}
           showsVerticalScrollIndicator={!studentSingleScreen}
@@ -1446,6 +1447,22 @@ export default function ManageEdit() {
                     }
                   : undefined
               }
+            />
+          )}
+
+          {isPlayerKind && (
+            <FormPageHeader
+              compact={layoutWide}
+              breadcrumb="DIRECTORY · PLAYERS"
+              title={isNew ? "Add New Player" : readOnly ? "View Player" : "Edit Player"}
+              onCancel={() => router.back()}
+              readOnly
+              statusBadge={
+                !isNew && status === "deactivated"
+                  ? { label: "Deactivated", tone: "deactivated" }
+                  : undefined
+              }
+              testID="player-form-header"
             />
           )}
 
@@ -2107,12 +2124,16 @@ export default function ManageEdit() {
                 onPress={save}
                 disabled={saving}
                 style={({ pressed, hovered }) => [
-                  s.saveBtnPrimary,
+                  isPlayerKind ? s.saveBtnPlayer : s.saveBtnPrimary,
                   saving && s.saveBtnDisabled,
-                  (pressed || (Platform.OS === "web" && hovered)) && !saving && s.saveBtnHovered,
+                  (pressed || (Platform.OS === "web" && hovered)) && !saving && (isPlayerKind ? s.saveBtnPlayerHover : s.saveBtnHovered),
                 ]}
               >
-                {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveTxt}>{isNew ? "Create" : "Save changes"}</Text>}
+                {saving ? <ActivityIndicator color="#fff" /> : (
+                  <Text style={s.saveTxt}>
+                    {isNew ? (isPlayerKind ? "Add Player" : "Create") : "Save changes"}
+                  </Text>
+                )}
               </Pressable>
             </View>
           )}
@@ -2168,11 +2189,8 @@ const s = StyleSheet.create({
   delBtn: { padding: 8 },
   scroll: { padding: 20, paddingBottom: 120 },
   scrollPlayer: {
-    padding: 24,
     paddingBottom: 120,
-    maxWidth: 960,
-    alignSelf: "center",
-    width: "100%",
+    maxWidth: 1200,
   },
   label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 8, marginTop: 16 },
   help: { fontSize: 12, color: "#64748B", marginTop: 2 },
@@ -2219,7 +2237,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 12,
-    maxWidth: 960,
+    maxWidth: 1200,
     alignSelf: "center",
     width: "100%",
   },
@@ -2236,7 +2254,19 @@ const s = StyleSheet.create({
     minHeight: 46,
     ...Platform.select({ web: { cursor: "pointer" } as object }),
   },
+  saveBtnPlayer: {
+    backgroundColor: "#10B981",
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 140,
+    minHeight: 46,
+    ...Platform.select({ web: { cursor: "pointer" } as object }),
+  },
   saveBtnHovered: { backgroundColor: "#1D4ED8" },
+  saveBtnPlayerHover: { backgroundColor: "#059669" },
   saveBtnDisabled: { opacity: 0.6 },
   saveBtn: { backgroundColor: "#1E40AF", paddingVertical: 14, borderRadius: 14, alignItems: "center" },
   saveTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
