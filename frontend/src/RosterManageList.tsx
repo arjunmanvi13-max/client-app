@@ -13,6 +13,7 @@ import { PlayerRosterListView } from "./PlayerRosterListView";
 import { StudentRosterListView } from "./StudentRosterListView";
 import { AddTeacherModal } from "./components/teachers/AddTeacherModal";
 import { getApiError } from "./ScreenStates";
+import { useDebouncedValue } from "./useDebouncedValue";
 
 type TeacherStatusFilter = "all" | "active" | "inactive";
 
@@ -50,6 +51,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [showDeactivated, setShowDeactivated] = useState(false);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [classFilter, setClassFilter] = useState<string | null>(null);
@@ -106,8 +108,8 @@ export function RosterManageList({ kind }: { kind: string }) {
         if (isTeacherList) params.include_deactivated = true;
         const { data } = await api.get("/users", { params });
         let rows = data;
-        if (search.trim() && !isTeacherList) {
-          const q = search.trim().toLowerCase();
+        if (debouncedSearch.trim() && !isTeacherList) {
+          const q = debouncedSearch.trim().toLowerCase();
           rows = rows.filter((u: any) =>
             (u.name || "").toLowerCase().includes(q)
             || (u.email || "").toLowerCase().includes(q)
@@ -117,7 +119,7 @@ export function RosterManageList({ kind }: { kind: string }) {
         setItems(rows);
       } else {
         const params: any = { kind };
-        if (search.trim()) params.q = search.trim();
+        if (debouncedSearch.trim()) params.q = debouncedSearch.trim();
         if (isPlayer && showDeactivated) params.include_deactivated = true;
         if (isStudent && showDeactivated) params.include_deactivated = true;
         if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
@@ -131,7 +133,7 @@ export function RosterManageList({ kind }: { kind: string }) {
       setItems([]);
       setLoadError(getApiError(e, "Could not load records. Please try again."));
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, search, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
+  }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, debouncedSearch, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
 
   const visibleItems = useMemo(() => {
     if (!isTeacherList) return items;
@@ -149,6 +151,11 @@ export function RosterManageList({ kind }: { kind: string }) {
 
   const listItems = isTeacherList ? visibleItems : items;
   const hasTeacherCriteria = isTeacherList && (teacherStatusFilter !== "all" || !!search.trim());
+
+  useEffect(() => {
+    if (coachBlocked) return;
+    void load();
+  }, [load, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

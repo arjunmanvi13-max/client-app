@@ -131,7 +131,9 @@ export function StudentRosterListView({
               <Text style={s.h1}>Students</Text>
               <View style={s.countBadge}>
                 <Text style={s.countBadgeTxt}>
-                  {total} record{total !== 1 ? "s" : ""}
+                  {search.trim()
+                    ? `${total} matching record${total !== 1 ? "s" : ""}`
+                    : `${total} record${total !== 1 ? "s" : ""}`}
                 </Text>
               </View>
             </View>
