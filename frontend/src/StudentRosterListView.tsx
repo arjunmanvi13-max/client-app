@@ -17,6 +17,7 @@ import { useBreakpoint } from "./useBreakpoint";
 import { FilterSelect, filterSelectSlotStyle } from "./components/FilterSelect";
 import type { FormSelectOption } from "./components/forms/FormSelect";
 import { PWS_CLASS_OPTIONS, PWS_CLASS_FILTER_LABELS, pwsClassFilterLabel } from "./StudentRosterFormFields";
+import { sectionDisplayName } from "./academicStructure";
 
 const PAGE_SIZE = 10;
 const STUDENT_TINT = "#2563EB";
@@ -25,7 +26,8 @@ function studentInitials(name: string) {
   return name.split(" ").map((n) => n[0]).slice(0, 2).join("");
 }
 
-function sectionBadgeStyle(label?: string) {
+function sectionBadgeStyle(pwsClass?: string) {
+  const label = pwsClassFilterLabel(pwsClass);
   const normalized = (label || "").trim().toUpperCase();
   if (normalized.includes("10")) {
     return { bg: "#F3E8FF", text: "#7E22CE", border: "#E9D5FF" };
@@ -231,10 +233,10 @@ export function StudentRosterListView({
               {pageItems.map((it) => {
                 const isDeact = it.status === "deactivated";
                 const isPendingFee = it.status === "pending_fee_approval";
-                const sectionLabel = it.group || "";
-                const sectionBadge = sectionBadgeStyle(sectionLabel);
+                const sectionLabel = sectionDisplayName(it.group, it.section_name);
+                const sectionBadge = sectionBadgeStyle(it.pws_class);
                 const classBadge = classBadgeStyle(it.pws_class);
-                const classLabel = pwsClassFilterLabel(it.pws_class);
+                const classLabel = it.class_name || pwsClassFilterLabel(it.pws_class);
 
                 return (
                   <Pressable

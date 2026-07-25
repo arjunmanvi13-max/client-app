@@ -1160,9 +1160,7 @@ export default function ManageEdit() {
           body.admission_number = admissionNumber || null;
           body.roll_number = rollNumber || null;
           body.dob = dob ? (parseToISO(dob) || dob) : null;
-        }
-        if (isStudentKind && sectionId) body.section_id = sectionId;
-        if (isStudentKind) {
+          body.section_id = sectionId || "";
           body.date_of_admission = parseToISO(dateOfAdmission) || dateOfAdmission || toISODate();
           body.pws_student_type = pwsStudentType;
           body.pws_class = pwsClass;

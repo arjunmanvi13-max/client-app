@@ -15,7 +15,7 @@ import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormTextField } from "./components/forms/FormTextField";
 import { FormDateField } from "./components/forms/FormDateField";
-import { CLASS_PREFIX, matchAcademicSection, sectionLabelCandidates } from "./academicStructure";
+import { CLASS_PREFIX, matchAcademicSection, parseSectionLetter, sectionLabelCandidates } from "./academicStructure";
 
 export { CLASS_PREFIX } from "./academicStructure";
 export const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
@@ -60,11 +60,6 @@ export function pwsClassFilterLabel(pwsClass?: string | null) {
 }
 
 const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
-
-function parseSectionLetter(group: string): string {
-  const m = group.trim().match(/-([A-F])$/i);
-  return m ? m[1].toUpperCase() : "";
-}
 
 export function classGroupPrefix(pwsClass: string): string {
   return CLASS_PREFIX[pwsClass] || pwsClass;
@@ -233,10 +228,15 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
   const applySection = (value: string) => {
     if (value === "All") {
       setSectionId(null);
-      setGroup(classGroupPrefix(pwsClass));
+      setGroup("");
       return;
     }
     const { id: nextId, label } = resolveSectionMatch(pwsClass, value, academicSections);
+    if (!nextId) {
+      setSectionId(null);
+      setGroup("");
+      return;
+    }
     setSectionId(nextId);
     setGroup(label);
   };
@@ -244,7 +244,10 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
   const onClassChange = (nextClass: string) => {
     setPwsClass(nextClass);
     if (sectionValue !== "All") applySection(sectionValue);
-    else setGroup(classGroupPrefix(nextClass));
+    else {
+      setSectionId(null);
+      setGroup("");
+    }
   };
 
   const studentTypeOptions: FormSelectOption[] = PWS_STUDENT_TYPES.map((t) => ({ value: t, label: t }));

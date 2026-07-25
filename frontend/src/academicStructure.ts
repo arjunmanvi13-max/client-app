@@ -154,6 +154,16 @@ function gradeNameVariants(gradeName: string): string[] {
   return Array.from(variants);
 }
 
+export function parseSectionLetter(groupOrLabel?: string | null): string {
+  const m = (groupOrLabel || "").trim().match(/-([A-F])$/i);
+  return m ? m[1].toUpperCase() : "";
+}
+
+export function sectionDisplayName(groupOrLabel?: string | null, sectionName?: string | null): string {
+  if (sectionName) return sectionName;
+  return parseSectionLetter(groupOrLabel);
+}
+
 export function sectionLabelCandidates(className: string, sectionLetter: string): string[] {
   const prefix = CLASS_PREFIX[className] || className;
   const letter = sectionLetter.trim().toUpperCase();
