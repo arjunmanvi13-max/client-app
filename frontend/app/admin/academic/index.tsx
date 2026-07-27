@@ -107,7 +107,9 @@ export default function AcademicAdmin() {
   const [sectionGradeId, setSectionGradeId] = useState<string | null>(null);
   const [sectionName, setSectionName] = useState("");
   const [subjectName, setSubjectName] = useState("");
-  const [subjectGradeIds, setSubjectGradeIds] = useState<string[]>([]);
+  const [subjectFilterGradeId, setSubjectFilterGradeId] = useState<string | null>(null);
+  const [savingSubjectScopeId, setSavingSubjectScopeId] = useState<string | null>(null);
+  const [openSubjectScopeId, setOpenSubjectScopeId] = useState<string | null>(null);
   const [assignTeacherId, setAssignTeacherId] = useState<string | null>(null);
   const [assignRows, setAssignRows] = useState<TeacherAssignRow[]>([newTeacherAssignRow()]);
   const [openAssignRowKey, setOpenAssignRowKey] = useState<string | null>(null);
@@ -132,6 +134,35 @@ export default function AcademicAdmin() {
 
   const selectedYear = years.find((y) => y.id === selectedYearId) || years.find((y) => y.status === "open") || years[0];
   const isReadOnly = selectedYear?.status === "archived";
+
+  const subjectGradeOptions = useMemo(
+    () => grades.map((g) => ({ value: g.id, label: stdLabel(g.name) })),
+    [grades],
+  );
+
+  const subjectMatchesGradeFilter = useCallback((sub: any, gradeId: string | null) => {
+    if (!gradeId) return true;
+    const ids: string[] = sub.grade_ids || [];
+    return !ids.length || ids.includes(gradeId);
+  }, []);
+
+  const visibleSubjects = useMemo(
+    () => subjects.filter((sub) => subjectMatchesGradeFilter(sub, subjectFilterGradeId)),
+    [subjects, subjectFilterGradeId, subjectMatchesGradeFilter],
+  );
+
+  const attachableSubjectsForFilter = useMemo(() => {
+    if (!subjectFilterGradeId || isReadOnly) return [];
+    return subjects.filter((sub) => {
+      const ids: string[] = sub.grade_ids || [];
+      return ids.length > 0 && !ids.includes(subjectFilterGradeId);
+    });
+  }, [subjects, subjectFilterGradeId, isReadOnly]);
+
+  const selectedFilterGrade = useMemo(
+    () => grades.find((g) => g.id === subjectFilterGradeId) || null,
+    [grades, subjectFilterGradeId],
+  );
 
   const subjectOptions = useMemo(
     () => subjects.map((sub) => ({ value: sub.id, label: sub.name })),
@@ -394,12 +425,13 @@ export default function AcademicAdmin() {
   const addSubject = async (name?: string, code?: string) => {
     const subject = (name || subjectName).trim();
     if (!subject || !selectedYear || isReadOnly) return;
+    const gradeIds = subjectFilterGradeId ? [subjectFilterGradeId] : [];
     try {
       await api.post("/academic/subjects", {
         academic_year_id: selectedYear.id,
         name: subject,
         code: code || undefined,
-        grade_ids: subjectGradeIds,
+        grade_ids: gradeIds,
         section_ids: [],
         entity_id: "pws",
       });
@@ -408,6 +440,37 @@ export default function AcademicAdmin() {
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Failed to add subject");
     }
+  };
+
+  const updateSubjectScope = async (subjectId: string, gradeIds: string[]) => {
+    const subject = subjects.find((s) => s.id === subjectId);
+    if (!subject || isReadOnly) return;
+    setSavingSubjectScopeId(subjectId);
+    try {
+      const { data } = await api.patch(`/academic/subjects/${subjectId}/scope`, {
+        grade_ids: gradeIds,
+        section_ids: subject.section_ids || [],
+      });
+      setSubjects((prev) => prev.map((s) => (s.id === subjectId ? { ...s, ...data } : s)));
+    } catch (e: any) {
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to update subject standards");
+      await load();
+    } finally {
+      setSavingSubjectScopeId(null);
+    }
+  };
+
+  const attachSubjectToFilter = async (subjectId: string) => {
+    if (!subjectFilterGradeId) return;
+    const subject = subjects.find((s) => s.id === subjectId);
+    if (!subject) return;
+    const ids: string[] = subject.grade_ids || [];
+    if (ids.includes(subjectFilterGradeId)) return;
+    await updateSubjectScope(subjectId, [...ids, subjectFilterGradeId]);
+  };
+
+  const toggleSubjectFilter = (gradeId: string) => {
+    setSubjectFilterGradeId((current) => (current === gradeId ? null : gradeId));
   };
 
   const seedDefaultStandards = async () => {
@@ -446,7 +509,7 @@ export default function AcademicAdmin() {
             academic_year_id: selectedYear.id,
             name: def.name,
             code: def.code,
-            grade_ids: subjectGradeIds,
+            grade_ids: subjectFilterGradeId ? [subjectFilterGradeId] : [],
             section_ids: [],
             entity_id: "pws",
           });
@@ -568,10 +631,6 @@ export default function AcademicAdmin() {
         },
       ],
     );
-  };
-
-  const toggleChip = (list: string[], id: string, setter: (v: string[]) => void) => {
-    setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
 
   const confirmDestructive = (title: string, message: string, onConfirm: () => void) => {
@@ -1328,14 +1387,33 @@ export default function AcademicAdmin() {
             {tab === "subjects" && (
               <View style={s.card}>
                 <Text style={s.cardTitle}>Subjects</Text>
-                <Text style={s.label}>Assign to std (optional)</Text>
+                <Text style={s.label}>Filter by std (optional)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                  <TouchableOpacity
+                    testID="subject-filter-all"
+                    style={[s.chip, !subjectFilterGradeId && s.chipActive]}
+                    onPress={() => setSubjectFilterGradeId(null)}
+                  >
+                    <Text style={[s.chipTxt, !subjectFilterGradeId && s.chipTxtActive]}>All</Text>
+                  </TouchableOpacity>
                   {grades.map((g) => (
-                    <TouchableOpacity key={g.id} style={[s.chip, subjectGradeIds.includes(g.id) && s.chipActive]} onPress={() => toggleChip(subjectGradeIds, g.id, setSubjectGradeIds)}>
-                      <Text style={[s.chipTxt, subjectGradeIds.includes(g.id) && s.chipTxtActive]}>{stdLabel(g.name)}</Text>
+                    <TouchableOpacity
+                      key={g.id}
+                      testID={`subject-filter-${g.id}`}
+                      style={[s.chip, subjectFilterGradeId === g.id && s.chipActive]}
+                      onPress={() => toggleSubjectFilter(g.id)}
+                    >
+                      <Text style={[s.chipTxt, subjectFilterGradeId === g.id && s.chipTxtActive]}>
+                        {stdLabel(g.name)}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
+                {subjectFilterGradeId && selectedFilterGrade && (
+                  <Text style={s.fieldHelpCompact}>
+                    Showing subjects for {stdLabel(selectedFilterGrade.name)} and subjects assigned to all standards.
+                  </Text>
+                )}
 
                 {!isReadOnly && missingDefaultSubjects.length > 0 && (
                   <>
@@ -1368,19 +1446,106 @@ export default function AcademicAdmin() {
                 )}
 
                 {!isReadOnly && (
-                  <View style={s.row}>
-                    <TextInput testID="input-subject" value={subjectName} onChangeText={setSubjectName} placeholder="e.g. Mathematics" style={s.input} placeholderTextColor="#94A3B8" />
-                    <TouchableOpacity testID="btn-add-subject" style={s.btn} onPress={() => addSubject()}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
-                  </View>
+                  <>
+                    <View style={s.row}>
+                      <TextInput testID="input-subject" value={subjectName} onChangeText={setSubjectName} placeholder="e.g. Mathematics" style={s.input} placeholderTextColor="#94A3B8" />
+                      <TouchableOpacity testID="btn-add-subject" style={s.btn} onPress={() => addSubject()}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
+                    </View>
+                    {subjectFilterGradeId && selectedFilterGrade && (
+                      <Text style={s.fieldHelpCompact}>
+                        New subjects will be assigned to {stdLabel(selectedFilterGrade.name)}.
+                      </Text>
+                    )}
+                  </>
                 )}
-                {subjects.map((sub) => (
-                  <View key={sub.id} style={s.subjectRow}>
-                    <Text style={s.subjectName}>{sub.name} ({sub.code})</Text>
-                    <Text style={s.subjectMeta}>
-                      Std: {gradeNamesForSubject(sub, grades)}
+
+                {visibleSubjects.length === 0 ? (
+                  <View style={s.subjectEmptyWrap}>
+                    <Text style={s.hintCompact}>
+                      {subjectFilterGradeId && selectedFilterGrade
+                        ? `No subjects assigned to ${stdLabel(selectedFilterGrade.name)} yet.`
+                        : "No subjects yet. Add one above or use the default catalogue."}
                     </Text>
+                    {!isReadOnly && subjectFilterGradeId && attachableSubjectsForFilter.length > 0 && (
+                      <View style={s.attachList}>
+                        <Text style={s.attachTitle}>Assign existing subjects</Text>
+                        {attachableSubjectsForFilter.map((sub) => (
+                          <View key={sub.id} style={s.attachRow}>
+                            <Text style={s.attachName}>{sub.name} ({sub.code})</Text>
+                            <TouchableOpacity
+                              testID={`attach-subject-${sub.id}`}
+                              style={s.attachBtn}
+                              onPress={() => attachSubjectToFilter(sub.id)}
+                              disabled={savingSubjectScopeId === sub.id}
+                            >
+                              {savingSubjectScopeId === sub.id ? (
+                                <ActivityIndicator size="small" color="#1E40AF" />
+                              ) : (
+                                <Text style={s.attachBtnTxt}>Add here</Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
-                ))}
+                ) : (
+                  visibleSubjects.map((sub) => {
+                    const gradeIds: string[] = sub.grade_ids || [];
+                    const isAllGrades = gradeIds.length === 0;
+                    const isSavingScope = savingSubjectScopeId === sub.id;
+                    return (
+                      <View
+                        key={sub.id}
+                        style={[s.subjectRow, openSubjectScopeId === sub.id && s.subjectRowOpen]}
+                        testID={`subject-row-${sub.id}`}
+                      >
+                        <View style={s.subjectRowHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={s.subjectName}>{sub.name} ({sub.code})</Text>
+                            <View style={s.subjectBadgeRow}>
+                              {isAllGrades ? (
+                                <View style={[s.subjectBadge, s.subjectBadgeAll]}>
+                                  <Text style={[s.subjectBadgeTxt, s.subjectBadgeTxtAll]}>All</Text>
+                                </View>
+                              ) : (
+                                gradeIds.map((gid) => {
+                                  const grade = grades.find((g) => g.id === gid);
+                                  return (
+                                    <View key={gid} style={s.subjectBadge}>
+                                      <Text style={s.subjectBadgeTxt}>{stdLabel(grade?.name || gid.slice(0, 4))}</Text>
+                                    </View>
+                                  );
+                                })
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                        {!isReadOnly && (
+                          <View style={s.subjectScopeWrap}>
+                            <FormMultiSelect
+                              label="Assigned standards"
+                              values={gradeIds}
+                              options={subjectGradeOptions}
+                              onChange={(next) => updateSubjectScope(sub.id, next)}
+                              onOpenChange={(open) => setOpenSubjectScopeId(open ? sub.id : null)}
+                              placeholder={isAllGrades ? "All standards" : "Select standards…"}
+                              searchPlaceholder="Search standards…"
+                              disabled={isSavingScope}
+                              testID={`subject-scope-${sub.id}`}
+                            />
+                            {isSavingScope && (
+                              <ActivityIndicator size="small" color="#1E40AF" style={{ marginTop: 4 }} />
+                            )}
+                          </View>
+                        )}
+                        {isReadOnly && (
+                          <Text style={s.subjectMeta}>Std: {gradeNamesForSubject(sub, grades)}</Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
               </View>
             )}
 
@@ -1793,7 +1958,99 @@ const s = StyleSheet.create({
   statusActions: { flexDirection: "row", gap: 4 },
   miniBtn: { backgroundColor: "#DBEAFE", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   miniBtnTxt: { fontSize: 10, fontWeight: "800", color: "#1E40AF" },
-  subjectRow: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+  subjectRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+    position: "relative",
+    zIndex: 1,
+  },
+  subjectRowOpen: {
+    zIndex: 50,
+    elevation: 50,
+  },
+  subjectRowHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  subjectScopeWrap: {
+    marginTop: 8,
+    position: "relative",
+    zIndex: 2,
+  },
+  subjectBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  subjectBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  subjectBadgeAll: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
+  subjectBadgeTxt: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#1E40AF",
+  },
+  subjectBadgeTxtAll: {
+    color: "#15803D",
+  },
+  subjectEmptyWrap: {
+    marginTop: 8,
+    gap: 10,
+  },
+  attachList: {
+    gap: 6,
+    marginTop: 4,
+  },
+  attachTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#475569",
+  },
+  attachRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  attachName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0F172A",
+  },
+  attachBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    minWidth: 72,
+    alignItems: "center",
+  },
+  attachBtnTxt: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#1E40AF",
+  },
   subjectName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
   subjectMeta: { fontSize: 11, color: "#64748B", marginTop: 2 },
   listWrap: { marginTop: 4 },
