@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
-import { Permission } from "../../../src/rbac";
+import { Permission, isSuperAdminUser } from "../../../src/rbac";
 import { formatDate, DATE_PLACEHOLDER, parseToISO } from "../../../src/dateFormat";
 import {
   DEFAULT_PWS_STANDARDS,
@@ -115,9 +115,19 @@ export default function AcademicAdmin() {
   const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
   const [seedingSubjects, setSeedingSubjects] = useState(false);
   const [seedingStandards, setSeedingStandards] = useState(false);
+  const [editingGradeId, setEditingGradeId] = useState<string | null>(null);
+  const [editingGradeName, setEditingGradeName] = useState("");
+  const [savingGradeId, setSavingGradeId] = useState<string | null>(null);
+  const [deletingGradeId, setDeletingGradeId] = useState<string | null>(null);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionName, setEditingSectionName] = useState("");
+  const [editingSectionGradeId, setEditingSectionGradeId] = useState<string | null>(null);
+  const [savingSectionId, setSavingSectionId] = useState<string | null>(null);
+  const [deletingSectionId, setDeletingSectionId] = useState<string | null>(null);
 
   const canManage = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS);
+  const canSuperAdminMutate = isSuperAdminUser(user);
   const { isWide } = useBreakpoint();
 
   const selectedYear = years.find((y) => y.id === selectedYearId) || years.find((y) => y.status === "open") || years[0];
@@ -546,6 +556,118 @@ export default function AcademicAdmin() {
     setter(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
   };
 
+  const confirmDestructive = (title: string, message: string, onConfirm: () => void) => {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) {
+        onConfirm();
+      }
+      return;
+    }
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: onConfirm },
+    ]);
+  };
+
+  const startEditGrade = (grade: any) => {
+    setEditingGradeId(grade.id);
+    setEditingGradeName(grade.name || "");
+    setEditingSectionId(null);
+  };
+
+  const cancelEditGrade = () => {
+    setEditingGradeId(null);
+    setEditingGradeName("");
+  };
+
+  const saveGrade = async (gradeId: string) => {
+    const name = editingGradeName.trim();
+    if (!name || isReadOnly) return;
+    setSavingGradeId(gradeId);
+    try {
+      await api.patch(`/academic/grades/${gradeId}`, { name });
+      cancelEditGrade();
+      await load();
+    } catch (e: any) {
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to update standard");
+    } finally {
+      setSavingGradeId(null);
+    }
+  };
+
+  const deleteGrade = async (gradeId: string) => {
+    setDeletingGradeId(gradeId);
+    try {
+      await api.delete(`/academic/grades/${gradeId}`);
+      if (editingGradeId === gradeId) cancelEditGrade();
+      await load();
+    } catch (e: any) {
+      Alert.alert("Cannot delete standard", e?.response?.data?.detail || "Failed to delete standard");
+    } finally {
+      setDeletingGradeId(null);
+    }
+  };
+
+  const confirmDeleteGrade = (grade: any) => {
+    confirmDestructive(
+      "Delete standard",
+      `Delete ${stdLabel(grade.name)}? This cannot be undone. Remove all sections under this standard first.`,
+      () => deleteGrade(grade.id),
+    );
+  };
+
+  const startEditSection = (section: any) => {
+    setEditingSectionId(section.id);
+    setEditingSectionName(section.name || section.label?.split("-").slice(1).join("-") || "");
+    setEditingSectionGradeId(section.grade_id || null);
+    setEditingGradeId(null);
+  };
+
+  const cancelEditSection = () => {
+    setEditingSectionId(null);
+    setEditingSectionName("");
+    setEditingSectionGradeId(null);
+  };
+
+  const saveSection = async (sectionId: string) => {
+    const name = editingSectionName.trim();
+    if (!name || !editingSectionGradeId || isReadOnly) return;
+    setSavingSectionId(sectionId);
+    try {
+      await api.patch(`/academic/sections/${sectionId}`, {
+        name,
+        grade_id: editingSectionGradeId,
+      });
+      cancelEditSection();
+      await load();
+    } catch (e: any) {
+      Alert.alert("Error", e?.response?.data?.detail || "Failed to update section");
+    } finally {
+      setSavingSectionId(null);
+    }
+  };
+
+  const deleteSection = async (sectionId: string) => {
+    setDeletingSectionId(sectionId);
+    try {
+      await api.delete(`/academic/sections/${sectionId}`);
+      if (editingSectionId === sectionId) cancelEditSection();
+      await load();
+    } catch (e: any) {
+      Alert.alert("Cannot delete section", e?.response?.data?.detail || "Failed to delete section");
+    } finally {
+      setDeletingSectionId(null);
+    }
+  };
+
+  const confirmDeleteSection = (section: any) => {
+    confirmDestructive(
+      "Delete section",
+      `Delete ${section.label}? This cannot be undone. Reassign or remove students and teacher assignments first.`,
+      () => deleteSection(section.id),
+    );
+  };
+
   if (!canManage) {
     return (
       <SafeAreaView style={s.safe}>
@@ -887,12 +1009,97 @@ export default function AcademicAdmin() {
                     <Text style={s.hint}>No standards yet. Add manually or use the default catalogue button above.</Text>
                   ) : (
                     <View style={s.listWrap}>
-                      {grades.map((g) => (
-                        <View key={g.id} style={s.listRow}>
-                          <Text style={s.listTitle}>{stdLabel(g.name)}</Text>
-                          <Text style={s.listMeta}>Stored as: {g.name}</Text>
-                        </View>
-                      ))}
+                      {grades.map((g) => {
+                        const isEditing = editingGradeId === g.id;
+                        const isSaving = savingGradeId === g.id;
+                        const isDeleting = deletingGradeId === g.id;
+                        const isBusy = isSaving || isDeleting;
+                        return (
+                          <View key={g.id} style={s.listRow} testID={`grade-row-${g.id}`}>
+                            {isEditing ? (
+                              <View style={s.listEditBlock}>
+                                <Text style={s.label}>Standard name</Text>
+                                <TextInput
+                                  testID={`edit-grade-input-${g.id}`}
+                                  value={editingGradeName}
+                                  onChangeText={setEditingGradeName}
+                                  placeholder="Std e.g. 9"
+                                  style={s.input}
+                                  placeholderTextColor="#94A3B8"
+                                  editable={!isBusy}
+                                />
+                                <View style={s.listEditActions}>
+                                  <TouchableOpacity
+                                    testID={`cancel-edit-grade-${g.id}`}
+                                    style={s.cancelEditBtnFooter}
+                                    onPress={cancelEditGrade}
+                                    disabled={isBusy}
+                                  >
+                                    <Text style={s.cancelEditTxt}>Cancel</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    testID={`save-edit-grade-${g.id}`}
+                                    style={[s.btnCompact, isBusy && { opacity: 0.6 }]}
+                                    onPress={() => saveGrade(g.id)}
+                                    disabled={isBusy || !editingGradeName.trim()}
+                                  >
+                                    {isSaving ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Text style={s.btnTxt}>Save</Text>
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            ) : (
+                              <View style={s.listRowMain}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={s.listTitle}>{stdLabel(g.name)}</Text>
+                                  <Text style={s.listMeta}>Stored as: {g.name}</Text>
+                                </View>
+                                {canSuperAdminMutate && !isReadOnly && (
+                                  <View style={s.listRowActions}>
+                                    <Pressable
+                                      testID={`edit-grade-${g.id}`}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Edit ${stdLabel(g.name)}`}
+                                      onPress={() => startEditGrade(g)}
+                                      disabled={isBusy}
+                                      style={({ pressed, hovered }) => [
+                                        s.assignActionBtn,
+                                        s.assignActionBtnEdit,
+                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
+                                        isBusy && { opacity: 0.5 },
+                                      ]}
+                                    >
+                                      <Feather name="edit-2" size={14} color="#1E40AF" />
+                                    </Pressable>
+                                    <Pressable
+                                      testID={`delete-grade-${g.id}`}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Delete ${stdLabel(g.name)}`}
+                                      onPress={() => confirmDeleteGrade(g)}
+                                      disabled={isBusy}
+                                      style={({ pressed, hovered }) => [
+                                        s.assignActionBtn,
+                                        s.assignActionBtnDelete,
+                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
+                                        isBusy && { opacity: 0.5 },
+                                      ]}
+                                    >
+                                      {isDeleting ? (
+                                        <ActivityIndicator size="small" color="#EF4444" />
+                                      ) : (
+                                        <Feather name="trash-2" size={14} color="#EF4444" />
+                                      )}
+                                    </Pressable>
+                                  </View>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
@@ -920,12 +1127,115 @@ export default function AcademicAdmin() {
                         <Text style={s.hint}>No sections for {stdLabel(grades.find((g) => g.id === sectionGradeId)?.name)} yet.</Text>
                       ) : (
                         <View style={s.listWrap}>
-                          {visibleSections.map((sec) => (
-                            <View key={sec.id} style={s.listRow}>
-                              <Text style={s.listTitle}>{sec.label}</Text>
-                              <Text style={s.listMeta}>{stdLabel(sec.grade_name || grades.find((g) => g.id === sec.grade_id)?.name)}</Text>
-                            </View>
-                          ))}
+                          {visibleSections.map((sec) => {
+                            const isEditing = editingSectionId === sec.id;
+                            const isSaving = savingSectionId === sec.id;
+                            const isDeleting = deletingSectionId === sec.id;
+                            const isBusy = isSaving || isDeleting;
+                            return (
+                              <View key={sec.id} style={s.listRow} testID={`section-row-${sec.id}`}>
+                                {isEditing ? (
+                                  <View style={s.listEditBlock}>
+                                    <Text style={s.label}>Section name</Text>
+                                    <TextInput
+                                      testID={`edit-section-input-${sec.id}`}
+                                      value={editingSectionName}
+                                      onChangeText={setEditingSectionName}
+                                      placeholder="Section e.g. A"
+                                      style={s.input}
+                                      placeholderTextColor="#94A3B8"
+                                      autoCapitalize="characters"
+                                      editable={!isBusy}
+                                    />
+                                    <Text style={s.label}>Standard</Text>
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                                      {grades.map((g) => (
+                                        <TouchableOpacity
+                                          key={g.id}
+                                          style={[s.chip, editingSectionGradeId === g.id && s.chipActive]}
+                                          onPress={() => setEditingSectionGradeId(g.id)}
+                                          disabled={isBusy}
+                                        >
+                                          <Text style={[s.chipTxt, editingSectionGradeId === g.id && s.chipTxtActive]}>
+                                            {stdLabel(g.name)}
+                                          </Text>
+                                        </TouchableOpacity>
+                                      ))}
+                                    </ScrollView>
+                                    <View style={s.listEditActions}>
+                                      <TouchableOpacity
+                                        testID={`cancel-edit-section-${sec.id}`}
+                                        style={s.cancelEditBtnFooter}
+                                        onPress={cancelEditSection}
+                                        disabled={isBusy}
+                                      >
+                                        <Text style={s.cancelEditTxt}>Cancel</Text>
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        testID={`save-edit-section-${sec.id}`}
+                                        style={[s.btnCompact, isBusy && { opacity: 0.6 }]}
+                                        onPress={() => saveSection(sec.id)}
+                                        disabled={isBusy || !editingSectionName.trim() || !editingSectionGradeId}
+                                      >
+                                        {isSaving ? (
+                                          <ActivityIndicator size="small" color="#fff" />
+                                        ) : (
+                                          <Text style={s.btnTxt}>Save</Text>
+                                        )}
+                                      </TouchableOpacity>
+                                    </View>
+                                  </View>
+                                ) : (
+                                  <View style={s.listRowMain}>
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={s.listTitle}>{sec.label}</Text>
+                                      <Text style={s.listMeta}>
+                                        {stdLabel(sec.grade_name || grades.find((g) => g.id === sec.grade_id)?.name)}
+                                      </Text>
+                                    </View>
+                                    {canSuperAdminMutate && !isReadOnly && (
+                                      <View style={s.listRowActions}>
+                                        <Pressable
+                                          testID={`edit-section-${sec.id}`}
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`Edit section ${sec.label}`}
+                                          onPress={() => startEditSection(sec)}
+                                          disabled={isBusy}
+                                          style={({ pressed, hovered }) => [
+                                            s.assignActionBtn,
+                                            s.assignActionBtnEdit,
+                                            (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
+                                            isBusy && { opacity: 0.5 },
+                                          ]}
+                                        >
+                                          <Feather name="edit-2" size={14} color="#1E40AF" />
+                                        </Pressable>
+                                        <Pressable
+                                          testID={`delete-section-${sec.id}`}
+                                          accessibilityRole="button"
+                                          accessibilityLabel={`Delete section ${sec.label}`}
+                                          onPress={() => confirmDeleteSection(sec)}
+                                          disabled={isBusy}
+                                          style={({ pressed, hovered }) => [
+                                            s.assignActionBtn,
+                                            s.assignActionBtnDelete,
+                                            (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
+                                            isBusy && { opacity: 0.5 },
+                                          ]}
+                                        >
+                                          {isDeleting ? (
+                                            <ActivityIndicator size="small" color="#EF4444" />
+                                          ) : (
+                                            <Feather name="trash-2" size={14} color="#EF4444" />
+                                          )}
+                                        </Pressable>
+                                      </View>
+                                    )}
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })}
                         </View>
                       )}
                     </>
@@ -1178,6 +1488,27 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+  },
+  listRowMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  listRowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  listEditBlock: {
+    gap: 4,
+  },
+  listEditActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    marginTop: 4,
   },
   listTitle: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
   listMeta: { fontSize: 11, color: "#64748B", marginTop: 2 },
