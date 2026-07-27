@@ -38,6 +38,10 @@ function isNotFound(e: unknown): boolean {
   return (e as { response?: { status?: number } })?.response?.status === 404;
 }
 
+function isForbidden(e: unknown): boolean {
+  return (e as { response?: { status?: number } })?.response?.status === 403;
+}
+
 type Person = {
   id: string;
   name: string;
@@ -202,11 +206,11 @@ export default function Attendance() {
         let roster: Person[] = [];
         try {
           const { data } = await api.get("/attendance/teachers-list");
-          roster = data;
+          roster = Array.isArray(data) ? data : [];
         } catch (e) {
-          if (!isNotFound(e)) throw e;
-          const { data } = await api.get("/people", { params: { kind: "teacher" } });
-          roster = data;
+          if (!isNotFound(e) && !isForbidden(e)) throw e;
+          const { data } = await api.get("/users/directory", { params: { role: "teacher" } });
+          roster = Array.isArray(data) ? data : [];
         }
         setPeople(roster);
         setAbsentIds(await loadExistingAbsent({
