@@ -12,19 +12,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { api, useAuth, userHasPermission } from "./auth";
+import { api, useAuth } from "./auth";
+import { colors, radii, spacing } from "./theme";
+import { calendarDayInfo, type AttendanceKind, type CalendarDayInfo } from "./attendanceCalendar";
 import {
-  BusinessEntity,
-  Permission,
-  UserRole,
-  isSuperAdminUser,
-  normalizeRole,
-} from "./rbac";
+  defaultAttendanceKind,
+  getAttendanceKindOptions,
+  resolveDefaultStaffOrg,
+  staffOrgSelectable,
+} from "./attendanceAccess";
 import { formatDate, toISODate, parseToISO } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { FormDateField } from "./components/forms/FormDateField";
-import { colors, radii, spacing } from "./theme";
-import { calendarDayInfo, type AttendanceKind, type CalendarDayInfo } from "./attendanceCalendar";
 
 type AttendanceStatus = "present" | "absent" | "late" | "leave";
 
@@ -85,93 +84,10 @@ function stringToColor(str: string) {
   return palette[h % palette.length];
 }
 
-function useKindOptions(user: ReturnType<typeof useAuth>["user"]) {
-  return useMemo(() => {
-    const privileged =
-      userHasPermission(user, Permission.MARK_PWS_ATTENDANCE)
-      || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE)
-      || userHasPermission(user, Permission.MANAGE_ACCESS);
-
-    const options: {
-      key: AttendanceKind;
-      label: string;
-      icon: keyof typeof Feather.glyphMap;
-      color: string;
-    }[] = [];
-
-    const canStudent =
-      privileged
-      || userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE)
-      || normalizeRole(user?.role || "") === UserRole.PWS_TEACHER;
-    if (canStudent) {
-      options.push({ key: "student", label: "Students", icon: "book", color: colors.primary });
-    }
-
-    const canPlayer =
-      privileged
-      || userHasPermission(user, Permission.MARK_PLAYER_ATTENDANCE)
-      || normalizeRole(user?.role || "") === UserRole.ALPHA_COACH;
-    if (canPlayer) {
-      options.push({ key: "player", label: "Players", icon: "activity", color: colors.success });
-    }
-
-    const canStaff =
-      isSuperAdminUser(user)
-      || userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
-      || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
-      || normalizeRole(user?.role || "") === UserRole.PWS_ADMIN
-      || normalizeRole(user?.role || "") === UserRole.ALPHA_ADMIN;
-    if (canStaff) {
-      options.push({ key: "staff", label: "Staff", icon: "users", color: colors.accent });
-    }
-
-    const canTeacher =
-      privileged
-      || userHasPermission(user, Permission.MARK_TEACHER_ATTENDANCE)
-      || userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS);
-    if (canTeacher) {
-      options.push({ key: "teacher", label: "Teachers", icon: "user-check", color: "#6366F1" });
-    }
-
-    const isHeadCoach =
-      normalizeRole(user?.role || "") === UserRole.ALPHA_COACH && user?.coach_type === "head";
-    const canCoach =
-      isSuperAdminUser(user)
-      || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
-      || userHasPermission(user, Permission.MANAGE_ACCESS)
-      || isHeadCoach;
-    if (canCoach) {
-      options.push({ key: "coach", label: "Coaches", icon: "award", color: "#0EA5E9" });
-    }
-
-    return options;
-  }, [user]);
-}
-
-function resolveDefaultStaffOrg(user: ReturnType<typeof useAuth>["user"]): "PWS" | "ALPHA" {
-  if (isSuperAdminUser(user)) return "PWS";
-  if (
-    userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
-    && !userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
-  ) {
-    return "ALPHA";
-  }
-  if (normalizeRole(user?.role || "") === UserRole.ALPHA_ADMIN) return "ALPHA";
-  return "PWS";
-}
-
-function staffOrgSelectable(user: ReturnType<typeof useAuth>["user"]) {
-  return isSuperAdminUser(user)
-    || (
-      userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
-      && userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
-    );
-}
-
 export default function Attendance() {
   const { user } = useAuth();
   const { isMobile } = useBreakpoint();
-  const kindOptions = useKindOptions(user);
+  const kindOptions = useMemo(() => getAttendanceKindOptions(user), [user]);
 
   const [kind, setKind] = useState<AttendanceKind>("student");
   const [groups, setGroups] = useState<string[]>([]);
@@ -196,15 +112,10 @@ export default function Attendance() {
   const readOnly = isHoliday;
 
   useEffect(() => {
-    if (user?.role === "coach" && kindOptions.some((k) => k.key === "player")) setKind("player");
-    else if (user?.role === "teacher" && kindOptions.some((k) => k.key === "student")) setKind("student");
+    const next = defaultAttendanceKind(user, kindOptions);
+    if (!next) return;
+    setKind((current) => (kindOptions.some((k) => k.key === current) ? current : next));
   }, [user, kindOptions]);
-
-  useEffect(() => {
-    if (kindOptions.length > 0 && !kindOptions.some((k) => k.key === kind)) {
-      setKind(kindOptions[0].key);
-    }
-  }, [kindOptions, kind]);
 
   useEffect(() => {
     setStaffOrg(resolveDefaultStaffOrg(user));
@@ -254,7 +165,9 @@ export default function Attendance() {
       }
 
       try {
-        const { data } = await api.get("/people/groups", { params: { kind } });
+        const { data } = await api.get("/people/groups", {
+          params: { kind, institution: "ALPHA" },
+        });
         setGroups(data.groups || []);
         setGroup(data.groups[0] || null);
       } catch {
@@ -346,8 +259,15 @@ export default function Attendance() {
       }
 
       const params: Record<string, string> = { kind };
-      if (kind === "student" && sectionId) params.section_id = sectionId;
-      else if (group) params.group = group;
+      if (kind === "student") {
+        params.institution = "PWS";
+        if (sectionId) params.section_id = sectionId;
+      } else if (kind === "player") {
+        params.institution = "ALPHA";
+        if (group) params.group = group;
+      } else if (group) {
+        params.group = group;
+      }
 
       const { data } = await api.get("/people", { params });
       setPeople(data);
@@ -529,6 +449,20 @@ export default function Attendance() {
 
   const saveCount = usesAbsentOnly ? people.length : Object.keys(marks).length;
   const activeKind = kindOptions.find((k) => k.key === kind);
+
+  if (kindOptions.length === 0) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <View style={s.deniedWrap}>
+          <Feather name="lock" size={28} color={colors.muted2} />
+          <Text style={s.deniedTitle}>Attendance not available</Text>
+          <Text style={s.deniedText}>
+            Your account does not have permission to mark attendance for any roster type.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -1027,4 +961,13 @@ const s = StyleSheet.create({
     alignItems: "center",
   },
   saveTxt: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  deniedWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  deniedTitle: { fontSize: 18, fontWeight: "800", color: colors.ink, marginTop: spacing.sm },
+  deniedText: { fontSize: 14, color: colors.muted2, textAlign: "center", lineHeight: 20 },
 });

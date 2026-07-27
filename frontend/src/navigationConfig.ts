@@ -3,6 +3,7 @@
  * Filter with `filterNavigationGroups()`; never duplicate role checks in Sidebar.tsx.
  */
 import type { User } from "./auth";
+import { canAccessTakeAttendance } from "./attendanceAccess";
 import { isCoachUser } from "./coachAccess";
 import { BusinessEntity, Permission, hasPermission, isSuperAdminUser } from "./rbac";
 import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
@@ -214,6 +215,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
               || p === "/attendance"
               || p.startsWith("/staff-attendance")
               || p.startsWith("/coach-attendance"),
+            isVisible: (ctx) => canAccessTakeAttendance(ctx.user),
           },
           {
             id: "attendance-reports",
