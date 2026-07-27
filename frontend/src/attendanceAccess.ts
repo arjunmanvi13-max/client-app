@@ -7,6 +7,108 @@ import {
   normalizeRole,
 } from "./rbac";
 import type { AttendanceKind } from "./attendanceCalendar";
+import { isCoachUser, resolveCoachDataScope } from "./coachAccess";
+
+export const PLAYER_VENUES = ["Balua", "Harding Park"] as const;
+export const PLAYER_SPORTS = ["Cricket", "Football"] as const;
+export const PLAYER_CATEGORIES = ["Daily", "Day Boarding", "Boarding", "Hostel"] as const;
+
+export type PlayerVenue = (typeof PLAYER_VENUES)[number];
+export type PlayerSport = (typeof PLAYER_SPORTS)[number];
+export type PlayerCategory = (typeof PLAYER_CATEGORIES)[number];
+
+export type PlayerFilterScope = {
+  fullAccess: boolean;
+  venues: PlayerVenue[];
+  sports: PlayerSport[];
+  categories: PlayerCategory[];
+  lockedVenues: boolean;
+  lockedSports: boolean;
+  requiresSportAssignment: boolean;
+  defaultVenues: PlayerVenue[];
+  defaultSports: PlayerSport[];
+};
+
+/** Venue/sport/category filter bounds for the Players tab (coaches scoped to assignments). */
+export function resolvePlayerFilterScope(user: User | null | undefined): PlayerFilterScope {
+  const allVenues = [...PLAYER_VENUES];
+  const allSports = [...PLAYER_SPORTS];
+  const allCategories = [...PLAYER_CATEGORIES];
+  const superAdmin = isSuperAdminUser(user);
+  const role = normalizeRole(user?.role || "");
+  const canAlpha =
+    superAdmin
+    || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
+    || role === UserRole.ALPHA_ADMIN;
+
+  if (canAlpha && !isCoachUser(user)) {
+    return {
+      fullAccess: true,
+      venues: allVenues,
+      sports: allSports,
+      categories: allCategories,
+      lockedVenues: false,
+      lockedSports: false,
+      requiresSportAssignment: false,
+      defaultVenues: [],
+      defaultSports: [],
+    };
+  }
+
+  const coachScope = resolveCoachDataScope(user);
+  if (isCoachUser(user) || role === UserRole.ALPHA_COACH) {
+    const venues = (coachScope.assignedCentres.filter((c) =>
+      allVenues.includes(c as PlayerVenue),
+    ) as PlayerVenue[]) || [];
+    const scopedVenues = venues.length ? venues : allVenues;
+    const scopedSports = coachScope.assignedSport
+      ? [coachScope.assignedSport as PlayerSport]
+      : allSports;
+    return {
+      fullAccess: false,
+      venues: scopedVenues,
+      sports: scopedSports,
+      categories: allCategories,
+      lockedVenues: scopedVenues.length <= 1,
+      lockedSports: coachScope.sportLocked,
+      requiresSportAssignment: coachScope.requiresSportAssignment,
+      defaultVenues: scopedVenues.length === 1 ? scopedVenues : [],
+      defaultSports: scopedSports.length === 1 ? scopedSports : [],
+    };
+  }
+
+  return {
+    fullAccess: true,
+    venues: allVenues,
+    sports: allSports,
+    categories: allCategories,
+    lockedVenues: false,
+    lockedSports: false,
+    requiresSportAssignment: false,
+    defaultVenues: [],
+    defaultSports: [],
+  };
+}
+
+export function toggleFilterValue<T extends string>(selected: T[], value: T): T[] {
+  return selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value];
+}
+
+export function filterPlayersBySelection<
+  T extends { centre?: string; sport?: string; player_type?: string },
+>(
+  roster: T[],
+  venues: string[],
+  sports: string[],
+  categories: string[],
+): T[] {
+  return roster.filter((p) => {
+    if (venues.length && !venues.includes(p.centre || "")) return false;
+    if (sports.length && !sports.includes(p.sport || "")) return false;
+    if (categories.length && !categories.includes(p.player_type || "")) return false;
+    return true;
+  });
+}
 
 export type AttendanceKindOption = {
   key: AttendanceKind;
@@ -44,6 +146,7 @@ export function getAttendanceKindOptions(user: User | null | undefined): Attenda
     canAlphaAttendance
     || userHasPermission(user, Permission.MARK_PLAYER_ATTENDANCE)
     || role === UserRole.ALPHA_COACH
+    || isCoachUser(user)
   ) {
     options.push({ key: "player", label: "Players", icon: "activity", color: "#16A34A" });
   }
@@ -79,7 +182,7 @@ export function defaultAttendanceKind(
   if (role === UserRole.PWS_TEACHER && options.some((o) => o.key === "student")) {
     return "student";
   }
-  if (role === UserRole.ALPHA_COACH && options.some((o) => o.key === "player")) {
+  if ((role === UserRole.ALPHA_COACH || isCoachUser(user)) && options.some((o) => o.key === "player")) {
     return "player";
   }
   return options[0].key;

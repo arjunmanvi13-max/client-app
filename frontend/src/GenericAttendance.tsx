@@ -20,7 +20,15 @@ import {
   getAttendanceKindOptions,
   resolveDefaultStaffOrg,
   staffOrgSelectable,
+  resolvePlayerFilterScope,
+  toggleFilterValue,
+  filterPlayersBySelection,
+  PLAYER_CATEGORIES,
+  type PlayerVenue,
+  type PlayerSport,
+  type PlayerCategory,
 } from "./attendanceAccess";
+import { coachSportAssignmentMessage, resolveCoachDataScope } from "./coachAccess";
 import { formatDate, toISODate, parseToISO } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { FormDateField } from "./components/forms/FormDateField";
@@ -47,6 +55,7 @@ type Person = {
   name: string;
   group?: string;
   sport?: string;
+  player_type?: string;
   organization?: string;
   centre?: string;
   coach_type?: string;
@@ -88,14 +97,61 @@ function stringToColor(str: string) {
   return palette[h % palette.length];
 }
 
+function playerMetaLine(p: Person) {
+  return [p.centre, p.sport, p.player_type].filter(Boolean).join(" · ") || "—";
+}
+
+function FilterChipRow({
+  label,
+  options,
+  selected,
+  locked,
+  onToggle,
+  testPrefix,
+}: {
+  label: string;
+  options: readonly string[];
+  selected: string[];
+  locked: boolean;
+  onToggle: (value: string) => void;
+  testPrefix: string;
+}) {
+  return (
+    <View style={s.filterGroup}>
+      <Text style={s.filterLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.groupRow}>
+        {options.map((opt) => {
+          const active = selected.includes(opt);
+          return (
+            <TouchableOpacity
+              key={opt}
+              testID={`${testPrefix}-${opt.replace(/\s+/g, "-")}`}
+              disabled={locked}
+              onPress={() => onToggle(opt)}
+              style={[s.groupChip, active && s.groupChipActive]}
+            >
+              <Text style={[s.groupText, active && s.groupTextActive]}>{opt}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function Attendance() {
   const { user } = useAuth();
   const { isMobile } = useBreakpoint();
   const kindOptions = useMemo(() => getAttendanceKindOptions(user), [user]);
+  const playerScope = useMemo(() => resolvePlayerFilterScope(user), [user]);
+  const coachScope = useMemo(() => resolveCoachDataScope(user), [user]);
 
   const [kind, setKind] = useState<AttendanceKind>("student");
   const [groups, setGroups] = useState<string[]>([]);
   const [group, setGroup] = useState<string | null>(null);
+  const [playerVenues, setPlayerVenues] = useState<PlayerVenue[]>([]);
+  const [playerSports, setPlayerSports] = useState<PlayerSport[]>([]);
+  const [playerCategories, setPlayerCategories] = useState<PlayerCategory[]>([]);
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
@@ -124,6 +180,13 @@ export default function Attendance() {
   useEffect(() => {
     setStaffOrg(resolveDefaultStaffOrg(user));
   }, [user]);
+
+  useEffect(() => {
+    if (kind !== "player") return;
+    setPlayerVenues(playerScope.defaultVenues);
+    setPlayerSports(playerScope.defaultSports);
+    setPlayerCategories([]);
+  }, [kind, playerScope.defaultVenues, playerScope.defaultSports]);
 
   useEffect(() => {
     const iso = parseToISO(attendanceDateDisplay) || attendanceDateIso;
@@ -160,7 +223,7 @@ export default function Attendance() {
         return;
       }
 
-      if (kind === "teacher" || kind === "coach" || kind === "staff") {
+      if (kind === "teacher" || kind === "coach" || kind === "staff" || kind === "player") {
         setGroups([]);
         setGroup(null);
         setSections([]);
@@ -255,6 +318,48 @@ export default function Attendance() {
         return;
       }
 
+      if (kind === "player") {
+        if (playerScope.requiresSportAssignment) {
+          setPeople([]);
+          setMarks({});
+          return;
+        }
+
+        const params: Record<string, string> = { kind: "player", institution: "ALPHA" };
+        if (playerVenues.length === 1) params.centre = playerVenues[0];
+        if (playerSports.length === 1) params.sport = playerSports[0];
+        if (playerCategories.length === 1) params.player_type = playerCategories[0];
+
+        const { data } = await api.get("/people", { params });
+        const roster = filterPlayersBySelection(
+          data as Person[],
+          playerVenues,
+          playerSports,
+          playerCategories,
+        );
+        setPeople(roster);
+
+        const attParams: Record<string, string> = {
+          date: attendanceDateIso,
+          kind: "player",
+          session,
+        };
+        if (playerSports.length === 1) attParams.sport = playerSports[0];
+
+        const att = await api.get("/attendance", { params: attParams });
+        const rosterIds = new Set(roster.map((p) => p.id));
+        const m: Record<string, AttendanceStatus> = {};
+        roster.forEach((p) => {
+          m[p.id] = "present";
+        });
+        att.data.forEach((r: { person_id: string; status: AttendanceStatus }) => {
+          if (rosterIds.has(r.person_id)) m[r.person_id] = r.status;
+        });
+        setMarks(m);
+        setAbsentIds(new Set());
+        return;
+      }
+
       const rosterKey = kind === "student" ? sectionId : group;
       if (!rosterKey) {
         setPeople([]);
@@ -266,9 +371,6 @@ export default function Attendance() {
       if (kind === "student") {
         params.institution = "PWS";
         if (sectionId) params.section_id = sectionId;
-      } else if (kind === "player") {
-        params.institution = "ALPHA";
-        if (group) params.group = group;
       } else if (group) {
         params.group = group;
       }
@@ -302,7 +404,7 @@ export default function Attendance() {
     } finally {
       setLoading(false);
     }
-  }, [kind, group, sectionId, session, attendanceDateIso, staffOrg]);
+  }, [kind, group, sectionId, session, attendanceDateIso, staffOrg, playerVenues, playerSports, playerCategories, playerScope.requiresSportAssignment]);
 
   useEffect(() => {
     loadPeople();
@@ -413,9 +515,16 @@ export default function Attendance() {
       const payload: Record<string, unknown> = {
         date: attendanceDateIso,
         kind,
-        group,
+        group: kind === "player" ? null : group,
         session,
-        sport: null,
+        sport:
+          kind === "player"
+            ? (playerSports.length === 1 ? playerSports[0] : people[0]?.sport || null)
+            : null,
+        centre:
+          kind === "player"
+            ? (playerVenues.length === 1 ? playerVenues[0] : people[0]?.centre || null)
+            : null,
         marks: Object.entries(marks).map(([person_id, status]) => ({ person_id, status })),
       };
       if (kind === "student" && sectionId) payload.section_id = sectionId;
@@ -453,6 +562,127 @@ export default function Attendance() {
 
   const saveCount = usesAbsentOnly ? people.length : Object.keys(marks).length;
   const activeKind = kindOptions.find((k) => k.key === kind);
+  const playerFiltersBlocked = kind === "player" && playerScope.requiresSportAssignment;
+
+  const renderRoster = () => {
+    if (loading) {
+      return <ActivityIndicator color={colors.accent} style={{ marginVertical: 24 }} />;
+    }
+    if (loadError) {
+      return (
+        <View style={s.errorBox} testID="attendance-load-error">
+          <Feather name="alert-circle" size={18} color={colors.danger} />
+          <Text style={s.errorText}>{loadError}</Text>
+        </View>
+      );
+    }
+    if (playerFiltersBlocked) {
+      return (
+        <View style={s.blockedBox}>
+          <Feather name="alert-circle" size={28} color={colors.danger} />
+          <Text style={s.blockedTitle}>Sport assignment required</Text>
+          <Text style={s.blockedText}>{coachSportAssignmentMessage(coachScope)}</Text>
+        </View>
+      );
+    }
+    if (people.length === 0) {
+      return (
+        <Text style={s.empty}>
+          {kind === "player" ? "No players match the selected filters." : "No people in this group."}
+        </Text>
+      );
+    }
+    if (usesAbsentOnly) {
+      return people.map((p) => {
+        const isAbs = absentIds.has(p.id);
+        return (
+          <TouchableOpacity
+            key={p.id}
+            testID={`person-${p.id}`}
+            onPress={() => toggleAbsent(p.id)}
+            disabled={readOnly}
+            style={[s.row, isAbs && s.rowAbsent, readOnly && s.rowReadonly]}
+          >
+            <View style={[s.avatar, { backgroundColor: isAbs ? colors.dangerSoft : colors.successSoft }]}>
+              <Feather name={isAbs ? "x" : "check"} size={16} color={isAbs ? colors.danger : colors.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowName}>{p.name}</Text>
+              <Text style={s.rowMeta}>
+                {kind === "player" ? playerMetaLine(p) : `${p.group || kind}${p.organization ? ` · ${p.organization}` : ""}${p.sport ? ` · ${p.sport}` : ""}${p.centre ? ` · ${p.centre}` : ""}`}
+              </Text>
+            </View>
+            <Text style={[s.statusPill, { color: isAbs ? colors.danger : colors.success }]}>
+              {isAbs ? "Absent" : "Present"}
+            </Text>
+          </TouchableOpacity>
+        );
+      });
+    }
+    if (isMobile) {
+      return (
+        <View style={s.mobileGrid}>
+          {people.map((p) => {
+            const st = marks[p.id] || "present";
+            const color = STATUS_COLOR[st];
+            return (
+              <TouchableOpacity
+                key={p.id}
+                testID={`person-${p.id}`}
+                onPress={() => cycleMark(p.id)}
+                disabled={readOnly}
+                style={[s.cell, { borderColor: color, backgroundColor: color + "14" }, readOnly && s.rowReadonly]}
+              >
+                <View style={[s.cellBadge, { backgroundColor: color }]}>
+                  <Text style={s.cellBadgeTxt}>{STATUS_SHORT[st]}</Text>
+                </View>
+                <Text style={s.cellName} numberOfLines={1}>
+                  {shortName(p.name)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      );
+    }
+    return people.map((p) => (
+      <View key={p.id} style={[s.row, readOnly && s.rowReadonly]} testID={`person-${p.id}`}>
+        <View style={[s.avatar, { backgroundColor: stringToColor(p.name) }]}>
+          <Text style={s.avatarTxt}>
+            {p.name
+              .split(" ")
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join("")}
+          </Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.rowName}>{p.name}</Text>
+          <Text style={s.rowMeta}>{kind === "player" ? playerMetaLine(p) : `${p.group || "—"}${p.sport ? ` · ${p.sport}` : ""}`}</Text>
+        </View>
+        <View style={s.statusBtns}>
+          {STATUSES.map((st) => (
+            <TouchableOpacity
+              key={st.key}
+              testID={`mark-${p.id}-${st.key}`}
+              onPress={() => setMark(p.id, st.key)}
+              disabled={readOnly}
+              style={[s.statBtn, marks[p.id] === st.key && { backgroundColor: st.color }]}
+            >
+              <Text
+                style={[
+                  s.statBtnTxt,
+                  { color: marks[p.id] === st.key ? "#fff" : st.color },
+                ]}
+              >
+                {st.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    ));
+  };
 
   if (kindOptions.length === 0) {
     return (
@@ -470,86 +700,85 @@ export default function Attendance() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
-        <View style={s.pageHeader}>
-          <Text style={s.breadcrumb}>OPERATIONS · ATTENDANCE</Text>
-          <Text style={s.h1}>Take Attendance</Text>
-          <Text style={s.sub}>
-            {calendarInfo?.weekday || "—"} · linked to academic calendar
-          </Text>
-        </View>
+      <View style={s.shell}>
+        <View style={s.topPane}>
+          <View style={s.pageHeaderCompact}>
+            <Text style={s.breadcrumb}>OPERATIONS · ATTENDANCE</Text>
+            <Text style={s.h1Compact}>Take Attendance</Text>
+            <Text style={s.subCompact}>
+              {calendarInfo?.weekday || "—"} · {kind === "player" ? "ALPHA players" : "linked to academic calendar"}
+            </Text>
+          </View>
 
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Date & session</Text>
-          <View style={[s.filterRow, !isMobile && s.filterRowWide]}>
-            <View style={[s.filterCell, !isMobile && { flex: 1, maxWidth: 220 }]}>
-              <FormDateField
-                label="Attendance date"
-                compact
-                value={attendanceDateDisplay}
-                onChangeText={handleDateChange}
-                readOnly={false}
-                testID="attendance-date"
-              />
-            </View>
-            <View style={s.sessionRow}>
-              {SESSIONS.map((sess) => (
-                <TouchableOpacity
-                  key={sess}
-                  testID={`session-${sess}`}
-                  onPress={() => setSession(sess)}
-                  style={[s.sessionChip, session === sess && s.sessionChipActive]}
-                >
-                  <Text style={[s.sessionText, session === sess && s.sessionTextActive]}>{sess}</Text>
-                </TouchableOpacity>
-              ))}
+          <View style={s.cardCompact}>
+            <View style={[s.filterRow, !isMobile && s.filterRowWide]}>
+              <View style={[s.filterCell, !isMobile && { flex: 1, maxWidth: 200 }]}>
+                <FormDateField
+                  label="Date"
+                  compact
+                  value={attendanceDateDisplay}
+                  onChangeText={handleDateChange}
+                  readOnly={false}
+                  testID="attendance-date"
+                />
+              </View>
+              <View style={s.sessionRow}>
+                {SESSIONS.map((sess) => (
+                  <TouchableOpacity
+                    key={sess}
+                    testID={`session-${sess}`}
+                    onPress={() => setSession(sess)}
+                    style={[s.sessionChip, session === sess && s.sessionChipActive]}
+                  >
+                    <Text style={[s.sessionText, session === sess && s.sessionTextActive]}>{sess}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={s.hScroll}
-          contentContainerStyle={s.kindRow}
-        >
-          {kindOptions.map((k) => (
-            <TouchableOpacity
-              key={k.key}
-              testID={`kind-${k.key}`}
-              onPress={() => setKind(k.key)}
-              style={[s.kindChip, kind === k.key && { backgroundColor: k.color, borderColor: k.color }]}
-            >
-              <Feather name={k.icon} size={14} color={kind === k.key ? "#fff" : k.color} />
-              <Text style={[s.kindText, { color: kind === k.key ? "#fff" : k.color }]}>{k.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.hScroll}
+            contentContainerStyle={s.kindRow}
+          >
+            {kindOptions.map((k) => (
+              <TouchableOpacity
+                key={k.key}
+                testID={`kind-${k.key}`}
+                onPress={() => setKind(k.key)}
+                style={[s.kindChip, kind === k.key && { backgroundColor: k.color, borderColor: k.color }]}
+              >
+                <Feather name={k.icon} size={14} color={kind === k.key ? "#fff" : k.color} />
+                <Text style={[s.kindText, { color: kind === k.key ? "#fff" : k.color }]}>{k.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
 
-        {kind === "staff" && staffOrgSelectable(user) && (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Staff entity</Text>
-            <View style={s.sessionRow}>
-              {(["PWS", "ALPHA"] as const).map((org) => (
-                <TouchableOpacity
-                  key={org}
-                  testID={`staff-org-${org}`}
-                  onPress={() => setStaffOrg(org)}
-                  style={[s.sessionChip, staffOrg === org && s.sessionChipActive]}
-                >
-                  <Text style={[s.sessionText, staffOrg === org && s.sessionTextActive]}>{org}</Text>
-                </TouchableOpacity>
-              ))}
+          {kind === "staff" && staffOrgSelectable(user) && (
+            <View style={s.cardCompact}>
+              <Text style={s.cardTitleCompact}>Staff entity</Text>
+              <View style={s.sessionRow}>
+                {(["PWS", "ALPHA"] as const).map((org) => (
+                  <TouchableOpacity
+                    key={org}
+                    testID={`staff-org-${org}`}
+                    onPress={() => setStaffOrg(org)}
+                    style={[s.sessionChip, staffOrg === org && s.sessionChipActive]}
+                  >
+                    <Text style={[s.sessionText, staffOrg === org && s.sessionTextActive]}>{org}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {(kind === "student" || kind === "player") && (
-          <View style={s.card}>
-            <Text style={s.cardTitle}>{kind === "student" ? "Class / section" : "Sport / group"}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.groupRow}>
-              {kind === "student" ? (
-                sections.length === 0 ? (
+          {kind === "student" && (
+            <View style={s.cardCompact}>
+              <Text style={s.cardTitleCompact}>Class / section</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.groupRow}>
+                {sections.length === 0 ? (
                   <Text style={s.emptyInline}>No sections assigned. Contact the school administrator.</Text>
                 ) : (
                   sections.map((sec) => (
@@ -565,194 +794,113 @@ export default function Attendance() {
                       <Text style={[s.groupText, sectionId === sec.id && s.groupTextActive]}>{sec.label}</Text>
                     </TouchableOpacity>
                   ))
-                )
-              ) : (
-                <>
-                  {groups.length === 0 && <Text style={s.emptyInline}>No groups for this kind yet.</Text>}
-                  {groups.map((g) => (
-                    <TouchableOpacity
-                      key={g}
-                      testID={`group-${g}`}
-                      onPress={() => setGroup(g)}
-                      style={[s.groupChip, group === g && s.groupChipActive]}
-                    >
-                      <Text style={[s.groupText, group === g && s.groupTextActive]}>{g}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              )}
-            </ScrollView>
-          </View>
-        )}
+                )}
+              </ScrollView>
+            </View>
+          )}
 
-        {isHoliday && (
-          <View style={s.holidayBanner} testID="holiday-banner">
-            <Feather name="sun" size={16} color="#92400E" />
-            <View style={{ flex: 1 }}>
-              <Text style={s.holidayTitle}>Holiday — no attendance required</Text>
-              <Text style={s.holidayText}>
-                {calendarInfo?.weekday || "Sunday"} is a calendar holiday for {kind}s. View only.
+          {kind === "player" && (
+            <View style={s.cardCompact}>
+              <Text style={s.cardTitleCompact}>Player filters</Text>
+              {!playerScope.fullAccess && (
+                <Text style={s.scopeHint}>Showing your assigned venue and sport roster only.</Text>
+              )}
+              <FilterChipRow
+                label="Venue"
+                options={playerScope.venues}
+                selected={playerVenues}
+                locked={playerScope.lockedVenues}
+                testPrefix="player-venue"
+                onToggle={(v) => setPlayerVenues((prev) => toggleFilterValue(prev, v as PlayerVenue))}
+              />
+              <FilterChipRow
+                label="Sport"
+                options={playerScope.sports}
+                selected={playerSports}
+                locked={playerScope.lockedSports}
+                testPrefix="player-sport"
+                onToggle={(v) => setPlayerSports((prev) => toggleFilterValue(prev, v as PlayerSport))}
+              />
+              <FilterChipRow
+                label="Category"
+                options={PLAYER_CATEGORIES}
+                selected={playerCategories}
+                locked={false}
+                testPrefix="player-category"
+                onToggle={(v) => setPlayerCategories((prev) => toggleFilterValue(prev, v as PlayerCategory))}
+              />
+            </View>
+          )}
+
+          {isHoliday && (
+            <View style={s.holidayBanner} testID="holiday-banner">
+              <Feather name="sun" size={16} color="#92400E" />
+              <View style={{ flex: 1 }}>
+                <Text style={s.holidayTitle}>Holiday — no attendance required</Text>
+                <Text style={s.holidayText}>
+                  {calendarInfo?.weekday || "Sunday"} is a calendar holiday for {kind}s. View only.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <View style={s.summaryCard}>
+            {STATUSES.map((st) => (
+              <View key={st.key} style={[s.sumBox, { backgroundColor: st.color + "1A" }]}>
+                <Text style={[s.sumLabel, { color: st.color }]}>{st.label}</Text>
+                <Text style={[s.sumValue, { color: st.color }]}>{counts[st.key] ?? 0}</Text>
+              </View>
+            ))}
+            {!readOnly && (
+              <TouchableOpacity style={s.allBtn} onPress={markAllPresent} testID="mark-all-present">
+                <Feather name="check-circle" size={14} color="#fff" />
+                <Text style={s.allText}>All P</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {!readOnly && (
+            <View style={s.hintBanner}>
+              <Feather name="info" size={12} color={colors.primary} />
+              <Text style={s.hintText}>
+                {usesAbsentOnly
+                  ? "All Present by default. Tap a person to mark Absent."
+                  : isMobile
+                    ? "All Present by default. Tap to cycle P → A → L → Lv."
+                    : "All Present by default. Use buttons to mark exceptions only."}
               </Text>
             </View>
-          </View>
-        )}
-
-        <View style={s.summaryCard}>
-          {STATUSES.map((st) => (
-            <View key={st.key} style={[s.sumBox, { backgroundColor: st.color + "1A" }]}>
-              <Text style={[s.sumLabel, { color: st.color }]}>{st.label}</Text>
-              <Text style={[s.sumValue, { color: st.color }]}>{counts[st.key] ?? 0}</Text>
-            </View>
-          ))}
-          {!readOnly && (
-            <TouchableOpacity style={s.allBtn} onPress={markAllPresent} testID="mark-all-present">
-              <Feather name="check-circle" size={14} color="#fff" />
-              <Text style={s.allText}>All P</Text>
-            </TouchableOpacity>
           )}
         </View>
 
-        {!readOnly && (
-          <View style={s.hintBanner}>
-            <Feather name="info" size={12} color={colors.primary} />
-            <Text style={s.hintText}>
-              {usesAbsentOnly
-                ? "All Present by default. Tap a person to mark Absent."
-                : isMobile
-                  ? "All Present by default. Tap to cycle P → A → L → Lv."
-                  : "All Present by default. Use buttons to mark exceptions only."}
-            </Text>
-          </View>
-        )}
-
-        <View style={s.listCard}>
-          {loading ? (
-            <ActivityIndicator color={colors.accent} style={{ marginVertical: 32 }} />
-          ) : loadError ? (
-            <View style={s.errorBox} testID="attendance-load-error">
-              <Feather name="alert-circle" size={18} color={colors.danger} />
-              <Text style={s.errorText}>{loadError}</Text>
-            </View>
-          ) : people.length === 0 ? (
-            <Text style={s.empty}>No people in this group.</Text>
-          ) : usesAbsentOnly ? (
-            people.map((p) => {
-              const isAbs = absentIds.has(p.id);
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  testID={`person-${p.id}`}
-                  onPress={() => toggleAbsent(p.id)}
-                  disabled={readOnly}
-                  style={[s.row, isAbs && s.rowAbsent, readOnly && s.rowReadonly]}
-                >
-                  <View style={[s.avatar, { backgroundColor: isAbs ? colors.dangerSoft : colors.successSoft }]}>
-                    <Feather name={isAbs ? "x" : "check"} size={16} color={isAbs ? colors.danger : colors.success} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.rowName}>{p.name}</Text>
-                    <Text style={s.rowMeta}>
-                      {p.group || kind}
-                      {p.organization ? ` · ${p.organization}` : ""}
-                      {p.sport ? ` · ${p.sport}` : ""}
-                      {p.centre ? ` · ${p.centre}` : ""}
-                    </Text>
-                  </View>
-                  <Text style={[s.statusPill, { color: isAbs ? colors.danger : colors.success }]}>
-                    {isAbs ? "Absent" : "Present"}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          ) : isMobile ? (
-            <View style={s.mobileGrid}>
-              {people.map((p) => {
-                const st = marks[p.id] || "present";
-                const color = STATUS_COLOR[st];
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    testID={`person-${p.id}`}
-                    onPress={() => cycleMark(p.id)}
-                    disabled={readOnly}
-                    style={[s.cell, { borderColor: color, backgroundColor: color + "14" }, readOnly && s.rowReadonly]}
-                  >
-                    <View style={[s.cellBadge, { backgroundColor: color }]}>
-                      <Text style={s.cellBadgeTxt}>{STATUS_SHORT[st]}</Text>
-                    </View>
-                    <Text style={s.cellName} numberOfLines={1}>
-                      {shortName(p.name)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : (
-            people.map((p) => (
-              <View key={p.id} style={[s.row, readOnly && s.rowReadonly]} testID={`person-${p.id}`}>
-                <View style={[s.avatar, { backgroundColor: stringToColor(p.name) }]}>
-                  <Text style={s.avatarTxt}>
-                    {p.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.rowName}>{p.name}</Text>
-                  <Text style={s.rowMeta}>
-                    {p.group || "—"}
-                    {p.sport ? ` · ${p.sport}` : ""}
-                  </Text>
-                </View>
-                <View style={s.statusBtns}>
-                  {STATUSES.map((st) => (
-                    <TouchableOpacity
-                      key={st.key}
-                      testID={`mark-${p.id}-${st.key}`}
-                      onPress={() => setMark(p.id, st.key)}
-                      disabled={readOnly}
-                      style={[s.statBtn, marks[p.id] === st.key && { backgroundColor: st.color }]}
-                    >
-                      <Text
-                        style={[
-                          s.statBtnTxt,
-                          { color: marks[p.id] === st.key ? "#fff" : st.color },
-                        ]}
-                      >
-                        {st.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            ))
-          )}
-        </View>
-
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      <View style={[s.bottomBar, isMobile && s.bottomBarMobile]}>
-        <TouchableOpacity
-          testID="save-attendance"
-          onPress={submit}
-          disabled={saving || saveCount === 0 || readOnly}
-          style={[
-            s.saveBtn,
-            activeKind && { backgroundColor: activeKind.color },
-            (saving || saveCount === 0 || readOnly) && { opacity: 0.5 },
-          ]}
+        <ScrollView
+          style={s.listScroll}
+          contentContainerStyle={s.listScrollInner}
+          keyboardShouldPersistTaps="handled"
         >
-          {saving ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={s.saveTxt}>
-              {readOnly ? "Holiday — read only" : `Save attendance (${saveCount})`}
-            </Text>
-          )}
-        </TouchableOpacity>
+          <View style={s.listCard}>{renderRoster()}</View>
+        </ScrollView>
+
+        <View style={[s.bottomBar, isMobile && s.bottomBarMobile]}>
+          <TouchableOpacity
+            testID="save-attendance"
+            onPress={submit}
+            disabled={saving || saveCount === 0 || readOnly || playerFiltersBlocked}
+            style={[
+              s.saveBtn,
+              activeKind && { backgroundColor: activeKind.color },
+              (saving || saveCount === 0 || readOnly || playerFiltersBlocked) && { opacity: 0.5 },
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={s.saveTxt}>
+                {readOnly ? "Holiday — read only" : `Save attendance (${saveCount})`}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -760,6 +908,24 @@ export default function Attendance() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  shell: {
+    flex: 1,
+    ...Platform.select({
+      web: { height: "100vh", maxHeight: "100vh", overflow: "hidden" } as object,
+      default: {},
+    }),
+  },
+  topPane: {
+    flexShrink: 0,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  listScroll: { flex: 1 },
+  listScrollInner: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
+  pageHeaderCompact: { marginBottom: spacing.xs },
+  h1Compact: { fontSize: 22, fontWeight: "800", color: colors.ink, letterSpacing: -0.5, marginTop: 4 },
+  subCompact: { fontSize: 12, color: colors.muted2, marginTop: 2 },
   page: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl },
   pageHeader: { marginBottom: spacing.lg },
   breadcrumb: {
@@ -771,6 +937,28 @@ const s = StyleSheet.create({
   },
   h1: { fontSize: 28, fontWeight: "800", color: colors.ink, letterSpacing: -0.5, marginTop: 6 },
   sub: { fontSize: 13, color: colors.muted2, marginTop: 4 },
+  cardCompact: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: spacing.md,
+    ...Platform.select({
+      web: { boxShadow: "0 1px 3px rgba(15,23,42,0.05)" } as object,
+      default: {},
+    }),
+  },
+  cardTitleCompact: { fontSize: 12, fontWeight: "800", color: colors.ink, marginBottom: spacing.sm },
+  scopeHint: { fontSize: 11, color: colors.muted2, marginBottom: spacing.sm },
+  filterGroup: { marginBottom: spacing.sm },
+  filterLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.muted2,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
@@ -842,11 +1030,10 @@ const s = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    marginBottom: spacing.sm,
     alignItems: "center",
-    padding: spacing.md,
+    padding: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: radii.xl,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -875,9 +1062,8 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     backgroundColor: colors.primarySofter,
     borderRadius: radii.md,
   },
@@ -942,21 +1128,24 @@ const s = StyleSheet.create({
   cellBadge: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   cellBadgeTxt: { color: "#fff", fontWeight: "800", fontSize: 11 },
   cellName: { flex: 1, fontSize: 13, fontWeight: "700", color: colors.ink },
+  blockedBox: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+    gap: spacing.sm,
+  },
+  blockedTitle: { fontSize: 16, fontWeight: "800", color: colors.ink },
+  blockedText: { fontSize: 13, color: colors.muted2, textAlign: "center", lineHeight: 18 },
   bottomBar: {
-    position: "absolute",
-    bottom: 78,
-    left: 0,
-    right: 0,
+    flexShrink: 0,
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    backgroundColor: "transparent",
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   bottomBarMobile: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    backgroundColor: "#FFFFFFF2",
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
   },
   saveBtn: {
     backgroundColor: colors.accent,
