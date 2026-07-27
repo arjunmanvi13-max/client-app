@@ -195,37 +195,24 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
     icon: "activity",
     children: [
       {
-        id: "attendance",
+        id: "attendance-take",
         label: "Attendance",
-        icon: "calendar",
+        icon: "user-check",
+        href: "/(tabs)/attendance",
         match: (p) =>
           p.startsWith("/(tabs)/attendance")
           || p === "/attendance"
           || p.startsWith("/staff-attendance")
-          || p.startsWith("/coach-attendance")
-          || p.startsWith("/admin/attendance"),
-        children: [
-          {
-            id: "attendance-take",
-            label: "Take Attendance",
-            icon: "user-check",
-            href: "/(tabs)/attendance",
-            match: (p) =>
-              p.startsWith("/(tabs)/attendance")
-              || p === "/attendance"
-              || p.startsWith("/staff-attendance")
-              || p.startsWith("/coach-attendance"),
-            isVisible: (ctx) => canAccessTakeAttendance(ctx.user),
-          },
-          {
-            id: "attendance-reports",
-            label: "Attendance Reports",
-            icon: "bar-chart",
-            href: "/admin/attendance",
-            match: matchPrefix(["/admin/attendance"]),
-            permissions: [Permission.VIEW_ATTENDANCE, Permission.RUN_PWS_REPORTS, Permission.RUN_ALPHA_REPORTS],
-          },
-        ],
+          || p.startsWith("/coach-attendance"),
+        isVisible: (ctx) => canAccessTakeAttendance(ctx.user),
+      },
+      {
+        id: "attendance-reports",
+        label: "Attendance Reports",
+        icon: "bar-chart",
+        href: "/admin/attendance",
+        match: matchPrefix(["/admin/attendance"]),
+        permissions: [Permission.VIEW_ATTENDANCE, Permission.RUN_PWS_REPORTS, Permission.RUN_ALPHA_REPORTS],
       },
       {
         id: "hostel",
@@ -234,14 +221,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         href: "/(tabs)/hostel",
         match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel",
         permissions: [Permission.MARK_HOSTEL_ATTENDANCE],
-      },
-      {
-        id: "bulk-upload",
-        label: "Bulk Upload",
-        icon: "upload-cloud",
-        href: "/admin/bulk-upload",
-        match: matchPrefix(["/admin/bulk-upload"]),
-        permissions: [Permission.BULK_UPLOAD_USERS],
       },
     ],
   },
@@ -353,6 +332,14 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         href: "/admin/academy-structure",
         match: matchPrefix(["/admin/academy-structure"]),
         isVisible: (ctx) => isSuperAdminUser(ctx.user),
+      },
+      {
+        id: "bulk-upload",
+        label: "Bulk Upload",
+        icon: "upload-cloud",
+        href: "/admin/bulk-upload",
+        match: matchPrefix(["/admin/bulk-upload"]),
+        permissions: [Permission.BULK_UPLOAD_USERS],
       },
       {
         id: "settings",

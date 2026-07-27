@@ -66,9 +66,21 @@ function run() {
   );
   assert(!directoryGroup?.children.some((c) => c.children?.length), "Directory has no nested dropdown items");
 
-  const attendanceParent = NAVIGATION_GROUPS.find((g) => g.id === "operations")?.children.find((c) => c.id === "attendance");
-  assert(attendanceParent?.children?.some((c) => c.id === "attendance-take"), "Attendance expands to Take Attendance");
-  assert(attendanceParent?.children?.some((c) => c.id === "attendance-reports"), "Attendance expands to Attendance Reports");
+  const operationsGroup = NAVIGATION_GROUPS.find((g) => g.id === "operations");
+  assert(!!operationsGroup, "Operations group exists");
+  assert(
+    operationsGroup?.children.map((c) => c.id).join(",") === "attendance-take,attendance-reports,hostel",
+    "Operations items are flat without nested Attendance wrapper",
+  );
+  assert(!operationsGroup?.children.some((c) => c.children?.length), "Operations has no nested dropdown items");
+  assert(
+    operationsGroup?.children.find((c) => c.id === "attendance-take")?.label === "Attendance",
+    "Take Attendance is renamed to Attendance",
+  );
+
+  const systemGroupNav = NAVIGATION_GROUPS.find((g) => g.id === "system");
+  assert(systemGroupNav?.children.some((c) => c.id === "bulk-upload"), "Bulk Upload is under System & Settings");
+  assert(!operationsGroup?.children.some((c) => c.id === "bulk-upload"), "Bulk Upload removed from Operations");
 
   const assessmentsParent = NAVIGATION_GROUPS.find((g) => g.id === "academics")?.children.find((c) => c.id === "assessments");
   assert(assessmentsParent?.children?.some((c) => c.id === "player-assessments"), "Assessments includes Player Assessments");
@@ -96,7 +108,7 @@ function run() {
   assert(!coachGroups.find((g) => g.id === "financials"), "Coach should not see Financials");
   assert(!coachGroups.find((g) => g.id === "system"), "Coach should not see System & Settings");
   const coachLeaves = flattenLeafItems(coachGroups);
-  assert(coachLeaves.some((i) => i.id === "attendance-take"), "Coach should see Take Attendance");
+  assert(coachLeaves.some((i) => i.id === "attendance-take"), "Coach should see Attendance");
   assert(coachLeaves.some((i) => i.id === "player-assessments"), "Coach should see Player Assessments");
   assert(!coachLeaves.some((i) => i.id === "coach-assessments"), "Coach should not see Coach Assessments admin");
   assert(!coachLeaves.some((i) => i.id === "directory-master"), "Coach should not see master Directory");
@@ -142,7 +154,7 @@ function run() {
     .find((i) => i.id === "collect-fees");
   assert(!!feeCollectionItem?.match("/fees/pws-student/1"), "Fee student drawer activates Collect Fees");
 
-  const attReports = attendanceParent?.children?.find((c) => c.id === "attendance-reports");
+  const attReports = operationsGroup?.children.find((c) => c.id === "attendance-reports");
   assert(!!attReports?.match("/admin/attendance/summary"), "Attendance report detail activates Attendance Reports");
 
   const reportCardItem = NAVIGATION_GROUPS.find((g) => g.id === "academics")?.children.find((c) => c.id === "report-cards");
