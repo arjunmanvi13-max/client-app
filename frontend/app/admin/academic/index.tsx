@@ -162,6 +162,24 @@ export default function AcademicAdmin() {
     [sections, sectionGradeId],
   );
 
+  const gradeOptions = useMemo(
+    () => grades.map((g) => ({ value: g.id, label: stdLabel(g.name) })),
+    [grades],
+  );
+
+  const sectionCountByGrade = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const sec of sections) {
+      map.set(sec.grade_id, (map.get(sec.grade_id) || 0) + 1);
+    }
+    return map;
+  }, [sections]);
+
+  const selectedGrade = useMemo(
+    () => grades.find((g) => g.id === sectionGradeId) || null,
+    [grades, sectionGradeId],
+  );
+
   const groupedAssignments = useMemo((): GroupedAssignment[] => {
     const map = new Map<string, { teacher: any; rows: Map<string, GroupedAssignmentRow> }>();
     for (const a of classAssignments) {
@@ -629,6 +647,11 @@ export default function AcademicAdmin() {
     setEditingSectionGradeId(null);
   };
 
+  const selectGrade = (gradeId: string) => {
+    setSectionGradeId(gradeId);
+    if (editingSectionId) cancelEditSection();
+  };
+
   const saveSection = async (sectionId: string) => {
     const name = editingSectionName.trim();
     if (!name || !editingSectionGradeId || isReadOnly) return;
@@ -932,6 +955,329 @@ export default function AcademicAdmin() {
             </View>
           )}
         </View>
+      ) : tab === "structure" ? (
+        <View style={s.structureViewport}>
+          {loading ? (
+            <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} />
+          ) : (
+            <View style={[s.structureShell, isWide && s.structureShellWide]}>
+              {/* Left: Standards */}
+              <View style={[s.structurePanel, s.standardsPanel, isWide && { flex: 0.42 }]}>
+                <View style={s.structurePanelHeader}>
+                  <Text style={s.structurePanelTitle}>Standards</Text>
+                  <Text style={s.structurePanelCount}>{grades.length} std</Text>
+                </View>
+                {!isReadOnly && missingDefaultStandards.length > 0 && (
+                  <TouchableOpacity
+                    testID="btn-seed-standards"
+                    style={[s.structureSeedLink, seedingStandards && { opacity: 0.6 }]}
+                    onPress={seedDefaultStandards}
+                    disabled={seedingStandards}
+                  >
+                    {seedingStandards ? (
+                      <ActivityIndicator size="small" color="#1E40AF" />
+                    ) : (
+                      <Text style={s.structureSeedLinkTxt}>
+                        + Add {missingDefaultStandards.length} default std
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+                {!isReadOnly && (
+                  <View style={s.compactRow}>
+                    <TextInput
+                      testID="input-grade"
+                      value={gradeName}
+                      onChangeText={setGradeName}
+                      placeholder="Std e.g. 9"
+                      style={s.compactInput}
+                      placeholderTextColor="#94A3B8"
+                    />
+                    <TouchableOpacity testID="btn-add-grade" style={s.compactBtn} onPress={addGrade}>
+                      <Text style={s.compactBtnTxt}>Add Std</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <ScrollView
+                  style={s.structureListScroll}
+                  contentContainerStyle={s.structureListContent}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                  refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                >
+                  {grades.length === 0 ? (
+                    <Text style={s.hintCompact}>No standards yet.</Text>
+                  ) : grades.map((g) => {
+                    const isSelected = sectionGradeId === g.id;
+                    const isEditing = editingGradeId === g.id;
+                    const isSaving = savingGradeId === g.id;
+                    const isDeleting = deletingGradeId === g.id;
+                    const isBusy = isSaving || isDeleting;
+                    const secCount = sectionCountByGrade.get(g.id) || 0;
+                    return (
+                      <View key={g.id} testID={`grade-row-${g.id}`}>
+                        {isEditing ? (
+                          <View style={[s.gradeRowCompact, s.gradeRowEditing]}>
+                            <TextInput
+                              testID={`edit-grade-input-${g.id}`}
+                              value={editingGradeName}
+                              onChangeText={setEditingGradeName}
+                              placeholder="Std e.g. 9"
+                              style={[s.compactInput, { marginBottom: 6 }]}
+                              placeholderTextColor="#94A3B8"
+                              editable={!isBusy}
+                            />
+                            <View style={s.listEditActions}>
+                              <TouchableOpacity
+                                testID={`cancel-edit-grade-${g.id}`}
+                                style={s.cancelEditBtnCompact}
+                                onPress={cancelEditGrade}
+                                disabled={isBusy}
+                              >
+                                <Text style={s.cancelEditTxt}>Cancel</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                testID={`save-edit-grade-${g.id}`}
+                                style={[s.compactBtn, isBusy && { opacity: 0.6 }]}
+                                onPress={() => saveGrade(g.id)}
+                                disabled={isBusy || !editingGradeName.trim()}
+                              >
+                                {isSaving ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Text style={s.compactBtnTxt}>Save</Text>
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={[s.gradeRowCompact, isSelected && s.gradeRowSelected]}>
+                            <Pressable
+                              onPress={() => selectGrade(g.id)}
+                              style={({ pressed, hovered }) => [
+                                s.gradeRowBody,
+                                (pressed || (Platform.OS === "web" && hovered)) && !isSelected && s.gradeRowHover,
+                              ]}
+                            >
+                              <Text style={[s.gradeRowLabel, isSelected && s.gradeRowLabelSelected]} numberOfLines={1}>
+                                {stdLabel(g.name)}
+                              </Text>
+                              <Text style={s.gradeRowMeta} numberOfLines={1}>
+                                key: {g.name} · {secCount} sec
+                              </Text>
+                            </Pressable>
+                            {canSuperAdminMutate && !isReadOnly && (
+                              <View style={s.gradeRowActions}>
+                                <Pressable
+                                  testID={`edit-grade-${g.id}`}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Edit ${stdLabel(g.name)}`}
+                                  onPress={() => startEditGrade(g)}
+                                  disabled={isBusy}
+                                  style={({ pressed, hovered }) => [
+                                    s.structureActionBtn,
+                                    s.structureActionBtnEdit,
+                                    (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
+                                    isBusy && { opacity: 0.5 },
+                                  ]}
+                                >
+                                  <Feather name="edit-2" size={12} color="#1E40AF" />
+                                </Pressable>
+                                <Pressable
+                                  testID={`delete-grade-${g.id}`}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Delete ${stdLabel(g.name)}`}
+                                  onPress={() => confirmDeleteGrade(g)}
+                                  disabled={isBusy}
+                                  style={({ pressed, hovered }) => [
+                                    s.structureActionBtn,
+                                    s.structureActionBtnDelete,
+                                    (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
+                                    isBusy && { opacity: 0.5 },
+                                  ]}
+                                >
+                                  {isDeleting ? (
+                                    <ActivityIndicator size="small" color="#EF4444" />
+                                  ) : (
+                                    <Feather name="trash-2" size={12} color="#EF4444" />
+                                  )}
+                                </Pressable>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Right: Sections */}
+              <View style={[s.structurePanel, s.sectionsPanel, isWide && { flex: 0.58 }]}>
+                <View style={s.structurePanelHeader}>
+                  <Text style={s.structurePanelTitle}>Sections</Text>
+                  <Text style={s.structurePanelCount}>
+                    {selectedGrade ? stdLabel(selectedGrade.name) : "—"} · {visibleSections.length}
+                  </Text>
+                </View>
+                {grades.length === 0 ? (
+                  <Text style={s.hintCompact}>Add standards first.</Text>
+                ) : (
+                  <>
+                    {!isReadOnly && (
+                      <View style={s.sectionAddRow}>
+                        <View style={s.sectionStdPicker}>
+                          <FormSelect
+                            label=""
+                            value={sectionGradeId || ""}
+                            options={gradeOptions}
+                            onChange={(id) => {
+                              if (id) selectGrade(id);
+                              else setSectionGradeId(null);
+                            }}
+                            placeholder="Std…"
+                            compact
+                            testID="section-std-select"
+                          />
+                        </View>
+                        <TextInput
+                          testID="input-section"
+                          value={sectionName}
+                          onChangeText={setSectionName}
+                          placeholder="Section"
+                          style={[s.compactInput, s.sectionNameInput]}
+                          placeholderTextColor="#94A3B8"
+                          autoCapitalize="characters"
+                        />
+                        <TouchableOpacity testID="btn-add-section" style={s.compactBtn} onPress={addSection}>
+                          <Text style={s.compactBtnTxt}>Add</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    <ScrollView
+                      style={s.structureListScroll}
+                      contentContainerStyle={s.structureListContent}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {visibleSections.length === 0 ? (
+                        <Text style={s.hintCompact}>
+                          No sections for {stdLabel(selectedGrade?.name) || "this std"} yet.
+                        </Text>
+                      ) : (
+                        <View style={s.sectionChipGrid}>
+                          {visibleSections.map((sec) => {
+                            const isEditing = editingSectionId === sec.id;
+                            const isSaving = savingSectionId === sec.id;
+                            const isDeleting = deletingSectionId === sec.id;
+                            const isBusy = isSaving || isDeleting;
+                            if (isEditing) {
+                              return (
+                                <View key={sec.id} style={s.sectionEditCard} testID={`section-row-${sec.id}`}>
+                                  <Text style={s.structureEditLabel}>Section name</Text>
+                                  <TextInput
+                                    testID={`edit-section-input-${sec.id}`}
+                                    value={editingSectionName}
+                                    onChangeText={setEditingSectionName}
+                                    placeholder="e.g. A"
+                                    style={[s.compactInput, { marginBottom: 6 }]}
+                                    placeholderTextColor="#94A3B8"
+                                    autoCapitalize="characters"
+                                    editable={!isBusy}
+                                  />
+                                  <Text style={s.structureEditLabel}>Standard</Text>
+                                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                                    {grades.map((g) => (
+                                      <TouchableOpacity
+                                        key={g.id}
+                                        style={[s.chip, s.chipCompact, editingSectionGradeId === g.id && s.chipActive]}
+                                        onPress={() => setEditingSectionGradeId(g.id)}
+                                        disabled={isBusy}
+                                      >
+                                        <Text style={[s.chipTxt, editingSectionGradeId === g.id && s.chipTxtActive]}>
+                                          {stdLabel(g.name)}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    ))}
+                                  </ScrollView>
+                                  <View style={s.listEditActions}>
+                                    <TouchableOpacity
+                                      testID={`cancel-edit-section-${sec.id}`}
+                                      style={s.cancelEditBtnCompact}
+                                      onPress={cancelEditSection}
+                                      disabled={isBusy}
+                                    >
+                                      <Text style={s.cancelEditTxt}>Cancel</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      testID={`save-edit-section-${sec.id}`}
+                                      style={[s.compactBtn, isBusy && { opacity: 0.6 }]}
+                                      onPress={() => saveSection(sec.id)}
+                                      disabled={isBusy || !editingSectionName.trim() || !editingSectionGradeId}
+                                    >
+                                      {isSaving ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                      ) : (
+                                        <Text style={s.compactBtnTxt}>Save</Text>
+                                      )}
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              );
+                            }
+                            return (
+                              <View key={sec.id} style={s.sectionChip} testID={`section-row-${sec.id}`}>
+                                <Text style={s.sectionChipLabel} numberOfLines={1}>{sec.label}</Text>
+                                {canSuperAdminMutate && !isReadOnly && (
+                                  <View style={s.sectionChipActions}>
+                                    <Pressable
+                                      testID={`edit-section-${sec.id}`}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Edit section ${sec.label}`}
+                                      onPress={() => startEditSection(sec)}
+                                      disabled={isBusy}
+                                      style={({ pressed, hovered }) => [
+                                        s.structureActionBtn,
+                                        s.structureActionBtnEdit,
+                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
+                                        isBusy && { opacity: 0.5 },
+                                      ]}
+                                    >
+                                      <Feather name="edit-2" size={11} color="#1E40AF" />
+                                    </Pressable>
+                                    <Pressable
+                                      testID={`delete-section-${sec.id}`}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Delete section ${sec.label}`}
+                                      onPress={() => confirmDeleteSection(sec)}
+                                      disabled={isBusy}
+                                      style={({ pressed, hovered }) => [
+                                        s.structureActionBtn,
+                                        s.structureActionBtnDelete,
+                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
+                                        isBusy && { opacity: 0.5 },
+                                      ]}
+                                    >
+                                      {isDeleting ? (
+                                        <ActivityIndicator size="small" color="#EF4444" />
+                                      ) : (
+                                        <Feather name="trash-2" size={11} color="#EF4444" />
+                                      )}
+                                    </Pressable>
+                                  </View>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </ScrollView>
+                  </>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
       ) : (
       <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
         {loading ? <ActivityIndicator color="#1E40AF" style={{ marginTop: 24 }} /> : (
@@ -977,271 +1323,6 @@ export default function AcademicAdmin() {
                   <Text style={s.btnTxt}>Create year</Text>
                 </TouchableOpacity>
               </View>
-            )}
-
-            {tab === "structure" && (
-              <>
-                <View style={s.card}>
-                  <Text style={s.cardTitle}>Std</Text>
-                  {!isReadOnly && missingDefaultStandards.length > 0 && (
-                    <TouchableOpacity
-                      testID="btn-seed-standards"
-                      style={[s.secondaryBtn, seedingStandards && { opacity: 0.6 }]}
-                      onPress={seedDefaultStandards}
-                      disabled={seedingStandards}
-                    >
-                      {seedingStandards ? (
-                        <ActivityIndicator size="small" color="#1E40AF" />
-                      ) : (
-                        <Text style={s.secondaryBtnTxt}>
-                          Add missing default standards ({missingDefaultStandards.length})
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                  {!isReadOnly && (
-                    <View style={s.row}>
-                      <TextInput testID="input-grade" value={gradeName} onChangeText={setGradeName} placeholder="Std e.g. 9" style={s.input} placeholderTextColor="#94A3B8" />
-                      <TouchableOpacity testID="btn-add-grade" style={s.btn} onPress={addGrade}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
-                    </View>
-                  )}
-                  {grades.length === 0 ? (
-                    <Text style={s.hint}>No standards yet. Add manually or use the default catalogue button above.</Text>
-                  ) : (
-                    <View style={s.listWrap}>
-                      {grades.map((g) => {
-                        const isEditing = editingGradeId === g.id;
-                        const isSaving = savingGradeId === g.id;
-                        const isDeleting = deletingGradeId === g.id;
-                        const isBusy = isSaving || isDeleting;
-                        return (
-                          <View key={g.id} style={s.listRow} testID={`grade-row-${g.id}`}>
-                            {isEditing ? (
-                              <View style={s.listEditBlock}>
-                                <Text style={s.label}>Standard name</Text>
-                                <TextInput
-                                  testID={`edit-grade-input-${g.id}`}
-                                  value={editingGradeName}
-                                  onChangeText={setEditingGradeName}
-                                  placeholder="Std e.g. 9"
-                                  style={s.input}
-                                  placeholderTextColor="#94A3B8"
-                                  editable={!isBusy}
-                                />
-                                <View style={s.listEditActions}>
-                                  <TouchableOpacity
-                                    testID={`cancel-edit-grade-${g.id}`}
-                                    style={s.cancelEditBtnFooter}
-                                    onPress={cancelEditGrade}
-                                    disabled={isBusy}
-                                  >
-                                    <Text style={s.cancelEditTxt}>Cancel</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    testID={`save-edit-grade-${g.id}`}
-                                    style={[s.btnCompact, isBusy && { opacity: 0.6 }]}
-                                    onPress={() => saveGrade(g.id)}
-                                    disabled={isBusy || !editingGradeName.trim()}
-                                  >
-                                    {isSaving ? (
-                                      <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                      <Text style={s.btnTxt}>Save</Text>
-                                    )}
-                                  </TouchableOpacity>
-                                </View>
-                              </View>
-                            ) : (
-                              <View style={s.listRowMain}>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={s.listTitle}>{stdLabel(g.name)}</Text>
-                                  <Text style={s.listMeta}>Stored as: {g.name}</Text>
-                                </View>
-                                {canSuperAdminMutate && !isReadOnly && (
-                                  <View style={s.listRowActions}>
-                                    <Pressable
-                                      testID={`edit-grade-${g.id}`}
-                                      accessibilityRole="button"
-                                      accessibilityLabel={`Edit ${stdLabel(g.name)}`}
-                                      onPress={() => startEditGrade(g)}
-                                      disabled={isBusy}
-                                      style={({ pressed, hovered }) => [
-                                        s.assignActionBtn,
-                                        s.assignActionBtnEdit,
-                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
-                                        isBusy && { opacity: 0.5 },
-                                      ]}
-                                    >
-                                      <Feather name="edit-2" size={14} color="#1E40AF" />
-                                    </Pressable>
-                                    <Pressable
-                                      testID={`delete-grade-${g.id}`}
-                                      accessibilityRole="button"
-                                      accessibilityLabel={`Delete ${stdLabel(g.name)}`}
-                                      onPress={() => confirmDeleteGrade(g)}
-                                      disabled={isBusy}
-                                      style={({ pressed, hovered }) => [
-                                        s.assignActionBtn,
-                                        s.assignActionBtnDelete,
-                                        (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
-                                        isBusy && { opacity: 0.5 },
-                                      ]}
-                                    >
-                                      {isDeleting ? (
-                                        <ActivityIndicator size="small" color="#EF4444" />
-                                      ) : (
-                                        <Feather name="trash-2" size={14} color="#EF4444" />
-                                      )}
-                                    </Pressable>
-                                  </View>
-                                )}
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-                <View style={s.card}>
-                  <Text style={s.cardTitle}>Sections</Text>
-                  {grades.length === 0 ? (
-                    <Text style={s.hint}>Add standards first, then create sections for each std.</Text>
-                  ) : (
-                    <>
-                      <Text style={s.label}>Select std</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                        {grades.map((g) => (
-                          <TouchableOpacity key={g.id} style={[s.chip, sectionGradeId === g.id && s.chipActive]} onPress={() => setSectionGradeId(g.id)}>
-                            <Text style={[s.chipTxt, sectionGradeId === g.id && s.chipTxtActive]}>{stdLabel(g.name)}</Text>
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                      {!isReadOnly && (
-                        <View style={s.row}>
-                          <TextInput testID="input-section" value={sectionName} onChangeText={setSectionName} placeholder="Section e.g. A" style={s.input} placeholderTextColor="#94A3B8" autoCapitalize="characters" />
-                          <TouchableOpacity testID="btn-add-section" style={s.btn} onPress={addSection}><Text style={s.btnTxt}>Add</Text></TouchableOpacity>
-                        </View>
-                      )}
-                      {visibleSections.length === 0 ? (
-                        <Text style={s.hint}>No sections for {stdLabel(grades.find((g) => g.id === sectionGradeId)?.name)} yet.</Text>
-                      ) : (
-                        <View style={s.listWrap}>
-                          {visibleSections.map((sec) => {
-                            const isEditing = editingSectionId === sec.id;
-                            const isSaving = savingSectionId === sec.id;
-                            const isDeleting = deletingSectionId === sec.id;
-                            const isBusy = isSaving || isDeleting;
-                            return (
-                              <View key={sec.id} style={s.listRow} testID={`section-row-${sec.id}`}>
-                                {isEditing ? (
-                                  <View style={s.listEditBlock}>
-                                    <Text style={s.label}>Section name</Text>
-                                    <TextInput
-                                      testID={`edit-section-input-${sec.id}`}
-                                      value={editingSectionName}
-                                      onChangeText={setEditingSectionName}
-                                      placeholder="Section e.g. A"
-                                      style={s.input}
-                                      placeholderTextColor="#94A3B8"
-                                      autoCapitalize="characters"
-                                      editable={!isBusy}
-                                    />
-                                    <Text style={s.label}>Standard</Text>
-                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
-                                      {grades.map((g) => (
-                                        <TouchableOpacity
-                                          key={g.id}
-                                          style={[s.chip, editingSectionGradeId === g.id && s.chipActive]}
-                                          onPress={() => setEditingSectionGradeId(g.id)}
-                                          disabled={isBusy}
-                                        >
-                                          <Text style={[s.chipTxt, editingSectionGradeId === g.id && s.chipTxtActive]}>
-                                            {stdLabel(g.name)}
-                                          </Text>
-                                        </TouchableOpacity>
-                                      ))}
-                                    </ScrollView>
-                                    <View style={s.listEditActions}>
-                                      <TouchableOpacity
-                                        testID={`cancel-edit-section-${sec.id}`}
-                                        style={s.cancelEditBtnFooter}
-                                        onPress={cancelEditSection}
-                                        disabled={isBusy}
-                                      >
-                                        <Text style={s.cancelEditTxt}>Cancel</Text>
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        testID={`save-edit-section-${sec.id}`}
-                                        style={[s.btnCompact, isBusy && { opacity: 0.6 }]}
-                                        onPress={() => saveSection(sec.id)}
-                                        disabled={isBusy || !editingSectionName.trim() || !editingSectionGradeId}
-                                      >
-                                        {isSaving ? (
-                                          <ActivityIndicator size="small" color="#fff" />
-                                        ) : (
-                                          <Text style={s.btnTxt}>Save</Text>
-                                        )}
-                                      </TouchableOpacity>
-                                    </View>
-                                  </View>
-                                ) : (
-                                  <View style={s.listRowMain}>
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={s.listTitle}>{sec.label}</Text>
-                                      <Text style={s.listMeta}>
-                                        {stdLabel(sec.grade_name || grades.find((g) => g.id === sec.grade_id)?.name)}
-                                      </Text>
-                                    </View>
-                                    {canSuperAdminMutate && !isReadOnly && (
-                                      <View style={s.listRowActions}>
-                                        <Pressable
-                                          testID={`edit-section-${sec.id}`}
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`Edit section ${sec.label}`}
-                                          onPress={() => startEditSection(sec)}
-                                          disabled={isBusy}
-                                          style={({ pressed, hovered }) => [
-                                            s.assignActionBtn,
-                                            s.assignActionBtnEdit,
-                                            (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnHover,
-                                            isBusy && { opacity: 0.5 },
-                                          ]}
-                                        >
-                                          <Feather name="edit-2" size={14} color="#1E40AF" />
-                                        </Pressable>
-                                        <Pressable
-                                          testID={`delete-section-${sec.id}`}
-                                          accessibilityRole="button"
-                                          accessibilityLabel={`Delete section ${sec.label}`}
-                                          onPress={() => confirmDeleteSection(sec)}
-                                          disabled={isBusy}
-                                          style={({ pressed, hovered }) => [
-                                            s.assignActionBtn,
-                                            s.assignActionBtnDelete,
-                                            (pressed || (Platform.OS === "web" && hovered)) && s.assignActionBtnDeleteHover,
-                                            isBusy && { opacity: 0.5 },
-                                          ]}
-                                        >
-                                          {isDeleting ? (
-                                            <ActivityIndicator size="small" color="#EF4444" />
-                                          ) : (
-                                            <Feather name="trash-2" size={14} color="#EF4444" />
-                                          )}
-                                        </Pressable>
-                                      </View>
-                                    )}
-                                  </View>
-                                )}
-                              </View>
-                            );
-                          })}
-                        </View>
-                      )}
-                    </>
-                  )}
-                </View>
-              </>
             )}
 
             {tab === "subjects" && (
@@ -1341,6 +1422,238 @@ const s = StyleSheet.create({
   assignmentsShellWide: {
     flexDirection: "row",
     alignItems: "stretch",
+  },
+  structureViewport: {
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  structureShell: {
+    flex: 1,
+    minHeight: 0,
+    gap: 8,
+  },
+  structureShellWide: {
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  structurePanel: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 10,
+    flexDirection: "column",
+  },
+  standardsPanel: {},
+  sectionsPanel: {},
+  structurePanelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    gap: 8,
+  },
+  structurePanelTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  structurePanelCount: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  structureSeedLink: {
+    alignSelf: "flex-start",
+    marginBottom: 6,
+    paddingVertical: 2,
+  },
+  structureSeedLinkTxt: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#1E40AF",
+  },
+  compactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  compactInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: "#0F172A",
+    backgroundColor: "#F8FAFC",
+    marginBottom: 0,
+  },
+  compactBtn: {
+    backgroundColor: "#1E40AF",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexShrink: 0,
+  },
+  compactBtnTxt: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  structureListScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  structureListContent: {
+    paddingBottom: 4,
+  },
+  gradeRowCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 3,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  gradeRowSelected: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+  },
+  gradeRowHover: {
+    backgroundColor: "#F8FAFC",
+    borderColor: "#E2E8F0",
+  },
+  gradeRowEditing: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    backgroundColor: "#F8FBFF",
+    borderColor: "#BFDBFE",
+    marginBottom: 6,
+    paddingVertical: 8,
+  },
+  gradeRowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  gradeRowLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  gradeRowLabelSelected: {
+    color: "#1E40AF",
+  },
+  gradeRowMeta: {
+    fontSize: 10,
+    color: "#94A3B8",
+    marginTop: 1,
+  },
+  gradeRowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+  },
+  structureActionBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  structureActionBtnEdit: {
+    borderColor: "#BFDBFE",
+    backgroundColor: "#EFF6FF",
+  },
+  structureActionBtnDelete: {
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+  },
+  sectionAddRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+    marginBottom: 6,
+  },
+  sectionStdPicker: {
+    width: 96,
+    flexShrink: 0,
+  },
+  sectionNameInput: {
+    flex: 1,
+    minWidth: 60,
+  },
+  sectionChipGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  sectionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingLeft: 10,
+    paddingRight: 4,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    maxWidth: "100%",
+  },
+  sectionChipLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  sectionChipActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  sectionEditCard: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    backgroundColor: "#F8FBFF",
+    borderRadius: 10,
+    padding: 8,
+    marginBottom: 6,
+  },
+  structureEditLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#64748B",
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  chipCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 6,
+    marginBottom: 0,
+  },
+  cancelEditBtnCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
   },
   assignPanel: {
     backgroundColor: "#fff",
