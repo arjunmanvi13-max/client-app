@@ -143,7 +143,7 @@ export default function AcademicAdmin() {
   const subjectMatchesGradeFilter = useCallback((sub: any, gradeId: string | null) => {
     if (!gradeId) return true;
     const ids: string[] = sub.grade_ids || [];
-    return !ids.length || ids.includes(gradeId);
+    return ids.includes(gradeId);
   }, []);
 
   const visibleSubjects = useMemo(
@@ -155,7 +155,7 @@ export default function AcademicAdmin() {
     if (!subjectFilterGradeId || isReadOnly) return [];
     return subjects.filter((sub) => {
       const ids: string[] = sub.grade_ids || [];
-      return ids.length > 0 && !ids.includes(subjectFilterGradeId);
+      return !ids.includes(subjectFilterGradeId);
     });
   }, [subjects, subjectFilterGradeId, isReadOnly]);
 
@@ -1411,7 +1411,7 @@ export default function AcademicAdmin() {
                 </ScrollView>
                 {subjectFilterGradeId && selectedFilterGrade && (
                   <Text style={s.fieldHelpCompact}>
-                    Showing subjects for {stdLabel(selectedFilterGrade.name)} and subjects assigned to all standards.
+                    Showing only subjects assigned to {stdLabel(selectedFilterGrade.name)}.
                   </Text>
                 )}
 
