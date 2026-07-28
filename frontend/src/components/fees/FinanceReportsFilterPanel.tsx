@@ -182,39 +182,42 @@ export function FinanceReportsFilterPanel(props: Props) {
 
   return (
     <View style={s.card} testID="finance-reports-filters">
-      <View style={s.dropdownRow}>
-        {showVenue && (
+      <View style={s.controlRow}>
+        <View style={s.dropdownRow}>
+          {showVenue && (
+            <FilterDropdown
+              prefix="Venue"
+              testID="fee-centre"
+              options={CENTRE_OPTIONS}
+              value={centre}
+              onChange={(id) => onCentre(id as FinanceCentre)}
+            />
+          )}
+          {showEntity && (
+            <FilterDropdown
+              prefix="Entity"
+              testID="fee-entity"
+              options={ENTITY_OPTIONS}
+              value={entity}
+              onChange={(id) => onEntity(id as FinanceEntity)}
+            />
+          )}
           <FilterDropdown
-            prefix="Venue"
-            testID="fee-centre"
-            options={CENTRE_OPTIONS}
-            value={centre}
-            onChange={(id) => onCentre(id as FinanceCentre)}
+            prefix="Report View"
+            testID="fee-report"
+            options={REPORT_OPTIONS}
+            value={reportView}
+            onChange={(id) => onReportView(id as ReportView)}
           />
-        )}
-        {showEntity && (
           <FilterDropdown
-            prefix="Entity"
-            testID="fee-entity"
-            options={ENTITY_OPTIONS}
-            value={entity}
-            onChange={(id) => onEntity(id as FinanceEntity)}
+            prefix="Period"
+            testID="fee-period"
+            options={PERIOD_OPTIONS}
+            value={period}
+            onChange={(id) => onPeriod(id as PeriodFilter)}
           />
-        )}
-        <FilterDropdown
-          prefix="Report View"
-          testID="fee-report"
-          options={REPORT_OPTIONS}
-          value={reportView}
-          onChange={(id) => onReportView(id as ReportView)}
-        />
-        <FilterDropdown
-          prefix="Period"
-          testID="fee-period"
-          options={PERIOD_OPTIONS}
-          value={period}
-          onChange={(id) => onPeriod(id as PeriodFilter)}
-        />
+        </View>
+        <ExportMenu onExport={onExport} exporting={exporting} />
       </View>
 
       {period === "custom" && (
@@ -258,10 +261,6 @@ export function FinanceReportsFilterPanel(props: Props) {
           </View>
         </View>
       )}
-
-      <View style={s.exportRow}>
-        <ExportMenu onExport={onExport} exporting={exporting} />
-      </View>
     </View>
   );
 }
@@ -275,6 +274,14 @@ const s = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    overflow: "visible",
+  },
+  controlRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.sm,
     overflow: "visible",
   },
   dropdownRow: {

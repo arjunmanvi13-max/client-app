@@ -1,6 +1,6 @@
 import { Platform, Alert } from "react-native";
 import { api } from "../auth";
-import { formatDate, formatDateTime } from "../dateFormat";
+import { formatDate, formatDateTimeIST } from "../dateFormat";
 import { getApiErrorFromResponse } from "../ScreenStates";
 import { centreLabel, entityLabel, periodLabel } from "./financeReportsFilters";
 import type { FinanceReportExportPayload, FinanceReportFilters } from "./financeReportsTypes";
@@ -17,7 +17,7 @@ function buildFilterSubtitle(filters: FinanceReportFilters, userName?: string): 
   if (filters.period === "custom") {
     parts.push(`${formatDate(filters.customFrom)} – ${formatDate(filters.customTo)}`);
   }
-  const ts = formatDateTime(new Date().toISOString());
+  const ts = formatDateTimeIST(new Date());
   parts.push(`Generated on: ${ts}${userName ? ` by ${userName}` : ""}`);
   return parts.join(" · ");
 }

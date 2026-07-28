@@ -27,7 +27,7 @@ function inr(n: number) {
 
 export function buildPastDueReport(filters: FinanceReportFilters): PastDueReportData {
   const seed: PastDueReportData["rows"] = [
-    { id: "pd1", studentName: "Testy", venue: "Balua", program: "Cricket", type: "Hostel Only", dueDate: "2026-06-15", daysOverdue: 43, bucket: "31_60", outstanding: 3000 },
+    { id: "pd1", studentName: "Testy", venue: "Balua", program: "Cricket", type: "Hostel", dueDate: "2026-06-15", daysOverdue: 43, bucket: "31_60", outstanding: 3000 },
     { id: "pd2", studentName: "Ankit Sinha", venue: "Balua", program: "Cricket", type: "Hostel", dueDate: "2026-05-01", daysOverdue: 88, bucket: "61_90", outstanding: 8500 },
     { id: "pd3", studentName: "Rahul Verma", venue: "Harding Park", program: "Football", type: "Daily", dueDate: "2026-07-01", daysOverdue: 27, bucket: "1_30", outstanding: 4200 },
     { id: "pd4", studentName: "Priya Sharma", venue: "Balua", program: "Football", type: "Day Boarding", dueDate: "2026-04-10", daysOverdue: 109, bucket: "90_plus", outstanding: 12000 },

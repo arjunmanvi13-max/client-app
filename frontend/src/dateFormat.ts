@@ -55,6 +55,21 @@ export function formatDateTime(value?: string | Date | null): string {
   return `${formatDate(dt)}, ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
 }
 
+/** dd/mm/yyyy at h:mm AM/PM IST — for export headers and audit stamps. */
+export function formatDateTimeIST(value: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(value);
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${pick("day")}/${pick("month")}/${pick("year")} at ${pick("hour")}:${pick("minute")} ${pick("dayPeriod")} IST`;
+}
+
 export function formatTime(value?: string | Date | null): string {
   if (value == null || value === "") return "—";
   const dt = value instanceof Date ? value : new Date(String(value));

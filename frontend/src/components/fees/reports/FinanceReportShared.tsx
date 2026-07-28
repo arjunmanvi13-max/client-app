@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, ScrollView } from "react-native";
-import { colors, radii, spacing } from "../../theme";
-import { DataTable } from "../../ScreenStates";
+import { View, Text, StyleSheet, ScrollView, Platform } from "react-native";
+import { colors, radii, spacing } from "../../../theme";
+
+const TABLE_MAX_HEIGHT = 420;
 
 export function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
@@ -36,12 +37,82 @@ export function BucketCards({ buckets }: { buckets: { label: string; count: numb
 }
 
 export function ReportTable({ columns, rows, numericFromIndex = 1 }: { columns: string[]; rows: string[][]; numericFromIndex?: number }) {
+  const stickyHead = (
+    <View style={s.tableHead}>
+      {columns.map((c, i) => (
+        <Text
+          key={i}
+          style={[s.th, i === 0 && s.thFirst, i >= numericFromIndex && s.thNum]}
+          numberOfLines={1}
+        >
+          {c}
+        </Text>
+      ))}
+    </View>
+  );
+
+  const body = rows.length ? (
+    <ScrollView style={s.tableBodyScroll} nestedScrollEnabled showsVerticalScrollIndicator>
+      {rows.map((row, ri) => (
+        <View key={ri} style={[s.tr, ri % 2 === 1 && s.trAlt]}>
+          {row.map((cell, ci) => (
+            <Text
+              key={ci}
+              style={[s.td, ci === 0 && s.tdFirst, ci >= numericFromIndex && s.tdNum]}
+              numberOfLines={2}
+            >
+              {cell}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </ScrollView>
+  ) : (
+    <Text style={s.tableEmpty}>No rows to display.</Text>
+  );
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={{ minWidth: "100%" }}>
-        <DataTable columns={columns} rows={rows} numericFromIndex={numericFromIndex} />
+      <View style={s.tableWrap}>
+        {stickyHead}
+        {body}
       </View>
     </ScrollView>
+  );
+}
+
+export function DonutChart({ items }: { items: { label: string; pct: number; color: string }[] }) {
+  const gradient = items.reduce((acc, item, i) => {
+    const start = items.slice(0, i).reduce((sum, x) => sum + x.pct, 0);
+    const end = start + item.pct;
+    const sep = i < items.length - 1 ? ", " : "";
+    return `${acc}${item.color} ${start}% ${end}%${sep}`;
+  }, "");
+
+  return (
+    <View style={s.donutRow}>
+      {Platform.OS === "web" ? (
+        <View style={s.donutOuter}>
+          <View style={[s.donutRing, { background: `conic-gradient(${gradient})` } as object]} />
+          <View style={s.donutHole} />
+        </View>
+      ) : (
+        <View style={s.donutOuter}>
+          <View style={s.donutFallback}>
+            {items.map((item) => (
+              <View key={item.label} style={[s.donutSlice, { flex: Math.max(item.pct, 1), backgroundColor: item.color }]} />
+            ))}
+          </View>
+          <View style={s.donutHole} />
+        </View>
+      )}
+      <View style={s.donutMeta}>
+        <Text style={s.donutTitle}>Revenue Split</Text>
+        {items.slice(0, 3).map((item) => (
+          <Text key={item.label} style={s.donutMetaLine}>{item.pct}% · {item.label}</Text>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -117,4 +188,25 @@ const s = StyleSheet.create({
   legendLabel: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.ink },
   legendPct: { width: 36, fontSize: 12, fontWeight: "700", color: colors.muted, textAlign: "right" },
   legendAmt: { width: 90, fontSize: 12, fontWeight: "700", color: colors.ink, textAlign: "right" },
+  tableWrap: { marginTop: spacing.sm, minWidth: "100%", borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: "hidden" },
+  tableHead: { flexDirection: "row", backgroundColor: colors.primarySofter, borderBottomWidth: 1, borderBottomColor: colors.border, ...Platform.select({ web: { position: "sticky", top: 0, zIndex: 2 } as object, default: {} }) },
+  tableBodyScroll: { maxHeight: TABLE_MAX_HEIGHT },
+  tableEmpty: { padding: spacing.md, fontSize: 13, color: colors.muted2, fontStyle: "italic" },
+  th: { flex: 1, minWidth: 100, paddingHorizontal: 10, paddingVertical: 10, fontSize: 11, fontWeight: "800", color: colors.ink, textTransform: "uppercase", letterSpacing: 0.3 },
+  thFirst: { minWidth: 160 },
+  thNum: { textAlign: "right" },
+  tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.border },
+  trAlt: { backgroundColor: colors.surface2 },
+  td: { flex: 1, minWidth: 100, paddingHorizontal: 10, paddingVertical: 10, fontSize: 12, color: colors.ink },
+  tdFirst: { minWidth: 160, fontWeight: "600" },
+  tdNum: { textAlign: "right", fontWeight: "700" },
+  donutRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginBottom: spacing.md, flexWrap: "wrap" },
+  donutOuter: { width: 132, height: 132, alignItems: "center", justifyContent: "center" },
+  donutRing: { position: "absolute", width: 132, height: 132, borderRadius: 66 },
+  donutFallback: { position: "absolute", width: 132, height: 132, borderRadius: 66, overflow: "hidden", flexDirection: "row" },
+  donutSlice: { height: "100%" },
+  donutHole: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  donutMeta: { flex: 1, minWidth: 180, gap: 4 },
+  donutTitle: { fontSize: 12, fontWeight: "800", color: colors.ink, marginBottom: 4 },
+  donutMetaLine: { fontSize: 11, color: colors.muted, fontWeight: "600" },
 });
