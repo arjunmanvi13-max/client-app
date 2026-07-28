@@ -302,40 +302,38 @@ export function FinanceReportsFilterPanel(props: Props) {
   return (
     <View style={s.card} testID="finance-reports-filters">
       <View style={s.controlRow}>
-        <View style={s.dropdownRow}>
-          {showVenue && (
-            <FilterDropdown
-              prefix="Venue"
-              testID="fee-centre"
-              options={CENTRE_OPTIONS}
-              value={centre}
-              onChange={(id) => onCentre(id as FinanceCentre)}
-            />
-          )}
-          {showEntity && (
-            <FilterDropdown
-              prefix="Entity"
-              testID="fee-entity"
-              options={ENTITY_OPTIONS}
-              value={entity}
-              onChange={(id) => onEntity(id as FinanceEntity)}
-            />
-          )}
+        {showEntity && (
           <FilterDropdown
-            prefix="Report View"
-            testID="fee-report"
-            options={REPORT_OPTIONS}
-            value={reportView}
-            onChange={(id) => onReportView(id as ReportView)}
+            prefix="Entity"
+            testID="fee-entity"
+            options={ENTITY_OPTIONS}
+            value={entity}
+            onChange={(id) => onEntity(id as FinanceEntity)}
           />
+        )}
+        {showVenue && (
           <FilterDropdown
-            prefix="Period"
-            testID="fee-period"
-            options={PERIOD_OPTIONS}
-            value={period}
-            onChange={(id) => onPeriod(id as PeriodFilter)}
+            prefix="Venue"
+            testID="fee-centre"
+            options={CENTRE_OPTIONS}
+            value={centre}
+            onChange={(id) => onCentre(id as FinanceCentre)}
           />
-        </View>
+        )}
+        <FilterDropdown
+          prefix="Report View"
+          testID="fee-report"
+          options={REPORT_OPTIONS}
+          value={reportView}
+          onChange={(id) => onReportView(id as ReportView)}
+        />
+        <FilterDropdown
+          prefix="Period"
+          testID="fee-period"
+          options={PERIOD_OPTIONS}
+          value={period}
+          onChange={(id) => onPeriod(id as PeriodFilter)}
+        />
         <ExportMenu onExport={onExport} exporting={exporting} />
       </View>
 
@@ -404,17 +402,8 @@ const s = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
-    justifyContent: "space-between",
     gap: spacing.sm,
     overflow: "visible",
-  },
-  dropdownRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: spacing.sm,
-    overflow: "visible",
-    flex: 1,
   },
   dropdownWrap: {
     position: "relative",
