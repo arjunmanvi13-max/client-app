@@ -56,7 +56,8 @@ const PERIOD_OPTIONS = [
 ];
 
 const MENU_Z_INDEX = 9999;
-const MENU_PORTAL_KEY = "financeMenuPortal";
+/** Matches DOM attribute from `dataSet={{ financeMenuPortal: "true" }}` on react-native-web. */
+const MENU_PORTAL_SELECTOR = "[data-finance-menu-portal]";
 
 function renderWebPortal(node: ReactNode) {
   if (Platform.OS !== "web" || typeof document === "undefined") return null;
@@ -95,24 +96,24 @@ function useAnchoredDropdown() {
 
   useEffect(() => {
     if (!open) return;
-    const onDocPointer = (e: MouseEvent | TouchEvent) => {
+    const onDocPointer = (e: MouseEvent) => {
       const node = triggerRef.current as unknown as HTMLElement | null;
       const target = e.target as HTMLElement | null;
       if (!target) return;
       if (node?.contains(target)) return;
-      if (target.closest?.(`[data-${MENU_PORTAL_KEY}]`)) return;
+      if (target.closest?.(MENU_PORTAL_SELECTOR)) return;
       close();
     };
     const onReposition = () => setAnchor(measureAnchor());
     if (Platform.OS === "web" && typeof document !== "undefined") {
       const timer = setTimeout(() => {
-        document.addEventListener("mousedown", onDocPointer);
+        document.addEventListener("click", onDocPointer);
       }, 0);
       window.addEventListener("resize", onReposition);
       window.addEventListener("scroll", onReposition, true);
       return () => {
         clearTimeout(timer);
-        document.removeEventListener("mousedown", onDocPointer);
+        document.removeEventListener("click", onDocPointer);
         window.removeEventListener("resize", onReposition);
         window.removeEventListener("scroll", onReposition, true);
       };
@@ -141,7 +142,11 @@ function WebMenuPortal({
 
   return renderWebPortal(
     <View
-      {...(Platform.OS === "web" ? { dataSet: { [MENU_PORTAL_KEY]: "true" } } : {})}
+      {...(Platform.OS === "web" ? {
+        dataSet: { financeMenuPortal: "true" },
+        // Prevent premature close before menu item click handlers run.
+        onMouseDown: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
+      } : {})}
       style={[
         s.portalMenu,
         {
@@ -158,6 +163,29 @@ function WebMenuPortal({
   );
 }
 
+function MenuItem({
+  label,
+  active,
+  testID,
+  onSelect,
+}: {
+  label: string;
+  active?: boolean;
+  testID?: string;
+  onSelect: () => void;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onSelect}
+      style={[s.menuItem, active && s.menuItemActive]}
+      {...(Platform.OS === "web" ? { role: "menuitem" as const } : {})}
+    >
+      <Text style={[s.menuTxt, active && s.menuTxtActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function FilterDropdown({
   prefix, options, value, onChange, testID,
 }: {
@@ -171,20 +199,18 @@ function FilterDropdown({
   const selectedLabel = options.find((o) => o.id === value)?.label ?? value;
   const menuMinWidth = Math.max(220, anchor?.width ?? 220);
 
-  const menu = (
-    <>
-      {options.map((opt) => (
-        <Pressable
-          key={opt.id}
-          testID={`${testID}-${opt.id}`}
-          onPress={() => { onChange(opt.id); setOpen(false); }}
-          style={[s.menuItem, value === opt.id && s.menuItemActive]}
-        >
-          <Text style={[s.menuTxt, value === opt.id && s.menuTxtActive]}>{opt.label}</Text>
-        </Pressable>
-      ))}
-    </>
-  );
+  const menu = options.map((opt) => (
+    <MenuItem
+      key={opt.id}
+      testID={`${testID}-${opt.id}`}
+      label={opt.label}
+      active={value === opt.id}
+      onSelect={() => {
+        onChange(opt.id);
+        setOpen(false);
+      }}
+    />
+  ));
 
   return (
     <View ref={triggerRef} style={[s.dropdownWrap, open && s.dropdownWrapOpen]}>
@@ -213,27 +239,24 @@ function FilterDropdown({
 }
 
 function ExportMenu({ onExport, exporting }: { onExport: (f: "csv" | "xlsx" | "pdf") => void; exporting?: boolean }) {
-  const { triggerRef, open, anchor, toggle, close, setOpen } = useAnchoredDropdown();
+  const { triggerRef, open, anchor, toggle, close } = useAnchoredDropdown();
   const menuMinWidth = 220;
 
-  const menu = (
-    <>
-      {([
-        { id: "csv", label: "Export to CSV" },
-        { id: "xlsx", label: "Export to Excel (.xlsx)" },
-        { id: "pdf", label: "Export to PDF" },
-      ] as const).map((opt) => (
-        <Pressable
-          key={opt.id}
-          testID={`finance-export-${opt.id}`}
-          style={s.menuItem}
-          onPress={() => { onExport(opt.id); close(); }}
-        >
-          <Text style={s.menuTxt}>{opt.label}</Text>
-        </Pressable>
-      ))}
-    </>
-  );
+  const menu = ([
+    { id: "csv", label: "Export to CSV" },
+    { id: "xlsx", label: "Export to Excel (.xlsx)" },
+    { id: "pdf", label: "Export to PDF" },
+  ] as const).map((opt) => (
+    <MenuItem
+      key={opt.id}
+      testID={`finance-export-${opt.id}`}
+      label={opt.label}
+      onSelect={() => {
+        close();
+        onExport(opt.id);
+      }}
+    />
+  ));
 
   return (
     <View ref={triggerRef} style={[s.exportWrap, open && s.exportWrapOpen]}>

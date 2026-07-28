@@ -84,7 +84,10 @@ export function getExportMatrix(filters: FinanceReportFilters): {
 }
 
 export function useFinanceReportData(filters: FinanceReportFilters) {
-  return useMemo(() => buildFinanceReportData(filters), [filters]);
+  return useMemo(
+    () => buildFinanceReportData(filters),
+    [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo],
+  );
 }
 
 export { reportViewTitle };
