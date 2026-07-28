@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, Platform, TouchableOpacity, type View as RNView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
@@ -25,6 +25,8 @@ type Props = {
   onExport: (format: "csv" | "xlsx" | "pdf") => void;
   exporting?: boolean;
 };
+
+type AnchorRect = { top: number; left: number; width: number; height: number };
 
 const CENTRE_OPTIONS = [
   { id: "all", label: "All Centres" },
@@ -53,6 +55,109 @@ const PERIOD_OPTIONS = [
   { id: "custom", label: "Custom Range" },
 ];
 
+const MENU_Z_INDEX = 9999;
+const MENU_PORTAL_KEY = "financeMenuPortal";
+
+function renderWebPortal(node: ReactNode) {
+  if (Platform.OS !== "web" || typeof document === "undefined") return null;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createPortal } = require("react-dom") as typeof import("react-dom");
+  return createPortal(node, document.body);
+}
+
+function useAnchoredDropdown() {
+  const triggerRef = useRef<RNView>(null);
+  const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<AnchorRect | null>(null);
+
+  const measureAnchor = useCallback(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return null;
+    const node = triggerRef.current as unknown as HTMLElement | null;
+    if (!node) return null;
+    const rect = node.getBoundingClientRect();
+    return {
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    };
+  }, []);
+
+  const toggle = useCallback(() => {
+    setOpen((prev) => {
+      if (prev) return false;
+      setAnchor(measureAnchor());
+      return true;
+    });
+  }, [measureAnchor]);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocPointer = (e: MouseEvent | TouchEvent) => {
+      const node = triggerRef.current as unknown as HTMLElement | null;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (node?.contains(target)) return;
+      if (target.closest?.(`[data-${MENU_PORTAL_KEY}]`)) return;
+      close();
+    };
+    const onReposition = () => setAnchor(measureAnchor());
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const timer = setTimeout(() => {
+        document.addEventListener("mousedown", onDocPointer);
+      }, 0);
+      window.addEventListener("resize", onReposition);
+      window.addEventListener("scroll", onReposition, true);
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener("mousedown", onDocPointer);
+        window.removeEventListener("resize", onReposition);
+        window.removeEventListener("scroll", onReposition, true);
+      };
+    }
+  }, [open, close, measureAnchor]);
+
+  return { triggerRef, open, anchor, toggle, close, setOpen };
+}
+
+function WebMenuPortal({
+  anchor,
+  align,
+  minWidth,
+  children,
+}: {
+  anchor: AnchorRect | null;
+  align: "left" | "right";
+  minWidth: number;
+  children: ReactNode;
+}) {
+  if (Platform.OS !== "web" || !anchor || typeof document === "undefined") return null;
+
+  const left = align === "right"
+    ? Math.max(8, anchor.left + anchor.width - minWidth)
+    : anchor.left;
+
+  return renderWebPortal(
+    <View
+      {...(Platform.OS === "web" ? { dataSet: { [MENU_PORTAL_KEY]: "true" } } : {})}
+      style={[
+        s.portalMenu,
+        {
+          position: "fixed",
+          top: anchor.top,
+          left,
+          minWidth,
+          zIndex: MENU_Z_INDEX,
+        } as object,
+      ]}
+    >
+      {children}
+    </View>,
+  );
+}
+
 function FilterDropdown({
   prefix, options, value, onChange, testID,
 }: {
@@ -62,108 +167,99 @@ function FilterDropdown({
   onChange: (id: string) => void;
   testID?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<RNView>(null);
+  const { triggerRef, open, anchor, toggle, setOpen } = useAnchoredDropdown();
   const selectedLabel = options.find((o) => o.id === value)?.label ?? value;
+  const menuMinWidth = Math.max(220, anchor?.width ?? 220);
 
-  useEffect(() => {
-    if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
-    const onDocClick = (e: MouseEvent) => {
-      const node = rootRef.current as unknown as HTMLElement | null;
-      if (node && !node.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  if (Platform.OS === "web") {
-    return (
-      <View style={s.dropdownWrap}>
-        <View style={s.dropdownBtn}>
-          <Text style={s.dropdownPrefix} numberOfLines={1}>{prefix}:</Text>
-          <select
-            data-testid={testID}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            style={s.webSelect}
-          >
-            {options.map((opt) => (
-              <option key={opt.id} value={opt.id}>{opt.label}</option>
-            ))}
-          </select>
-          <Feather name="chevron-down" size={14} color={colors.muted} />
-        </View>
-      </View>
-    );
-  }
+  const menu = (
+    <>
+      {options.map((opt) => (
+        <Pressable
+          key={opt.id}
+          testID={`${testID}-${opt.id}`}
+          onPress={() => { onChange(opt.id); setOpen(false); }}
+          style={[s.menuItem, value === opt.id && s.menuItemActive]}
+        >
+          <Text style={[s.menuTxt, value === opt.id && s.menuTxtActive]}>{opt.label}</Text>
+        </Pressable>
+      ))}
+    </>
+  );
 
   return (
-    <View ref={rootRef} style={[s.dropdownWrap, { zIndex: open ? 50 : 1 }]}>
-      <Pressable testID={testID} onPress={() => setOpen((v) => !v)} style={s.dropdownBtn}>
-        <Text style={s.dropdownTxt} numberOfLines={1}>{prefix}: {selectedLabel}</Text>
-        <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color={colors.muted} />
+    <View ref={triggerRef} style={[s.dropdownWrap, open && s.dropdownWrapOpen]}>
+      <Pressable
+        testID={testID}
+        onPress={toggle}
+        style={({ pressed }) => [s.dropdownBtn, pressed && s.dropdownBtnPressed, open && s.dropdownBtnOpen]}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+      >
+        <Text style={s.dropdownPrefix} numberOfLines={1}>{prefix}:</Text>
+        <Text style={s.dropdownValue} numberOfLines={1}>{selectedLabel}</Text>
+        <View pointerEvents="none">
+          <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color={colors.muted} />
+        </View>
       </Pressable>
       {open && (
-        <View style={s.menu}>
-          {options.map((opt) => (
-            <Pressable
-              key={opt.id}
-              testID={`${testID}-${opt.id}`}
-              onPress={() => { onChange(opt.id); setOpen(false); }}
-              style={[s.menuItem, value === opt.id && s.menuItemActive]}
-            >
-              <Text style={[s.menuTxt, value === opt.id && s.menuTxtActive]}>{opt.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        Platform.OS === "web" ? (
+          <WebMenuPortal anchor={anchor} align="left" minWidth={menuMinWidth}>{menu}</WebMenuPortal>
+        ) : (
+          <View style={s.menu}>{menu}</View>
+        )
       )}
     </View>
   );
 }
 
 function ExportMenu({ onExport, exporting }: { onExport: (f: "csv" | "xlsx" | "pdf") => void; exporting?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<RNView>(null);
+  const { triggerRef, open, anchor, toggle, close, setOpen } = useAnchoredDropdown();
+  const menuMinWidth = 220;
 
-  useEffect(() => {
-    if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
-    const onDocClick = (e: MouseEvent) => {
-      const node = rootRef.current as unknown as HTMLElement | null;
-      if (node && !node.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
+  const menu = (
+    <>
+      {([
+        { id: "csv", label: "Export to CSV" },
+        { id: "xlsx", label: "Export to Excel (.xlsx)" },
+        { id: "pdf", label: "Export to PDF" },
+      ] as const).map((opt) => (
+        <Pressable
+          key={opt.id}
+          testID={`finance-export-${opt.id}`}
+          style={s.menuItem}
+          onPress={() => { onExport(opt.id); close(); }}
+        >
+          <Text style={s.menuTxt}>{opt.label}</Text>
+        </Pressable>
+      ))}
+    </>
+  );
 
   return (
-    <View ref={rootRef} style={[s.exportWrap, { zIndex: open ? 60 : 1 }]}>
+    <View ref={triggerRef} style={[s.exportWrap, open && s.exportWrapOpen]}>
       <TouchableOpacity
         testID="finance-export-btn"
         style={s.exportBtn}
         disabled={exporting}
-        onPress={() => setOpen((v) => !v)}
+        activeOpacity={0.85}
+        onPress={toggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
       >
-        <Feather name="download" size={14} color="#fff" />
+        <View pointerEvents="none">
+          <Feather name="download" size={14} color="#fff" />
+        </View>
         <Text style={s.exportBtnTxt}>{exporting ? "Exporting…" : "Export Report"}</Text>
-        <Feather name="chevron-down" size={14} color="#fff" />
+        <View pointerEvents="none">
+          <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color="#fff" />
+        </View>
       </TouchableOpacity>
       {open && (
-        <View style={s.exportMenu}>
-          {([
-            { id: "csv", label: "Export to CSV" },
-            { id: "xlsx", label: "Export to Excel (.xlsx)" },
-            { id: "pdf", label: "Export to PDF" },
-          ] as const).map((opt) => (
-            <Pressable
-              key={opt.id}
-              testID={`finance-export-${opt.id}`}
-              style={s.menuItem}
-              onPress={() => { onExport(opt.id); setOpen(false); }}
-            >
-              <Text style={s.menuTxt}>{opt.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+        Platform.OS === "web" ? (
+          <WebMenuPortal anchor={anchor} align="right" minWidth={menuMinWidth}>{menu}</WebMenuPortal>
+        ) : (
+          <View style={s.exportMenu}>{menu}</View>
+        )
       )}
     </View>
   );
@@ -275,6 +371,11 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: "visible",
+    zIndex: 20,
+    ...Platform.select({
+      web: { isolation: "isolate" } as object,
+      default: {},
+    }),
   },
   controlRow: {
     flexDirection: "row",
@@ -290,8 +391,19 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     overflow: "visible",
+    flex: 1,
   },
-  dropdownWrap: { position: "relative", flexShrink: 0, minWidth: 160, flex: 1, maxWidth: 280 },
+  dropdownWrap: {
+    position: "relative",
+    flexShrink: 0,
+    minWidth: 160,
+    flex: 1,
+    maxWidth: 280,
+    zIndex: 1,
+  },
+  dropdownWrapOpen: {
+    zIndex: 50,
+  },
   dropdownBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -303,26 +415,15 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface2,
     minWidth: 160,
+    ...Platform.select({
+      web: { cursor: "pointer", userSelect: "none" } as object,
+      default: {},
+    }),
   },
+  dropdownBtnPressed: { opacity: 0.92 },
+  dropdownBtnOpen: { borderColor: colors.primary, backgroundColor: colors.primarySofter },
   dropdownPrefix: { fontSize: 12, fontWeight: "700", color: colors.muted, flexShrink: 0 },
-  dropdownTxt: { fontSize: 12, fontWeight: "600", color: colors.ink, flexShrink: 1 },
-  webSelect: {
-    flex: 1,
-    minWidth: 0,
-    borderWidth: 0,
-    borderStyle: "solid",
-    backgroundColor: "transparent",
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.ink,
-    outlineStyle: "none",
-    cursor: "pointer",
-    appearance: "none",
-    WebkitAppearance: "none",
-    MozAppearance: "none",
-    padding: 0,
-    margin: 0,
-  } as object,
+  dropdownValue: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: "600", color: colors.ink },
   menu: {
     position: "absolute",
     top: "100%",
@@ -335,7 +436,8 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: 4,
     minWidth: 220,
-    zIndex: 100,
+    zIndex: MENU_Z_INDEX,
+    elevation: 24,
     ...Platform.select({
       web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
       default: {
@@ -343,8 +445,18 @@ const s = StyleSheet.create({
         shadowOpacity: 0.12,
         shadowRadius: 16,
         shadowOffset: { width: 0, height: 8 },
-        elevation: 12,
       },
+    }),
+  },
+  portalMenu: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 4,
+    ...Platform.select({
+      web: { boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)" } as object,
+      default: {},
     }),
   },
   menuItem: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8 },
@@ -367,8 +479,14 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface2,
     outlineStyle: "none" as any,
   },
-  exportRow: { flexDirection: "row", justifyContent: "flex-end" },
-  exportWrap: { position: "relative" },
+  exportWrap: {
+    position: "relative",
+    zIndex: 1,
+    flexShrink: 0,
+  },
+  exportWrapOpen: {
+    zIndex: 100,
+  },
   exportBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -377,6 +495,10 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: radii.md,
+    ...Platform.select({
+      web: { cursor: "pointer", userSelect: "none" } as object,
+      default: {},
+    }),
   },
   exportBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 12 },
   exportMenu: {
@@ -390,9 +512,10 @@ const s = StyleSheet.create({
     borderColor: colors.border,
     padding: 4,
     minWidth: 220,
-    zIndex: 120,
+    zIndex: MENU_Z_INDEX,
+    elevation: 24,
     ...Platform.select({
-      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      web: { boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)" } as object,
       default: {},
     }),
   },
