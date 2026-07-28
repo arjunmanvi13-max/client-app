@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Platform, type View as RNView } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Platform, TouchableOpacity, type View as RNView } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, radii, spacing } from "../../theme";
 import { DATE_PLACEHOLDER, formatDate, isValidDisplayDate, parseToISO } from "../../dateFormat";
-import type { FinanceCentre, FinanceEntity, MonthSplit, ReportView } from "../../fees/financeReportsFilters";
+import type { FinanceCentre, FinanceEntity, PeriodFilter, ReportView } from "../../fees/financeReportsFilters";
 
 type Props = {
   centre: FinanceCentre;
@@ -14,14 +14,16 @@ type Props = {
   showEntity: boolean;
   reportView: ReportView;
   onReportView: (v: ReportView) => void;
-  monthSplit: MonthSplit;
-  onMonthSplit: (s: MonthSplit) => void;
-  historyFrom: string;
-  historyTo: string;
-  onHistoryFrom: (v: string) => void;
-  onHistoryTo: (v: string) => void;
+  period: PeriodFilter;
+  onPeriod: (p: PeriodFilter) => void;
+  customFrom: string;
+  customTo: string;
+  onCustomFrom: (v: string) => void;
+  onCustomTo: (v: string) => void;
   historyMinDate: string;
   historyMaxDate: string;
+  onExport: (format: "csv" | "xlsx" | "pdf") => void;
+  exporting?: boolean;
 };
 
 const CENTRE_OPTIONS = [
@@ -31,21 +33,24 @@ const CENTRE_OPTIONS = [
 ];
 
 const ENTITY_OPTIONS = [
+  { id: "alpha", label: "ALPHA" },
   { id: "all", label: "Both" },
   { id: "pws", label: "PWS" },
-  { id: "alpha", label: "ALPHA" },
 ];
 
 const REPORT_OPTIONS = [
-  { id: "current_month", label: "Current Month" },
-  { id: "past_due", label: "Past Due" },
-  { id: "history", label: "History" },
-  { id: "installments", label: "Installments" },
+  { id: "past_due_aging", label: "Past Due & Aging Receivables" },
+  { id: "collections_summary", label: "Fee Collections Summary" },
+  { id: "revenue_breakdown", label: "Revenue Breakdown by Line Item" },
+  { id: "discounts_waivers", label: "Discounts, Waivers & Concessions" },
+  { id: "refunds_cancellations", label: "Refunds & Cancellations" },
 ];
 
-const MONTH_SPLIT_OPTIONS = [
-  { id: "dues", label: "Dues" },
-  { id: "collections", label: "Collections" },
+const PERIOD_OPTIONS = [
+  { id: "today", label: "Today" },
+  { id: "current_month", label: "Current Month" },
+  { id: "last_month", label: "Last Month" },
+  { id: "custom", label: "Custom Range" },
 ];
 
 function FilterDropdown({
@@ -116,14 +121,63 @@ function FilterDropdown({
   );
 }
 
+function ExportMenu({ onExport, exporting }: { onExport: (f: "csv" | "xlsx" | "pdf") => void; exporting?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<RNView>(null);
+
+  useEffect(() => {
+    if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
+    const onDocClick = (e: MouseEvent) => {
+      const node = rootRef.current as unknown as HTMLElement | null;
+      if (node && !node.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  return (
+    <View ref={rootRef} style={[s.exportWrap, { zIndex: open ? 60 : 1 }]}>
+      <TouchableOpacity
+        testID="finance-export-btn"
+        style={s.exportBtn}
+        disabled={exporting}
+        onPress={() => setOpen((v) => !v)}
+      >
+        <Feather name="download" size={14} color="#fff" />
+        <Text style={s.exportBtnTxt}>{exporting ? "Exporting…" : "Export Report"}</Text>
+        <Feather name="chevron-down" size={14} color="#fff" />
+      </TouchableOpacity>
+      {open && (
+        <View style={s.exportMenu}>
+          {([
+            { id: "csv", label: "Export to CSV" },
+            { id: "xlsx", label: "Export to Excel (.xlsx)" },
+            { id: "pdf", label: "Export to PDF" },
+          ] as const).map((opt) => (
+            <Pressable
+              key={opt.id}
+              testID={`finance-export-${opt.id}`}
+              style={s.menuItem}
+              onPress={() => { onExport(opt.id); setOpen(false); }}
+            >
+              <Text style={s.menuTxt}>{opt.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function FinanceReportsFilterPanel(props: Props) {
   const {
     centre, onCentre, showVenue,
     entity, onEntity, showEntity,
     reportView, onReportView,
-    monthSplit, onMonthSplit,
-    historyFrom, historyTo, onHistoryFrom, onHistoryTo,
+    period, onPeriod,
+    customFrom, customTo, onCustomFrom, onCustomTo,
     historyMinDate, historyMaxDate,
+    onExport, exporting,
   } = props;
 
   return (
@@ -138,7 +192,6 @@ export function FinanceReportsFilterPanel(props: Props) {
             onChange={(id) => onCentre(id as FinanceCentre)}
           />
         )}
-
         {showEntity && (
           <FilterDropdown
             prefix="Entity"
@@ -148,7 +201,6 @@ export function FinanceReportsFilterPanel(props: Props) {
             onChange={(id) => onEntity(id as FinanceEntity)}
           />
         )}
-
         <FilterDropdown
           prefix="Report View"
           testID="fee-report"
@@ -156,35 +208,30 @@ export function FinanceReportsFilterPanel(props: Props) {
           value={reportView}
           onChange={(id) => onReportView(id as ReportView)}
         />
+        <FilterDropdown
+          prefix="Period"
+          testID="fee-period"
+          options={PERIOD_OPTIONS}
+          value={period}
+          onChange={(id) => onPeriod(id as PeriodFilter)}
+        />
       </View>
 
-      {reportView === "current_month" && (
-        <View style={s.dropdownRow}>
-          <FilterDropdown
-            prefix="Current Month"
-            testID="fee-month-split"
-            options={MONTH_SPLIT_OPTIONS}
-            value={monthSplit}
-            onChange={(id) => onMonthSplit(id as MonthSplit)}
-          />
-        </View>
-      )}
-
-      {reportView === "history" && (
+      {period === "custom" && (
         <View style={s.historyBlock}>
           <Text style={s.historyHint}>
-            Custom date range · up to two financial years ({formatDate(historyMinDate)} – {formatDate(historyMaxDate)})
+            Custom date range · {formatDate(historyMinDate)} – {formatDate(historyMaxDate)}
           </Text>
           <View style={s.historyRow}>
             <View style={s.historyField}>
               <Text style={s.historyLabel}>From ({DATE_PLACEHOLDER})</Text>
               <TextInput
                 testID="fee-history-from"
-                value={historyFrom}
-                onChangeText={onHistoryFrom}
+                value={customFrom}
+                onChangeText={onCustomFrom}
                 onBlur={() => {
-                  if (isValidDisplayDate(historyFrom)) {
-                    onHistoryFrom(formatDate(parseToISO(historyFrom) || historyFrom));
+                  if (isValidDisplayDate(customFrom)) {
+                    onCustomFrom(formatDate(parseToISO(customFrom) || customFrom));
                   }
                 }}
                 placeholder={DATE_PLACEHOLDER}
@@ -196,11 +243,11 @@ export function FinanceReportsFilterPanel(props: Props) {
               <Text style={s.historyLabel}>To ({DATE_PLACEHOLDER})</Text>
               <TextInput
                 testID="fee-history-to"
-                value={historyTo}
-                onChangeText={onHistoryTo}
+                value={customTo}
+                onChangeText={onCustomTo}
                 onBlur={() => {
-                  if (isValidDisplayDate(historyTo)) {
-                    onHistoryTo(formatDate(parseToISO(historyTo) || historyTo));
+                  if (isValidDisplayDate(customTo)) {
+                    onCustomTo(formatDate(parseToISO(customTo) || customTo));
                   }
                 }}
                 placeholder={DATE_PLACEHOLDER}
@@ -211,6 +258,10 @@ export function FinanceReportsFilterPanel(props: Props) {
           </View>
         </View>
       )}
+
+      <View style={s.exportRow}>
+        <ExportMenu onExport={onExport} exporting={exporting} />
+      </View>
     </View>
   );
 }
@@ -276,7 +327,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 4,
-    minWidth: 180,
+    minWidth: 220,
     zIndex: 100,
     ...Platform.select({
       web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
@@ -295,11 +346,7 @@ const s = StyleSheet.create({
   menuTxtActive: { color: colors.primary, fontWeight: "700" },
   historyBlock: { gap: spacing.sm },
   historyHint: { fontSize: 11, color: colors.hint, lineHeight: 16 },
-  historyRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
+  historyRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   historyField: { flex: 1, minWidth: 140, gap: 6 },
   historyLabel: { fontSize: 11, fontWeight: "700", color: colors.muted },
   historyInput: {
@@ -312,5 +359,34 @@ const s = StyleSheet.create({
     color: colors.ink,
     backgroundColor: colors.surface2,
     outlineStyle: "none" as any,
+  },
+  exportRow: { flexDirection: "row", justifyContent: "flex-end" },
+  exportWrap: { position: "relative" },
+  exportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+  },
+  exportBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  exportMenu: {
+    position: "absolute",
+    top: "100%",
+    right: 0,
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 4,
+    minWidth: 220,
+    zIndex: 120,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(15, 23, 42, 0.12)" } as object,
+      default: {},
+    }),
   },
 });
