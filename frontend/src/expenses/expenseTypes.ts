@@ -2,6 +2,8 @@ export type ExpenseEntityId = "pws" | "alpha";
 
 export type ExpenseStatus = "pending" | "approved" | "rejected" | "cancelled";
 
+export type ExpenseUrgency = "Today" | "Tomorrow" | "This Week";
+
 export type ExpensePaymentMode = "Cash" | "UPI" | "Bank Transfer" | "Cheque" | "Credit Card";
 
 export type ExpenseHead = {
@@ -43,8 +45,12 @@ export type ExpenseEntry = {
   expense_head_name?: string;
   main_category?: string;
   category_code?: string;
+  sub_category?: string;
   expense_date: string;
   amount: number;
+  rate?: number | null;
+  quantity?: number | null;
+  urgency?: ExpenseUrgency | null;
   payment_mode: ExpensePaymentMode;
   vendor_name: string;
   reference_number?: string | null;
@@ -87,5 +93,7 @@ export const EXPENSE_MAIN_CATEGORIES = [
 export const EXPENSE_PAYMENT_MODES: ExpensePaymentMode[] = [
   "Cash", "UPI", "Bank Transfer", "Cheque", "Credit Card",
 ];
+
+export const EXPENSE_URGENCY_OPTIONS: ExpenseUrgency[] = ["Today", "Tomorrow", "This Week"];
 
 export type ExpenseTab = "all" | "pending" | "approved" | "rejected";

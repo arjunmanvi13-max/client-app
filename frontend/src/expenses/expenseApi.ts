@@ -6,6 +6,7 @@ import type {
   ExpenseOutflowSummary,
   ExpensePaymentMode,
   ExpenseTab,
+  ExpenseUrgency,
 } from "./expenseTypes";
 
 export async function fetchExpenseHeads(entityId: ExpenseEntityId, activeOnly = false): Promise<ExpenseHead[]> {
@@ -43,8 +44,11 @@ export async function createExpenseEntry(payload: {
   expense_date: string;
   amount: number;
   payment_mode: ExpensePaymentMode;
-  vendor_name: string;
   reference_number?: string;
+  sub_category?: string;
+  rate?: number;
+  quantity?: number;
+  urgency?: ExpenseUrgency;
   description?: string;
   venue?: string;
 }) {
