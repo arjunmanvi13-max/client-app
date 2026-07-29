@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Modal, Pressable, Alert, RefreshControl,
 } from "react-native";
@@ -15,6 +15,19 @@ import {
 import { formatInr } from "../../../src/expenses/expenseFormat";
 import type { ExpenseEntityId, ExpenseHead } from "../../../src/expenses/expenseTypes";
 import { EXPENSE_MAIN_CATEGORIES } from "../../../src/expenses/expenseTypes";
+
+function normalizeEntityId(value?: string | null, fallbackCode?: string): ExpenseEntityId {
+  const normalized = (value || "").toLowerCase();
+  if (normalized === "alpha" || normalized === "pws") return normalized;
+  const upper = (fallbackCode || "").toUpperCase();
+  if (upper.startsWith("ALPHA-")) return "alpha";
+  if (upper.startsWith("PWS-")) return "pws";
+  return "pws";
+}
+
+function entityPrefix(entity: ExpenseEntityId): string {
+  return `${entity.toUpperCase()}-`;
+}
 
 export default function ExpenseStructurePage() {
   const router = useRouter();
@@ -50,6 +63,10 @@ export default function ExpenseStructurePage() {
 
   useFocusEffect(useCallback(() => { if (allowed) load(); }, [load, allowed]));
 
+  useEffect(() => {
+    if (allowed) load();
+  }, [entity, allowed, load]);
+
   const rewriteCodePrefix = (value: string, from: ExpenseEntityId, to: ExpenseEntityId) => {
     const fromPrefix = `${from.toUpperCase()}-`;
     const toPrefix = `${to.toUpperCase()}-`;
@@ -71,12 +88,19 @@ export default function ExpenseStructurePage() {
 
   const openEdit = (head: ExpenseHead) => {
     setEditing(head);
-    setModalEntity(head.entity_id);
+    setModalEntity(normalizeEntityId(head.entity_id, head.category_code));
     setMainCategory(head.main_category as typeof EXPENSE_MAIN_CATEGORIES[number]);
     setSubCategory(head.sub_category);
     setCode(head.category_code);
     setBudget(head.monthly_budget_limit ? String(head.monthly_budget_limit) : "");
     setModalOpen(true);
+  };
+
+  const onCodeChange = (value: string) => {
+    setCode(value);
+    const upper = value.toUpperCase();
+    if (upper.startsWith("ALPHA-")) setModalEntity("alpha");
+    else if (upper.startsWith("PWS-")) setModalEntity("pws");
   };
 
   const onModalEntityChange = (next: ExpenseEntityId) => {
@@ -87,27 +111,55 @@ export default function ExpenseStructurePage() {
     setModalEntity(next);
   };
 
+  const refreshHeadsForEntity = async (targetEntity: ExpenseEntityId) => {
+    setEntity(targetEntity);
+    setLoading(true);
+    setError("");
+    try {
+      setHeads(await fetchExpenseHeads(targetEntity, false));
+    } catch (err: unknown) {
+      setError(getApiError(err, "Could not load expense structure."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const save = async () => {
     if (!subCategory.trim()) {
       Alert.alert("Required", "Sub-category / expense head name is required.");
       return;
     }
+    const trimmedCode = code.trim();
+    if (trimmedCode && !trimmedCode.toUpperCase().startsWith(entityPrefix(modalEntity))) {
+      Alert.alert(
+        "Entity mismatch",
+        `Category code must start with ${entityPrefix(modalEntity)} for ${modalEntity.toUpperCase()}.`,
+      );
+      return;
+    }
+    if (budget.trim()) {
+      const budgetNum = parseInt(budget.replace(/,/g, ""), 10);
+      if (Number.isNaN(budgetNum)) {
+        Alert.alert("Invalid budget", "Monthly budget must be a valid number.");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const budgetNum = budget.trim() ? parseInt(budget.replace(/,/g, ""), 10) : undefined;
-      const entityChanged = editing && modalEntity !== editing.entity_id;
+      const savedEntity = modalEntity;
       if (editing) {
         await updateExpenseHead(editing.id, {
-          entity_id: modalEntity,
-          category_code: code.trim() || undefined,
+          entity_id: savedEntity,
+          category_code: trimmedCode || undefined,
           main_category: mainCategory,
           sub_category: subCategory.trim(),
           monthly_budget_limit: budgetNum,
         });
       } else {
         await createExpenseHead({
-          entity_id: modalEntity,
-          category_code: code.trim() || undefined,
+          entity_id: savedEntity,
+          category_code: trimmedCode || undefined,
           main_category: mainCategory,
           sub_category: subCategory.trim(),
           monthly_budget_limit: budgetNum,
@@ -115,20 +167,8 @@ export default function ExpenseStructurePage() {
         });
       }
       setModalOpen(false);
-      if (entityChanged) {
-        setEntity(modalEntity);
-        setLoading(true);
-        setError("");
-        try {
-          setHeads(await fetchExpenseHeads(modalEntity, false));
-        } catch (err: unknown) {
-          setError(getApiError(err, "Could not load expense structure."));
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        await load();
-      }
+      setEditing(null);
+      await refreshHeadsForEntity(savedEntity);
     } catch (err: unknown) {
       Alert.alert("Save failed", getApiError(err));
     } finally {
@@ -216,7 +256,7 @@ export default function ExpenseStructurePage() {
             <TextInput
               style={s.input}
               value={code}
-              onChangeText={setCode}
+              onChangeText={onCodeChange}
               placeholder={modalEntity === "pws" ? "PWS-OPS-001" : "ALPHA-OPS-001"}
               autoCapitalize="characters"
             />
