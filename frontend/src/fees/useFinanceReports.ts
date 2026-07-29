@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { formatDate } from "../dateFormat";
+import { fetchCollectionsSummary, fetchRevenueBreakdown } from "./financeReportsApi";
 import { buildFinanceReportData } from "./financeReportsMockData";
 import type { FinanceReportFilters } from "./financeReportsTypes";
 import type {
@@ -11,17 +12,20 @@ import type {
 } from "./financeReportsTypes";
 import { reportViewTitle } from "./financeReportsTypes";
 
+const LIVE_VIEWS = new Set(["collections_summary", "revenue_breakdown"]);
+
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
 }
 
-export function getExportMatrix(filters: FinanceReportFilters): {
+export function getExportMatrix(
+  filters: FinanceReportFilters,
+  data: ReturnType<typeof buildFinanceReportData>,
+): {
   columns: string[];
   rows: string[][];
   summaryRows?: string[][];
 } {
-  const data = buildFinanceReportData(filters);
-
   if (filters.reportView === "past_due_aging") {
     const d = data as PastDueReportData;
     return {
@@ -37,12 +41,36 @@ export function getExportMatrix(filters: FinanceReportFilters): {
 
   if (filters.reportView === "collections_summary") {
     const d = data as CollectionsSummaryData;
+    const receiptRows = (d.receiptsLog || []).map((r) => [
+      formatDate(r.paidAt),
+      r.receiptNumber,
+      r.payerName,
+      r.source === "invoice_payment" ? "Invoice" : "Legacy fee",
+      r.paymentMode,
+      inr(r.amount),
+      r.venue || "—",
+      r.collectedBy || "—",
+    ]);
+    const dailyRows = (d.dailyLog || []).map((r) => [
+      formatDate(r.date),
+      String(r.transactions),
+      inr(r.collected),
+      inr(r.expected),
+    ]);
     return {
-      columns: ["Payment Mode", "Transactions", "Amount", "Share"],
-      rows: d.paymentModes.map((m) => [m.mode, String(m.count), inr(m.amount), `${m.pct}%`]),
+      columns: receiptRows.length
+        ? ["Date", "Receipt #", "Payer", "Source", "Mode", "Amount", "Venue", "Collected By"]
+        : dailyRows.length
+          ? ["Date", "Transactions", "Collected", "Expected"]
+          : ["Payment Mode", "Transactions", "Amount", "Share"],
+      rows: receiptRows.length
+        ? receiptRows
+        : dailyRows.length
+          ? dailyRows
+          : (d.paymentModes ?? []).map((m) => [m.mode, String(m.count), inr(m.amount), `${m.pct}%`]),
       summaryRows: [
         ["Collected Today", inr(d.summary.collectedToday)],
-        ["Collected (Month)", inr(d.summary.collectedMonth)],
+        ["Collected (Period)", inr(d.summary.collectedMonth)],
         ["Expected Revenue", inr(d.summary.expectedRevenue)],
         ["Collection Efficiency", `${d.summary.efficiencyPct}%`],
       ],
@@ -84,10 +112,56 @@ export function getExportMatrix(filters: FinanceReportFilters): {
 }
 
 export function useFinanceReportData(filters: FinanceReportFilters) {
-  return useMemo(
+  const mockData = useMemo(
     () => buildFinanceReportData(filters),
     [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo],
   );
+  const isLiveView = LIVE_VIEWS.has(filters.reportView);
+  const [data, setData] = useState(mockData);
+  const [loading, setLoading] = useState(isLiveView);
+  const [error, setError] = useState<string | null>(null);
+
+  // Set loading before paint when switching to a live-backed view (avoids stale-data flash).
+  useLayoutEffect(() => {
+    if (isLiveView) setLoading(true);
+  }, [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo, isLiveView]);
+
+  useEffect(() => {
+    if (!isLiveView) {
+      setData(mockData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setError(null);
+
+    (async () => {
+      try {
+        const live = filters.reportView === "collections_summary"
+          ? await fetchCollectionsSummary(filters)
+          : await fetchRevenueBreakdown(filters);
+        if (!cancelled) {
+          setData(live);
+          setLoading(false);
+        }
+      } catch (e: unknown) {
+        if (!cancelled) {
+          const message = e instanceof Error ? e.message : "Failed to load report data";
+          setError(message);
+          setData(mockData);
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo, mockData, isLiveView]);
+
+  return { data, loading, error };
 }
 
 export { reportViewTitle };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -77,7 +77,7 @@ export default function FinanceReportsScreen() {
     customTo: historyBounds.to,
   }), [centre, entity, reportView, period, historyBounds.from, historyBounds.to]);
 
-  const reportData = useFinanceReportData(filters);
+  const { data: reportData, loading, error } = useFinanceReportData(filters);
 
   const handleReportViewChange = useCallback((view: ReportView) => {
     setReportView(view);
@@ -87,7 +87,7 @@ export default function FinanceReportsScreen() {
   const handleExport = useCallback(async (format: "csv" | "xlsx" | "pdf") => {
     setExporting(true);
     try {
-      const { columns, rows, summaryRows } = getExportMatrix(filters);
+      const { columns, rows, summaryRows } = getExportMatrix(filters, reportData);
       await exportFinanceReport({
         title: reportViewTitle(filters.reportView),
         reportView: filters.reportView,
@@ -100,7 +100,7 @@ export default function FinanceReportsScreen() {
     } finally {
       setExporting(false);
     }
-  }, [filters, user?.name]);
+  }, [filters, user?.name, reportData]);
 
   const entityOverline = entity === "all" ? "PWS & ALPHA" : entityLabel(entity);
 
@@ -155,22 +155,34 @@ export default function FinanceReportsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={[s.scroll, { paddingHorizontal: horizontalPadding }]}>
-        {reportView === "past_due_aging" && (
+        {loading && (
+          <View style={s.stateBox}>
+            <ActivityIndicator size="small" color="#1E40AF" />
+            <Text style={s.stateText}>Loading report data…</Text>
+          </View>
+        )}
+        {!loading && error && (
+          <View style={s.stateBox}>
+            <Text style={s.errorText}>{error}</Text>
+            <Text style={s.stateHint}>Showing cached sample data until the connection is restored.</Text>
+          </View>
+        )}
+        {!loading && reportView === "past_due_aging" && (
           <PastDueReportView
             data={reportData as any}
             onMarkPaid={() => router.push("/fees/collection")}
           />
         )}
-        {reportView === "collections_summary" && (
+        {!loading && reportView === "collections_summary" && (
           <CollectionsSummaryReportView data={reportData as any} />
         )}
-        {reportView === "revenue_breakdown" && (
+        {!loading && reportView === "revenue_breakdown" && (
           <RevenueBreakdownReportView data={reportData as any} />
         )}
-        {reportView === "discounts_waivers" && (
+        {!loading && reportView === "discounts_waivers" && (
           <DiscountsReportView data={reportData as any} />
         )}
-        {reportView === "refunds_cancellations" && (
+        {!loading && reportView === "refunds_cancellations" && (
           <RefundsReportView data={reportData as any} />
         )}
         <View style={{ height: 48 }} />
@@ -198,6 +210,10 @@ const s = StyleSheet.create({
   },
   collectLinkTxt: { fontSize: 11, fontWeight: "700", color: "#1E40AF" },
   scroll: { paddingTop: 12, paddingBottom: 24 },
+  stateBox: { padding: 16, alignItems: "center", gap: 6, marginBottom: 12 },
+  stateText: { fontSize: 12, color: "#64748B" },
+  stateHint: { fontSize: 11, color: "#94A3B8", textAlign: "center" },
+  errorText: { fontSize: 12, fontWeight: "700", color: "#DC2626", textAlign: "center" },
   empty: { padding: 40, alignItems: "center", gap: 8 },
   emptyTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A", marginTop: 8 },
 });

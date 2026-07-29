@@ -33,6 +33,28 @@ export type PastDueReportData = {
   rows: PastDueRow[];
 };
 
+export type DailyRevenueLogRow = {
+  date: string;
+  collected: number;
+  transactions: number;
+  expected: number;
+};
+
+export type DailyReceiptRow = {
+  id: string;
+  source: "legacy_fee" | "invoice_payment";
+  receiptNumber: string;
+  invoiceNumber?: string | null;
+  payerName: string;
+  amount: number;
+  paymentMode: string;
+  referenceId?: string | null;
+  paidAt: string;
+  venue?: string | null;
+  feeType?: string | null;
+  collectedBy?: string | null;
+};
+
 export type CollectionsSummaryData = {
   summary: {
     collectedToday: number;
@@ -42,6 +64,8 @@ export type CollectionsSummaryData = {
   };
   trend: { label: string; expected: number; collected: number }[];
   paymentModes: { mode: string; amount: number; pct: number; count: number }[];
+  dailyLog?: DailyRevenueLogRow[];
+  receiptsLog?: DailyReceiptRow[];
 };
 
 export type RevenueLineItem = {
