@@ -5,16 +5,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
-import { useAuth } from "../../src/auth";
-import { isSuperAdminUser } from "../../src/rbac";
-import { LoadingState, EmptyState, ErrorState, FormLabel, getApiError } from "../../src/ScreenStates";
-import { useBreakpoint } from "../../src/useBreakpoint";
+import { useAuth } from "../../../src/auth";
+import { isSuperAdminUser } from "../../../src/rbac";
+import { LoadingState, EmptyState, ErrorState, FormLabel, getApiError } from "../../../src/ScreenStates";
+import { useBreakpoint } from "../../../src/useBreakpoint";
 import {
   createExpenseHead, fetchExpenseHeads, toggleExpenseHead, updateExpenseHead,
-} from "../../src/expenses/expenseApi";
-import { formatInr } from "../../src/expenses/expenseFormat";
-import type { ExpenseEntityId, ExpenseHead } from "../../src/expenses/expenseTypes";
-import { EXPENSE_MAIN_CATEGORIES } from "../../src/expenses/expenseTypes";
+} from "../../../src/expenses/expenseApi";
+import { formatInr } from "../../../src/expenses/expenseFormat";
+import type { ExpenseEntityId, ExpenseHead } from "../../../src/expenses/expenseTypes";
+import { EXPENSE_MAIN_CATEGORIES } from "../../../src/expenses/expenseTypes";
 
 export default function ExpenseStructurePage() {
   const router = useRouter();
