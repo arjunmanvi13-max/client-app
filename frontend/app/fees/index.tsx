@@ -12,7 +12,7 @@ import { PastDueReportView } from "../../src/components/fees/reports/PastDueRepo
 import { CollectionsSummaryReportView } from "../../src/components/fees/reports/CollectionsSummaryReportView";
 import { RevenueBreakdownReportView } from "../../src/components/fees/reports/RevenueBreakdownReportView";
 import { DiscountsReportView } from "../../src/components/fees/reports/DiscountsReportView";
-import { RefundsReportView } from "../../src/components/fees/reports/RefundsReportView";
+import { ExpenseOutflowReportView } from "../../src/components/fees/reports/ExpenseOutflowReportView";
 import {
   clampHistoryRange,
   defaultHistoryRange,
@@ -178,6 +178,9 @@ export default function FinanceReportsScreen() {
         )}
         {!loading && reportView === "revenue_breakdown" && (
           <RevenueBreakdownReportView data={reportData as any} />
+        )}
+        {!loading && reportView === "expense_outflow" && (
+          <ExpenseOutflowReportView data={reportData as any} />
         )}
         {!loading && reportView === "discounts_waivers" && (
           <DiscountsReportView data={reportData as any} />

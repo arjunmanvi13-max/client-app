@@ -44,6 +44,7 @@ const REPORT_OPTIONS = [
   { id: "past_due_aging", label: "Past Due & Aging Receivables" },
   { id: "collections_summary", label: "Fee Collections Summary" },
   { id: "revenue_breakdown", label: "Revenue Breakdown by Line Item" },
+  { id: "expense_outflow", label: "Expense & Outflow Summary" },
   { id: "discounts_waivers", label: "Discounts, Waivers & Concessions" },
   { id: "refunds_cancellations", label: "Refunds & Cancellations" },
 ];

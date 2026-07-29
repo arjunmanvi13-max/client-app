@@ -1,18 +1,19 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { formatDate } from "../dateFormat";
-import { fetchCollectionsSummary, fetchRevenueBreakdown } from "./financeReportsApi";
+import { fetchCollectionsSummary, fetchExpenseOutflow, fetchRevenueBreakdown } from "./financeReportsApi";
 import { buildFinanceReportData } from "./financeReportsMockData";
 import type { FinanceReportFilters } from "./financeReportsTypes";
 import type {
   CollectionsSummaryData,
   DiscountsReportData,
+  ExpenseOutflowReportData,
   PastDueReportData,
   RefundsReportData,
   RevenueBreakdownData,
 } from "./financeReportsTypes";
 import { reportViewTitle } from "./financeReportsTypes";
 
-const LIVE_VIEWS = new Set(["collections_summary", "revenue_breakdown"]);
+const LIVE_VIEWS = new Set(["collections_summary", "revenue_breakdown", "expense_outflow"]);
 
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
@@ -86,6 +87,18 @@ export function getExportMatrix(
     };
   }
 
+  if (filters.reportView === "expense_outflow") {
+    const d = data as ExpenseOutflowReportData;
+    return {
+      columns: ["Date", "Entity", "Expense Head", "Vendor", "Venue", "Amount"],
+      rows: (d.rows || []).map((r) => [formatDate(r.date), r.entity, r.expense_head, r.vendor, r.venue || "—", inr(r.amount)]),
+      summaryRows: [
+        ["Total Outflow", inr(d.totals?.amount || 0)],
+        ["Approved Expenses", String(d.totals?.count || 0)],
+      ],
+    };
+  }
+
   if (filters.reportView === "discounts_waivers") {
     const d = data as DiscountsReportData;
     return {
@@ -141,7 +154,9 @@ export function useFinanceReportData(filters: FinanceReportFilters) {
       try {
         const live = filters.reportView === "collections_summary"
           ? await fetchCollectionsSummary(filters)
-          : await fetchRevenueBreakdown(filters);
+          : filters.reportView === "expense_outflow"
+            ? await fetchExpenseOutflow(filters)
+            : await fetchRevenueBreakdown(filters);
         if (!cancelled) {
           setData(live);
           setLoading(false);

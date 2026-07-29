@@ -68,6 +68,13 @@ export type CollectionsSummaryData = {
   receiptsLog?: DailyReceiptRow[];
 };
 
+export type ExpenseOutflowReportData = {
+  totals: { amount: number; count: number };
+  byExpenseHead: { expense_head: string; main_category?: string; amount: number; count: number }[];
+  byVenue: { venue: string; amount: number }[];
+  rows: { date: string; expense_head: string; vendor: string; amount: number; venue?: string; entity: string }[];
+};
+
 export type RevenueLineItem = {
   lineItem: string;
   transactions: number;
@@ -137,6 +144,7 @@ export function reportViewTitle(view: ReportView): string {
     past_due_aging: "Past Due & Aging Receivables",
     collections_summary: "Fee Collections Summary",
     revenue_breakdown: "Revenue Breakdown by Line Item",
+    expense_outflow: "Expense & Outflow Summary",
     discounts_waivers: "Discounts, Waivers & Concessions",
     refunds_cancellations: "Refunds & Cancellations",
   };

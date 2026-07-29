@@ -1,7 +1,7 @@
 import { api } from "../auth";
 import { computePeriodRange } from "./financeReportsFilters";
 import type { FinanceReportFilters } from "./financeReportsTypes";
-import type { CollectionsSummaryData, DailyReceiptRow, RevenueBreakdownData } from "./financeReportsTypes";
+import type { CollectionsSummaryData, DailyReceiptRow, ExpenseOutflowReportData, RevenueBreakdownData } from "./financeReportsTypes";
 
 type FinancialSummaryResponse = {
   totals: {
@@ -154,4 +154,31 @@ export async function fetchRevenueBreakdown(filters: FinanceReportFilters): Prom
 
   const totalNet = rows.reduce((s, r) => s + r.netRevenue, 0);
   return { rows, totalNet };
+}
+
+export async function fetchExpenseOutflow(filters: FinanceReportFilters): Promise<ExpenseOutflowReportData> {
+  const { from, to } = computePeriodRange(filters.period, filters.customFrom, filters.customTo);
+  const params: Record<string, string> = { date_from: from, date_to: to };
+  if (filters.entity === "pws") params.entity_id = "pws";
+  else if (filters.entity === "alpha") params.entity_id = "alpha";
+  if (filters.centre !== "all") params.venue = filters.centre;
+  const { data } = await api.get<{
+    totals: { amount: number; count: number };
+    by_expense_head: { expense_head: string; main_category?: string; amount: number; count: number }[];
+    by_venue: { venue: string; amount: number }[];
+    rows: { expense_date?: string; expense_head_name?: string; vendor_name?: string; amount: number; venue?: string; entity_id?: string }[];
+  }>("/expenses/summary", { params });
+  return {
+    totals: data.totals,
+    byExpenseHead: data.by_expense_head || [],
+    byVenue: data.by_venue || [],
+    rows: (data.rows || []).map((r) => ({
+      date: r.expense_date || "",
+      expense_head: r.expense_head_name || "Other",
+      vendor: r.vendor_name || "—",
+      amount: r.amount || 0,
+      venue: r.venue,
+      entity: (r.entity_id || "pws").toUpperCase(),
+    })),
+  };
 }

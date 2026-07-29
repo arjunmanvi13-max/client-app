@@ -81,6 +81,10 @@ export enum Permission {
   VIEW_ATTENDANCE = "VIEW_ATTENDANCE",
 
   DASHBOARD_ACCESS = "DASHBOARD_ACCESS",
+
+  MANAGE_EXPENSE_STRUCTURE = "MANAGE_EXPENSE_STRUCTURE",
+  CAPTURE_PWS_EXPENSES = "CAPTURE_PWS_EXPENSES",
+  CAPTURE_ALPHA_EXPENSES = "CAPTURE_ALPHA_EXPENSES",
 }
 
 // ---------------------------------------------------------------------------
@@ -148,13 +152,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.ADD_NEW_TEACHER,
     Permission.MANAGE_USERS_ROSTERS,
     Permission.DASHBOARD_ACCESS,
+    Permission.MANAGE_EXPENSE_STRUCTURE,
+    Permission.CAPTURE_PWS_EXPENSES,
+    Permission.CAPTURE_ALPHA_EXPENSES,
   ],
   [UserRole.PWS_ADMIN]: [
     Permission.MARK_PWS_ATTENDANCE,
     Permission.MANAGE_TEACHERS_MAP_SUBJECTS,
     Permission.CREATE_TEACHER_TASKS,
     Permission.MANAGE_TEACHERS_MAP_SECTIONS,
+    Permission.APPROVE_REQUESTS,
     Permission.DASHBOARD_ACCESS,
+    Permission.CAPTURE_PWS_EXPENSES,
   ],
   [UserRole.ALPHA_ADMIN]: [
     Permission.MARK_ALPHA_ATTENDANCE,
@@ -162,6 +171,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.CREATE_COACH_TASKS,
     Permission.MANAGE_PLAYERS,
     Permission.DASHBOARD_ACCESS,
+    Permission.CAPTURE_ALPHA_EXPENSES,
   ],
   [UserRole.PWS_ACCOUNTS]: [
     Permission.COLLECT_PWS_FEES,
@@ -169,6 +179,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.ADD_PWS_STUDENTS,
     Permission.RUN_PWS_REPORTS,
     Permission.DASHBOARD_ACCESS,
+    Permission.CAPTURE_PWS_EXPENSES,
   ],
   [UserRole.ALPHA_ACCOUNTS]: [
     Permission.COLLECT_ALPHA_FEES,
@@ -176,6 +187,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.ADD_ALPHA_PLAYERS,
     Permission.RUN_ALPHA_REPORTS,
     Permission.DASHBOARD_ACCESS,
+    Permission.CAPTURE_ALPHA_EXPENSES,
   ],
   [UserRole.PWS_TEACHER]: [
     Permission.MARK_STUDENT_ATTENDANCE,

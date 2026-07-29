@@ -140,6 +140,24 @@ export function buildRefundsReport(filters: FinanceReportFilters): RefundsReport
   };
 }
 
+export function buildExpenseOutflowReport(filters: FinanceReportFilters) {
+  const scale = filters.entity === "alpha" ? 0.6 : 1;
+  const rows = [
+    { date: "2026-07-15", entity: "PWS", expense_head: "Electricity Bill", vendor: "WBSEDCL", amount: Math.round(45000 * scale), venue: "Balua" },
+    { date: "2026-07-12", entity: "PWS", expense_head: "Cricket Gear", vendor: "Sports Mart", amount: Math.round(28000 * scale), venue: "Balua" },
+    { date: "2026-07-08", entity: "ALPHA", expense_head: "Fuel & Transport", vendor: "HP Petrol Pump", amount: Math.round(12000 * scale), venue: "Unassigned" },
+  ];
+  return {
+    totals: { amount: rows.reduce((s, r) => s + r.amount, 0), count: rows.length },
+    byExpenseHead: [
+      { expense_head: "Electricity Bill", main_category: "Utilities", amount: Math.round(45000 * scale), count: 1 },
+      { expense_head: "Cricket Gear", main_category: "Sports Equipment", amount: Math.round(28000 * scale), count: 1 },
+    ],
+    byVenue: [{ venue: "Balua", amount: Math.round(73000 * scale) }],
+    rows,
+  };
+}
+
 export function buildFinanceReportData(filters: FinanceReportFilters) {
   switch (filters.reportView) {
     case "past_due_aging":
@@ -148,6 +166,8 @@ export function buildFinanceReportData(filters: FinanceReportFilters) {
       return buildCollectionsSummary(filters);
     case "revenue_breakdown":
       return buildRevenueBreakdown(filters);
+    case "expense_outflow":
+      return buildExpenseOutflowReport(filters);
     case "discounts_waivers":
       return buildDiscountsReport(filters);
     case "refunds_cancellations":

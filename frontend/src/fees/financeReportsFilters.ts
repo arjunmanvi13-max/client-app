@@ -6,6 +6,7 @@ export type ReportView =
   | "past_due_aging"
   | "collections_summary"
   | "revenue_breakdown"
+  | "expense_outflow"
   | "discounts_waivers"
   | "refunds_cancellations";
 export type PeriodFilter = "today" | "current_month" | "last_month" | "custom";
@@ -68,6 +69,7 @@ export function reportViewFromParam(raw?: string | string[]): ReportView | null 
   if (tab === "past-due" || tab === "overdue" || tab === "past_due" || tab === "past_due_aging") return "past_due_aging";
   if (tab === "collections" || tab === "collections_summary") return "collections_summary";
   if (tab === "revenue" || tab === "revenue_breakdown") return "revenue_breakdown";
+  if (tab === "expenses" || tab === "expense_outflow") return "expense_outflow";
   if (tab === "discounts" || tab === "discounts_waivers") return "discounts_waivers";
   if (tab === "refunds" || tab === "refunds_cancellations") return "refunds_cancellations";
   if (tab === "current-month" || tab === "main") return "past_due_aging";
@@ -79,6 +81,7 @@ export function reportViewToParam(view: ReportView): string {
     past_due_aging: "past-due",
     collections_summary: "collections",
     revenue_breakdown: "revenue",
+    expense_outflow: "expenses",
     discounts_waivers: "discounts",
     refunds_cancellations: "refunds",
   };

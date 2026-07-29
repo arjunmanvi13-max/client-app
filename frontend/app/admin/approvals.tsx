@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../src/auth";
-import { Permission } from "../../src/rbac";
+import { Permission, isPrincipalUser, isSuperAdminUser } from "../../src/rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../../src/ScreenStates";
 import { formatDateTime } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
@@ -33,6 +33,7 @@ import {
   type ApprovalStatus,
 } from "../../src/approvalTypes";
 import { colors, radii, spacing } from "../../src/theme";
+import { ExpenseApprovalsPanel } from "../../src/expenses/ExpenseApprovalsPanel";
 
 const STATUS_TABS: ApprovalStatus[] = ["pending", "approved", "rejected"];
 
@@ -197,6 +198,7 @@ export default function Approvals() {
   const [reqs, setReqs] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pageMode, setPageMode] = useState<"workflow" | "expenses">("workflow");
   const [statusTab, setStatusTab] = useState<ApprovalStatus>("pending");
   const [categoryFilter, setCategoryFilter] = useState<"all" | ApprovalCategory>("all");
   const [decision, setDecision] = useState<{
@@ -211,12 +213,14 @@ export default function Approvals() {
   const [refreshing, setRefreshing] = useState(false);
   const decidingRef = useRef(false);
 
-  const canView = userHasPermission(user, Permission.APPROVE_REQUESTS);
-  const canDecide = userHasPermission(user, Permission.APPROVE_REQUESTS);
+  const canViewWorkflow = userHasPermission(user, Permission.APPROVE_REQUESTS);
+  const canViewExpenses = canViewWorkflow || isPrincipalUser(user) || isSuperAdminUser(user);
+  const canView = canViewWorkflow || canViewExpenses;
+  const canDecide = userHasPermission(user, Permission.APPROVE_REQUESTS) || isPrincipalUser(user) || isSuperAdminUser(user);
 
   const load = useCallback(async () => {
-    if (!canView || decidingRef.current) {
-      if (!canView) setLoading(false);
+    if (!canViewWorkflow || decidingRef.current || pageMode !== "workflow") {
+      if (!canViewWorkflow || pageMode !== "workflow") setLoading(false);
       return;
     }
     setError("");
@@ -233,7 +237,7 @@ export default function Approvals() {
     } finally {
       setLoading(false);
     }
-  }, [canView, categoryFilter]);
+  }, [canViewWorkflow, categoryFilter, pageMode]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
@@ -359,6 +363,25 @@ export default function Approvals() {
 
       <View style={[s.filtersWrap, { paddingHorizontal: horizontalPadding }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
+          <TouchableOpacity
+            style={[s.categoryTab, pageMode === "workflow" && s.categoryTabActive]}
+            onPress={() => setPageMode("workflow")}
+          >
+            <Text style={[s.categoryTabTxt, pageMode === "workflow" && s.categoryTabTxtActive]}>Workflow Requests</Text>
+          </TouchableOpacity>
+          {canViewExpenses && (
+            <TouchableOpacity
+              style={[s.categoryTab, pageMode === "expenses" && s.categoryTabActive]}
+              onPress={() => setPageMode("expenses")}
+              testID="appr-cat-expenses"
+            >
+              <Text style={[s.categoryTabTxt, pageMode === "expenses" && s.categoryTabTxtActive]}>Expense Approvals</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+
+        {pageMode === "workflow" && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.categoryRow}>
           {APPROVAL_CATEGORY_FILTERS.map((f) => {
             const active = categoryFilter === f.key;
             return (
@@ -373,7 +396,9 @@ export default function Approvals() {
             );
           })}
         </ScrollView>
+        )}
 
+        {pageMode === "workflow" && (
         <View style={s.statusRow}>
           {STATUS_TABS.map((t) => (
             <TouchableOpacity
@@ -388,6 +413,7 @@ export default function Approvals() {
             </TouchableOpacity>
           ))}
         </View>
+        )}
       </View>
 
       <ScrollView
@@ -400,9 +426,11 @@ export default function Approvals() {
             width: "100%",
           },
         ]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={pageMode === "workflow" ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} /> : undefined}
       >
-        {loading && !refreshing ? (
+        {pageMode === "expenses" ? (
+          <ExpenseApprovalsPanel onUpdated={load} />
+        ) : loading && !refreshing ? (
           <LoadingState message="Loading requests…" />
         ) : error ? (
           <ErrorState message={error} onRetry={load} />

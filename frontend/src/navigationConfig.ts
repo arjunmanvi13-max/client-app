@@ -187,6 +187,32 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         permissions: [Permission.COLLECT_PWS_FEES],
         pwsOnly: true,
       },
+      {
+        id: "pws-expenses",
+        label: "PWS Expenses",
+        icon: "trending-down",
+        href: "/admin/financials/pws-expenses",
+        match: matchPrefix(["/admin/financials/pws-expenses"]),
+        permissions: [Permission.CAPTURE_PWS_EXPENSES, Permission.APPROVE_REQUESTS],
+        pwsOnly: true,
+        isVisible: (ctx) =>
+          isSuperAdminUser(ctx.user)
+          || hasPermission(ctx.user, Permission.CAPTURE_PWS_EXPENSES, BusinessEntity.PWS)
+          || ["principal", "vice_principal", "pws_admin", "pws_accounts"].includes(ctx.user.role || ""),
+      },
+      {
+        id: "alpha-expenses",
+        label: "ALPHA Expenses",
+        icon: "trending-down",
+        href: "/admin/financials/alpha-expenses",
+        match: matchPrefix(["/admin/financials/alpha-expenses"]),
+        permissions: [Permission.CAPTURE_ALPHA_EXPENSES],
+        alphaOnly: true,
+        isVisible: (ctx) =>
+          isSuperAdminUser(ctx.user)
+          || hasPermission(ctx.user, Permission.CAPTURE_ALPHA_EXPENSES, BusinessEntity.ALPHA)
+          || ["admin", "alpha_admin", "alpha_accounts"].includes(ctx.user.role || ""),
+      },
     ],
   },
   {
@@ -331,6 +357,14 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         icon: "layers",
         href: "/admin/academy-structure",
         match: matchPrefix(["/admin/academy-structure"]),
+        isVisible: (ctx) => isSuperAdminUser(ctx.user),
+      },
+      {
+        id: "expense-structure",
+        label: "Expense Structure",
+        icon: "list",
+        href: "/admin/settings/expense-structure",
+        match: matchPrefix(["/admin/settings/expense-structure"]),
         isVisible: (ctx) => isSuperAdminUser(ctx.user),
       },
       {
