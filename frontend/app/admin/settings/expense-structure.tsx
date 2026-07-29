@@ -26,6 +26,7 @@ export default function ExpenseStructurePage() {
   const [error, setError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseHead | null>(null);
+  const [modalEntity, setModalEntity] = useState<ExpenseEntityId>("pws");
   const [mainCategory, setMainCategory] = useState(EXPENSE_MAIN_CATEGORIES[0]);
   const [subCategory, setSubCategory] = useState("");
   const [code, setCode] = useState("");
@@ -49,8 +50,18 @@ export default function ExpenseStructurePage() {
 
   useFocusEffect(useCallback(() => { if (allowed) load(); }, [load, allowed]));
 
+  const rewriteCodePrefix = (value: string, from: ExpenseEntityId, to: ExpenseEntityId) => {
+    const fromPrefix = `${from.toUpperCase()}-`;
+    const toPrefix = `${to.toUpperCase()}-`;
+    if (value.toUpperCase().startsWith(fromPrefix)) {
+      return toPrefix + value.slice(fromPrefix.length);
+    }
+    return value;
+  };
+
   const openCreate = () => {
     setEditing(null);
+    setModalEntity(entity);
     setMainCategory(EXPENSE_MAIN_CATEGORIES[0]);
     setSubCategory("");
     setCode("");
@@ -60,11 +71,20 @@ export default function ExpenseStructurePage() {
 
   const openEdit = (head: ExpenseHead) => {
     setEditing(head);
+    setModalEntity(head.entity_id);
     setMainCategory(head.main_category as typeof EXPENSE_MAIN_CATEGORIES[number]);
     setSubCategory(head.sub_category);
     setCode(head.category_code);
     setBudget(head.monthly_budget_limit ? String(head.monthly_budget_limit) : "");
     setModalOpen(true);
+  };
+
+  const onModalEntityChange = (next: ExpenseEntityId) => {
+    if (next === modalEntity) return;
+    if (code.trim()) {
+      setCode(rewriteCodePrefix(code.trim(), modalEntity, next));
+    }
+    setModalEntity(next);
   };
 
   const save = async () => {
@@ -75,15 +95,18 @@ export default function ExpenseStructurePage() {
     setSaving(true);
     try {
       const budgetNum = budget.trim() ? parseInt(budget.replace(/,/g, ""), 10) : undefined;
+      const entityChanged = editing && modalEntity !== editing.entity_id;
       if (editing) {
         await updateExpenseHead(editing.id, {
+          entity_id: modalEntity,
+          category_code: code.trim() || undefined,
           main_category: mainCategory,
           sub_category: subCategory.trim(),
           monthly_budget_limit: budgetNum,
         });
       } else {
         await createExpenseHead({
-          entity_id: entity,
+          entity_id: modalEntity,
           category_code: code.trim() || undefined,
           main_category: mainCategory,
           sub_category: subCategory.trim(),
@@ -92,7 +115,20 @@ export default function ExpenseStructurePage() {
         });
       }
       setModalOpen(false);
-      await load();
+      if (entityChanged) {
+        setEntity(modalEntity);
+        setLoading(true);
+        setError("");
+        try {
+          setHeads(await fetchExpenseHeads(modalEntity, false));
+        } catch (err: unknown) {
+          setError(getApiError(err, "Could not load expense structure."));
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        await load();
+      }
     } catch (err: unknown) {
       Alert.alert("Save failed", getApiError(err));
     } finally {
@@ -165,13 +201,25 @@ export default function ExpenseStructurePage() {
           <Pressable style={s.modalCard} onPress={(e) => e.stopPropagation()}>
             <Text style={s.modalTitle}>{editing ? "Edit Expense Head" : "Add Expense Head"}</Text>
             <FormLabel label="Entity" />
-            <Text style={s.readonly}>{entity.toUpperCase()}</Text>
-            {!editing && (
-              <>
-                <FormLabel label="Category Code (optional — auto-generated if blank)" />
-                <TextInput style={s.input} value={code} onChangeText={setCode} placeholder="PWS-OPS-001" />
-              </>
-            )}
+            <View style={s.entityRow}>
+              {(["pws", "alpha"] as ExpenseEntityId[]).map((e) => (
+                <TouchableOpacity
+                  key={e}
+                  style={[s.entityChip, modalEntity === e && s.entityChipActive]}
+                  onPress={() => onModalEntityChange(e)}
+                >
+                  <Text style={[s.entityChipTxt, modalEntity === e && s.entityChipTxtActive]}>{e.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <FormLabel label={editing ? "Category Code" : "Category Code (optional — auto-generated if blank)"} />
+            <TextInput
+              style={s.input}
+              value={code}
+              onChangeText={setCode}
+              placeholder={modalEntity === "pws" ? "PWS-OPS-001" : "ALPHA-OPS-001"}
+              autoCapitalize="characters"
+            />
             <FormLabel label="Main Category" />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
               {EXPENSE_MAIN_CATEGORIES.map((c) => (
