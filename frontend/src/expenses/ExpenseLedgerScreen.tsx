@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, Pressable, RefreshControl,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -9,7 +9,7 @@ import { useAuth, userHasPermission } from "../auth";
 import { BusinessEntity, Permission, isSuperAdminUser } from "../rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
-import { formatDate } from "../dateFormat";
+import { formatDate, formatDateTime } from "../dateFormat";
 import { colors, formColors, radii, spacing } from "../theme";
 import {
   createExpenseEntry, deleteExpenseEntry, fetchExpenseEntries,
@@ -59,7 +59,6 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseEntry | null>(null);
   const [saving, setSaving] = useState(false);
-  const [rejectTip, setRejectTip] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -216,7 +215,16 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
         {loading && entries.length === 0 && <LoadingState message="Loading expenses…" />}
         {!loading && error && <ErrorState message={error} onRetry={load} />}
         {!loading && !error && entries.length === 0 && (
-          <EmptyState title="No expense entries" subtitle="Add a new expense to get started." />
+          <EmptyState
+            title="No expense entries"
+            subtitle={
+              tab === "rejected"
+                ? "Rejected expenses appear here with approver comments. Edit and resubmit when ready."
+                : tab === "pending"
+                  ? "Submitted expenses awaiting approval will appear here."
+                  : "Add a new expense to get started."
+            }
+          />
         )}
         {!loading && !error && entries.map((entry) => {
           const st = statusStyle(entry.status);
@@ -249,8 +257,15 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
                   <Text style={[s.inlineBadgeTxt, { color: "#B45309" }]}>Over Budget</Text>
                 </View>
               )}
-              {rejectTip && entry.rejection_reason ? (
-                <Text style={s.rejectTip}>Rejection: {entry.rejection_reason}</Text>
+              {entry.status === "rejected" && entry.rejection_reason ? (
+                <View style={s.rejectBox}>
+                  <Text style={s.rejectBoxTitle}>Action required — rejected by approver</Text>
+                  <Text style={s.rejectBoxReason}>{entry.rejection_reason}</Text>
+                  <Text style={s.rejectBoxMeta}>
+                    {entry.rejected_by_name ? `${entry.rejected_by_name}` : "Approver"}
+                    {entry.rejected_at ? ` · ${formatDateTime(entry.rejected_at)}` : ""}
+                  </Text>
+                </View>
               ) : null}
               <View style={s.actions}>
                 {editable && canCapture && (
@@ -276,9 +291,6 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
                   </TouchableOpacity>
                 )}
               </View>
-              {entry.rejection_reason ? (
-                <Pressable onHoverIn={() => setRejectTip(entry.rejection_reason || null)} onHoverOut={() => setRejectTip(null)} />
-              ) : null}
             </View>
           );
         })}
@@ -345,7 +357,13 @@ const s = StyleSheet.create({
   cardSub: { fontSize: 11, color: colors.muted2 },
   inlineBadge: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.pill },
   inlineBadgeTxt: { fontSize: 10, fontWeight: "800" },
-  rejectTip: { fontSize: 11, color: "#9A3412", fontStyle: "italic" },
+  rejectBox: {
+    marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.sm,
+    backgroundColor: colors.dangerSoft, borderWidth: 1, borderColor: "#FECACA",
+  },
+  rejectBoxTitle: { fontSize: 11, fontWeight: "800", color: colors.danger },
+  rejectBoxReason: { fontSize: 12, color: "#7F1D1D", marginTop: 4, lineHeight: 17 },
+  rejectBoxMeta: { fontSize: 10, color: colors.muted2, marginTop: 4 },
   actions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, flexWrap: "wrap" },
   actionBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.sm, backgroundColor: colors.borderSoft },
   actionDanger: { backgroundColor: colors.dangerSoft },
