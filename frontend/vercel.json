@@ -39,6 +39,18 @@
       "destination": "/admin/permissions/[id]"
     },
     {
+      "source": "/admin/financials/pws-expenses",
+      "destination": "/admin/financials/pws-expenses"
+    },
+    {
+      "source": "/admin/financials/alpha-expenses",
+      "destination": "/admin/financials/alpha-expenses"
+    },
+    {
+      "source": "/admin/settings/expense-structure",
+      "destination": "/admin/settings/expense-structure"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
