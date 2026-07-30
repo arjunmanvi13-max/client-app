@@ -8,6 +8,7 @@ import { Sidebar } from "../src/Sidebar";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { colors } from "../src/theme";
 import { isCoachBlockedPath, isCoachUser } from "../src/coachAccess";
+import { isTeacherBlockedPath, isPwsTeacherUser } from "../src/teacherAccess";
 
 function CoachRouteGuard() {
   const { user, loading } = useAuth();
@@ -17,6 +18,21 @@ function CoachRouteGuard() {
   useEffect(() => {
     if (loading || !user || !isCoachUser(user)) return;
     if (isCoachBlockedPath(pathname)) {
+      router.replace("/(tabs)/dashboard");
+    }
+  }, [loading, user, pathname, router]);
+
+  return null;
+}
+
+function TeacherRouteGuard() {
+  const { user, loading } = useAuth();
+  const pathname = usePathname() || "";
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading || !user || !isPwsTeacherUser(user)) return;
+    if (isTeacherBlockedPath(pathname)) {
       router.replace("/(tabs)/dashboard");
     }
   }, [loading, user, pathname, router]);
@@ -49,6 +65,7 @@ function ShellOrStack() {
     return (
       <>
         <CoachRouteGuard />
+        <TeacherRouteGuard />
         {stack}
       </>
     );
@@ -57,6 +74,7 @@ function ShellOrStack() {
   return (
     <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.bg }}>
       <CoachRouteGuard />
+      <TeacherRouteGuard />
       <Sidebar />
       <View style={{ flex: 1, minWidth: 0 }}>{stack}</View>
     </View>

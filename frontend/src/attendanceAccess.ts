@@ -8,6 +8,7 @@ import {
 } from "./rbac";
 import type { AttendanceKind } from "./attendanceCalendar";
 import { isCoachUser, resolveCoachDataScope } from "./coachAccess";
+import { isPwsTeacherUser } from "./teacherAccess";
 
 export const PLAYER_VENUES = ["Balua", "Harding Park"] as const;
 export const PLAYER_SPORTS = ["Cricket", "Football"] as const;
@@ -121,6 +122,11 @@ export type AttendanceKindOption = {
 export function getAttendanceKindOptions(user: User | null | undefined): AttendanceKindOption[] {
   if (!user) return [];
 
+  // PWS teachers — students only; no Players/Staff/Teachers/Coaches tabs.
+  if (isPwsTeacherUser(user)) {
+    return [{ key: "student", label: "Students", icon: "book", color: "#1E40AF" }];
+  }
+
   const superAdmin = isSuperAdminUser(user);
   const role = normalizeRole(user?.role || "");
 
@@ -178,10 +184,8 @@ export function defaultAttendanceKind(
   options: AttendanceKindOption[],
 ): AttendanceKind | null {
   if (!options.length) return null;
+  if (isPwsTeacherUser(user)) return "student";
   const role = normalizeRole(user?.role || "");
-  if (role === UserRole.PWS_TEACHER && options.some((o) => o.key === "student")) {
-    return "student";
-  }
   if ((role === UserRole.ALPHA_COACH || isCoachUser(user)) && options.some((o) => o.key === "player")) {
     return "player";
   }

@@ -29,6 +29,7 @@ import {
   type PlayerCategory,
 } from "./attendanceAccess";
 import { coachSportAssignmentMessage, resolveCoachDataScope } from "./coachAccess";
+import { isPwsTeacherUser, resolveTeacherDataScope } from "./teacherAccess";
 import { formatDate, toISODate, parseToISO } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { FormDateField } from "./components/forms/FormDateField";
@@ -145,6 +146,8 @@ export default function Attendance() {
   const kindOptions = useMemo(() => getAttendanceKindOptions(user), [user]);
   const playerScope = useMemo(() => resolvePlayerFilterScope(user), [user]);
   const coachScope = useMemo(() => resolveCoachDataScope(user), [user]);
+  const teacherScope = useMemo(() => resolveTeacherDataScope(user), [user]);
+  const isTeacherLocked = teacherScope.isTeacher;
 
   const [kind, setKind] = useState<AttendanceKind>("student");
   const [groups, setGroups] = useState<string[]>([]);
@@ -172,10 +175,14 @@ export default function Attendance() {
   const readOnly = isHoliday;
 
   useEffect(() => {
+    if (isTeacherLocked) {
+      setKind("student");
+      return;
+    }
     const next = defaultAttendanceKind(user, kindOptions);
     if (!next) return;
     setKind((current) => (kindOptions.some((k) => k.key === current) ? current : next));
-  }, [user, kindOptions]);
+  }, [user, kindOptions, isTeacherLocked]);
 
   useEffect(() => {
     setStaffOrg(resolveDefaultStaffOrg(user));
@@ -706,9 +713,18 @@ export default function Attendance() {
             <Text style={s.breadcrumb}>OPERATIONS · ATTENDANCE</Text>
             <Text style={s.h1Compact}>Take Attendance</Text>
             <Text style={s.subCompact}>
-              {calendarInfo?.weekday || "—"} · {kind === "player" ? "ALPHA players" : "linked to academic calendar"}
+              {isTeacherLocked
+                ? "PWS students · assigned classes only"
+                : `${calendarInfo?.weekday || "—"} · ${kind === "player" ? "ALPHA players" : "linked to academic calendar"}`}
             </Text>
           </View>
+
+          {isTeacherLocked && (
+            <View style={s.scopeBanner}>
+              <Feather name="lock" size={14} color={colors.primary} />
+              <Text style={s.scopeBannerTxt}>Scoped to PWS · Students tab locked for your role</Text>
+            </View>
+          )}
 
           <View style={s.cardCompact}>
             <View style={[s.filterRow, !isMobile && s.filterRowWide]}>
@@ -737,6 +753,7 @@ export default function Attendance() {
             </View>
           </View>
 
+          {(kindOptions.length > 1 && !isTeacherLocked) && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -755,6 +772,7 @@ export default function Attendance() {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          )}
 
           {kind === "staff" && staffOrgSelectable(user) && (
             <View style={s.cardCompact}>
@@ -926,6 +944,18 @@ const s = StyleSheet.create({
   pageHeaderCompact: { marginBottom: spacing.xs },
   h1Compact: { fontSize: 22, fontWeight: "800", color: colors.ink, letterSpacing: -0.5, marginTop: 4 },
   subCompact: { fontSize: 12, color: colors.muted2, marginTop: 2 },
+  scopeBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.primarySofter,
+    borderWidth: 1,
+    borderColor: colors.primarySoft,
+  },
+  scopeBannerTxt: { flex: 1, fontSize: 12, fontWeight: "600", color: colors.primary },
   page: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, paddingBottom: spacing.xxl },
   pageHeader: { marginBottom: spacing.lg },
   breadcrumb: {
