@@ -105,11 +105,16 @@ function CardHead({ icon, title, action }: { icon: keyof typeof Feather.glyphMap
   );
 }
 
-export default function SuperAdminDashboard() {
+type DashboardProps = {
+  /** When set, hides entity toggle and locks all metrics to this scope. */
+  lockedEntity?: Entity;
+};
+
+export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {}) {
   const { user } = useAuth();
   const router = useRouter();
   const { horizontalPadding, contentMaxWidth, isWide, height } = useBreakpoint();
-  const [entity, setEntity] = useState<Entity>("both");
+  const [entity, setEntity] = useState<Entity>(lockedEntity || "both");
   const [bundle, setBundle] = useState<Awaited<ReturnType<typeof fetchSuperAdminDashboardBundle>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -117,11 +122,13 @@ export default function SuperAdminDashboard() {
   const [quickOpen, setQuickOpen] = useState(false);
 
   const isSuperAdmin = user?.role === "super_admin";
+  const isPwsLocked = lockedEntity === "pws";
+  const isAlphaLocked = lockedEntity === "alpha";
+  const effectiveEntity: Entity = lockedEntity ?? (isSuperAdmin ? entity : "alpha");
 
   const load = useCallback(async () => {
     setError("");
     try {
-      const effectiveEntity = isSuperAdmin ? entity : "alpha";
       const d = await fetchSuperAdminDashboardBundle(effectiveEntity);
       setBundle(d);
     } catch (e: any) {
@@ -131,7 +138,7 @@ export default function SuperAdminDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [entity, isSuperAdmin]);
+  }, [effectiveEntity]);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
@@ -154,7 +161,7 @@ export default function SuperAdminDashboard() {
     const received = collectedMonthly;
     const target = Math.max(expectedMonthly || received + monthlyDues + historicalDues, received, 1);
     const progress = Math.min(100, Math.round((received / target) * 100));
-    const byCategory = filterFinanceCategories(metrics?.revenue?.by_category || [], entity);
+    const byCategory = filterFinanceCategories(metrics?.revenue?.by_category || [], effectiveEntity);
     return {
       collectedToday,
       txn,
@@ -168,7 +175,7 @@ export default function SuperAdminDashboard() {
       progress,
       byCategory,
     };
-  }, [data, fees, metrics, entity]);
+  }, [data, fees, metrics, effectiveEntity]);
 
   const attendanceRows = useMemo(() => {
     const att = command?.attendance_by_kind || {};
@@ -183,7 +190,7 @@ export default function SuperAdminDashboard() {
       pending?: boolean;
     }> = [];
 
-    if (entity !== "alpha") {
+    if (effectiveEntity !== "alpha") {
       const s = kindTotals(att.student);
       rows.push({
         id: "students",
@@ -195,7 +202,7 @@ export default function SuperAdminDashboard() {
         pending: (roster.students || 0) > 0 && s.marked === 0,
       });
     }
-    if (entity !== "pws") {
+    if (effectiveEntity !== "pws") {
       const p = kindTotals(att.player);
       rows.push({
         id: "players",
@@ -206,7 +213,7 @@ export default function SuperAdminDashboard() {
         tint: colors.accent,
       });
     }
-    if (entity !== "alpha") {
+    if (effectiveEntity !== "alpha") {
       const t = kindTotals(att.teacher);
       rows.push({
         id: "teachers",
@@ -217,7 +224,7 @@ export default function SuperAdminDashboard() {
         tint: colors.success,
       });
     }
-    if (entity !== "pws") {
+    if (effectiveEntity !== "pws") {
       const coachStats = metrics?.attendance_roles?.coaches;
       const c = coachStats
         ? kindTotals(coachStats)
@@ -244,7 +251,7 @@ export default function SuperAdminDashboard() {
       tint: colors.muted2,
     });
     return rows;
-  }, [command, entity, metrics]);
+  }, [command, effectiveEntity, metrics]);
 
   if (!user) return null;
 
@@ -252,8 +259,9 @@ export default function SuperAdminDashboard() {
   const openTaskCount = metrics?.open_tasks ?? data?.open_tasks ?? openTasks.length;
   const pwsEnrollmentRows = metrics?.pws_enrollment || [];
   const alphaEnrollmentRows = metrics?.alpha_enrollment || [];
-  const showPwsEnrollment = entity !== "alpha" && pwsEnrollmentRows.length > 0;
-  const showAlphaEnrollment = entity !== "pws" && alphaEnrollmentRows.length > 0;
+  const showPwsEnrollment = effectiveEntity !== "alpha" && pwsEnrollmentRows.length > 0;
+  const showAlphaEnrollment = effectiveEntity !== "pws" && alphaEnrollmentRows.length > 0;
+  const pwsEnrollmentVisible = pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0);
 
   const quickActions = [
     { label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" },
@@ -288,12 +296,20 @@ export default function SuperAdminDashboard() {
             <Text style={s.overline}>Dashboard · {formatDate(data?.today)}</Text>
             <Text style={[s.h1, isWide && s.h1Wide]}>Hello, {user.name.split(" ")[0]}</Text>
             {!isWide && (
-              <Text style={s.sub}>{isSuperAdmin ? "Operations snapshot — PWS & ALPHA" : "ALPHA Sports Academy operations"}</Text>
+              <Text style={s.sub}>
+                {isPwsLocked
+                  ? "Prarambhika World School operations"
+                  : isAlphaLocked
+                    ? "ALPHA Sports Academy operations"
+                    : isSuperAdmin
+                      ? "Operations snapshot — PWS & ALPHA"
+                      : "Operations snapshot"}
+              </Text>
             )}
           </View>
 
           <View style={[s.headerActions, isWide && s.headerActionsWide]}>
-            {isSuperAdmin && (
+            {isSuperAdmin && !lockedEntity && (
               <View style={s.segment}>
                 {(["both", "pws", "alpha"] as Entity[]).map((v) => (
                   <TouchableOpacity
@@ -307,6 +323,12 @@ export default function SuperAdminDashboard() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            )}
+
+            {lockedEntity && (
+              <View style={s.scopeBadge}>
+                <Text style={s.scopeBadgeTxt}>{lockedEntity.toUpperCase()}</Text>
               </View>
             )}
 
@@ -429,7 +451,7 @@ export default function SuperAdminDashboard() {
                         PWS · {metrics?.pws_total_active ?? 0}/{metrics?.pws_total_baseline ?? 0}
                       </Text>
                       <View style={s.enrollmentTable}>
-                        {pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0).slice(0, isWide ? 8 : 5).map((row) => (
+                        {pwsEnrollmentVisible.map((row) => (
                           <View key={row.key} style={s.enrollmentTableRow}>
                             <Text style={s.enrollmentCat} numberOfLines={1}>{row.label}</Text>
                             <Text style={s.enrollmentCount}>
@@ -649,6 +671,15 @@ const s = StyleSheet.create({
   segmentBtnActive: { backgroundColor: colors.surface, ...shadow.sm },
   segmentTxt: { fontSize: 12, fontWeight: "600", color: colors.muted },
   segmentTxtActive: { color: colors.ink, fontWeight: "700" },
+  scopeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySofter,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+  },
+  scopeBadgeTxt: { fontSize: 11, fontWeight: "800", color: colors.primary, letterSpacing: 0.6 },
   quickBtn: {
     flexDirection: "row",
     alignItems: "center",
