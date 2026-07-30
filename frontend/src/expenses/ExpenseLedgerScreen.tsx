@@ -16,6 +16,8 @@ import {
   resubmitExpenseEntry, recallExpenseEntry, updateExpenseEntry,
 } from "./expenseApi";
 import { ExpenseEntryFormModal, type ExpenseEntryFormPayload } from "./ExpenseEntryFormModal";
+import { ExpenseItemsBreakdown } from "./ExpenseItemsBreakdown";
+import { expenseItemsSummary, getExpenseLineItems } from "./expenseItemUtils";
 import { formatInr } from "./expenseFormat";
 import type { ExpenseEntityId, ExpenseEntry, ExpenseTab } from "./expenseTypes";
 
@@ -229,9 +231,7 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
         {!loading && !error && entries.map((entry) => {
           const st = statusStyle(entry.status);
           const editable = entry.status === "pending" || entry.status === "rejected";
-          const breakdown = entry.rate && entry.quantity
-            ? `${formatInr(entry.rate, 0)} × ${entry.quantity}`
-            : null;
+          const summaryLabel = expenseItemsSummary(entry);
           return (
             <View key={entry.id} style={s.card}>
               <View style={s.cardHeader}>
@@ -245,12 +245,13 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
                       <Text style={[s.statusBadgeTxt, { color: st.color }]}>{st.label}</Text>
                     </View>
                   </View>
-                  <Text style={s.cardTitle}>{entry.sub_category || entry.expense_head_name || "Expense"}</Text>
+                  <Text style={s.cardTitle}>{entry.expense_head_name || entry.main_category || "Expense"}</Text>
                   <Text style={s.cardMeta}>{entry.request_id} · {formatDate(entry.expense_date)}{entry.urgency ? ` · ${entry.urgency}` : ""}</Text>
+                  <Text style={s.cardSub}>{summaryLabel}</Text>
                 </View>
                 <Text style={s.amount}>{formatInr(entry.amount)}</Text>
               </View>
-              {breakdown ? <Text style={s.cardSub}>{breakdown}</Text> : null}
+              <ExpenseItemsBreakdown entry={entry} compact={getExpenseLineItems(entry).length <= 1} />
               <Text style={s.cardSub}>{entry.payment_mode}{entry.reference_number ? ` · Ref ${entry.reference_number}` : ""}</Text>
               {entry.budget_alert?.over_budget && (
                 <View style={[s.inlineBadge, { backgroundColor: "#FEF3C7" }]}>

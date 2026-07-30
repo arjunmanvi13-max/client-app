@@ -6,6 +6,13 @@ export type ExpenseUrgency = "Today" | "Tomorrow" | "This Week";
 
 export type ExpensePaymentMode = "Cash" | "UPI" | "Bank Transfer" | "Cheque" | "Credit Card";
 
+export type ExpenseLineItem = {
+  item_name: string;
+  rate: number;
+  quantity: number;
+  amount: number;
+};
+
 export type ExpenseHead = {
   id: string;
   entity_id: ExpenseEntityId;
@@ -46,6 +53,7 @@ export type ExpenseEntry = {
   main_category?: string;
   category_code?: string;
   sub_category?: string;
+  items?: ExpenseLineItem[];
   expense_date: string;
   amount: number;
   rate?: number | null;

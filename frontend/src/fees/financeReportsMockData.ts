@@ -143,12 +143,25 @@ export function buildRefundsReport(filters: FinanceReportFilters): RefundsReport
 export function buildExpenseOutflowReport(filters: FinanceReportFilters) {
   const scale = filters.entity === "alpha" ? 0.6 : 1;
   const rows = [
-    { date: "2026-07-15", entity: "PWS", expense_head: "Electricity Bill", vendor: "WBSEDCL", amount: Math.round(45000 * scale), venue: "Balua" },
-    { date: "2026-07-12", entity: "PWS", expense_head: "Cricket Gear", vendor: "Sports Mart", amount: Math.round(28000 * scale), venue: "Balua" },
-    { date: "2026-07-08", entity: "ALPHA", expense_head: "Fuel & Transport", vendor: "HP Petrol Pump", amount: Math.round(12000 * scale), venue: "Unassigned" },
+    { date: "2026-07-15", urgency: "Today", entity: "PWS", head: "Utilities", mainCategory: "Utilities", subCategory: "Electricity Bill", paymentMethod: "Bank Transfer", referenceNumber: "TXN-8842", amount: Math.round(45000 * scale), status: "Approved", submittedBy: "PWS Accounts", venue: "Balua" },
+    { date: "2026-07-12", urgency: "This Week", entity: "PWS", head: "Sports Equipment", mainCategory: "Sports Equipment", subCategory: "Cricket Gear", paymentMethod: "UPI", referenceNumber: "UPI-2211", amount: Math.round(28000 * scale), status: "Pending Approval", submittedBy: "Sports Admin", venue: "Balua" },
+    { date: "2026-07-08", urgency: "Tomorrow", entity: "ALPHA", head: "Operational", mainCategory: "Operational", subCategory: "Fuel & Transport", paymentMethod: "Cash", referenceNumber: null, amount: Math.round(12000 * scale), status: "Rejected", submittedBy: "ALPHA Admin", venue: "Unassigned" },
   ];
+  const pendingAmount = rows.filter((r) => r.status === "Pending Approval").reduce((s, r) => s + r.amount, 0);
+  const approvedAmount = rows.filter((r) => r.status === "Approved").reduce((s, r) => s + r.amount, 0);
+  const rejectedAmount = rows.filter((r) => r.status === "Rejected").reduce((s, r) => s + r.amount, 0);
   return {
-    totals: { amount: rows.reduce((s, r) => s + r.amount, 0), count: rows.length },
+    summary: {
+      totalAmount: rows.reduce((s, r) => s + r.amount, 0),
+      totalCount: rows.length,
+      pendingCount: rows.filter((r) => r.status === "Pending Approval").length,
+      pendingAmount,
+      approvedCount: rows.filter((r) => r.status === "Approved").length,
+      approvedAmount,
+      rejectedCount: rows.filter((r) => r.status === "Rejected").length,
+      rejectedAmount,
+    },
+    totals: { amount: approvedAmount, count: rows.filter((r) => r.status === "Approved").length },
     byExpenseHead: [
       { expense_head: "Electricity Bill", main_category: "Utilities", amount: Math.round(45000 * scale), count: 1 },
       { expense_head: "Cricket Gear", main_category: "Sports Equipment", amount: Math.round(28000 * scale), count: 1 },

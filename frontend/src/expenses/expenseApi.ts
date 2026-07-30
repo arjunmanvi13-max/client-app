@@ -3,6 +3,7 @@ import type {
   ExpenseEntityId,
   ExpenseEntry,
   ExpenseHead,
+  ExpenseLineItem,
   ExpenseOutflowSummary,
   ExpensePaymentMode,
   ExpenseTab,
@@ -45,9 +46,7 @@ export async function createExpenseEntry(payload: {
   amount: number;
   payment_mode: ExpensePaymentMode;
   reference_number?: string;
-  sub_category?: string;
-  rate?: number;
-  quantity?: number;
+  items: ExpenseLineItem[];
   urgency?: ExpenseUrgency;
   description?: string;
   venue?: string;

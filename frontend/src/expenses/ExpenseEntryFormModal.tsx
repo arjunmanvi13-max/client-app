@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable, TextInput, Alert, Platform,
 } from "react-native";
+import { Feather } from "@expo/vector-icons";
 import { FormLabel, getApiError } from "../ScreenStates";
 import { DATE_PLACEHOLDER, formatDate, maskDisplayDateInput, parseToISO, toISODate } from "../dateFormat";
 import { colors, formColors, radii, spacing } from "../theme";
 import { fetchExpenseHeads } from "./expenseApi";
-import { parseInrInput } from "./expenseFormat";
-import type { ExpenseEntityId, ExpenseEntry, ExpenseHead, ExpensePaymentMode, ExpenseUrgency } from "./expenseTypes";
+import { formatInr } from "./expenseFormat";
+import { getExpenseLineItems } from "./expenseItemUtils";
+import type { ExpenseEntityId, ExpenseEntry, ExpenseHead, ExpenseLineItem, ExpensePaymentMode, ExpenseUrgency } from "./expenseTypes";
 import { EXPENSE_PAYMENT_MODES, EXPENSE_URGENCY_OPTIONS } from "./expenseTypes";
 
 export type ExpenseEntryFormPayload = {
@@ -17,10 +19,15 @@ export type ExpenseEntryFormPayload = {
   amount: number;
   payment_mode: ExpensePaymentMode;
   reference_number?: string;
-  sub_category?: string;
-  rate?: number;
-  quantity?: number;
+  items: ExpenseLineItem[];
   urgency?: ExpenseUrgency;
+};
+
+type ItemRow = {
+  id: string;
+  itemName: string;
+  rate: string;
+  qty: string;
 };
 
 type Props = {
@@ -32,6 +39,19 @@ type Props = {
   onSubmit: (payload: ExpenseEntryFormPayload) => Promise<void>;
 };
 
+let rowSeq = 0;
+function newItemRow(): ItemRow {
+  rowSeq += 1;
+  return { id: `row-${rowSeq}`, itemName: "", rate: "", qty: "" };
+}
+
+function rowAmount(row: ItemRow): number {
+  const rate = parseFloat(row.rate) || 0;
+  const qty = parseFloat(row.qty) || 0;
+  if (rate <= 0 || qty <= 0) return 0;
+  return Math.round(rate * qty);
+}
+
 function urgencyToDate(urgency: ExpenseUrgency): string {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -40,24 +60,30 @@ function urgencyToDate(urgency: ExpenseUrgency): string {
   return toISODate(d);
 }
 
+function itemsFromEntry(entry: ExpenseEntry): ItemRow[] {
+  return getExpenseLineItems(entry).map((it) => ({
+    id: newItemRow().id,
+    itemName: it.item_name,
+    rate: String(it.rate),
+    qty: String(it.quantity),
+  }));
+}
+
 export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving, onClose, onSubmit }: Props) {
   const [modalEntity, setModalEntity] = useState<ExpenseEntityId>(defaultEntity);
   const [heads, setHeads] = useState<ExpenseHead[]>([]);
   const [headsLoading, setHeadsLoading] = useState(false);
   const [headId, setHeadId] = useState("");
-  const [subCategory, setSubCategory] = useState("");
-  const [rate, setRate] = useState("");
-  const [qty, setQty] = useState("");
-  const [amount, setAmount] = useState("");
-  const [amountManual, setAmountManual] = useState(false);
+  const [itemRows, setItemRows] = useState<ItemRow[]>(() => [newItemRow()]);
   const [urgency, setUrgency] = useState<ExpenseUrgency>("Today");
   const [expenseDateDisplay, setExpenseDateDisplay] = useState(() => formatDate(toISODate()));
   const [paymentMode, setPaymentMode] = useState<ExpensePaymentMode>("Cash");
   const [reference, setReference] = useState("");
+  const prevHeadId = useRef("");
 
   const activeHeads = useMemo(() => heads.filter((h) => h.status === "active"), [heads]);
-  const selectedHead = useMemo(() => activeHeads.find((h) => h.id === headId) || null, [activeHeads, headId]);
   const referenceRequired = paymentMode !== "Cash";
+  const grandTotal = useMemo(() => itemRows.reduce((sum, row) => sum + rowAmount(row), 0), [itemRows]);
 
   const loadHeads = useCallback(async (entity: ExpenseEntityId) => {
     setHeadsLoading(true);
@@ -74,11 +100,8 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
   const resetForm = useCallback((entity: ExpenseEntityId) => {
     setModalEntity(entity);
     setHeadId("");
-    setSubCategory("");
-    setRate("");
-    setQty("");
-    setAmount("");
-    setAmountManual(false);
+    prevHeadId.current = "";
+    setItemRows([newItemRow()]);
     setUrgency("Today");
     setExpenseDateDisplay(formatDate(toISODate()));
     setPaymentMode("Cash");
@@ -92,11 +115,8 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
     if (editing) {
       setModalEntity(editing.entity_id);
       setHeadId(editing.expense_head_id);
-      setSubCategory(editing.sub_category || editing.expense_head_name || "");
-      setRate(editing.rate != null ? String(editing.rate) : "");
-      setQty(editing.quantity != null ? String(editing.quantity) : "");
-      setAmount(String(editing.amount));
-      setAmountManual(true);
+      prevHeadId.current = editing.expense_head_id;
+      setItemRows(itemsFromEntry(editing));
       setUrgency(editing.urgency || "Today");
       setExpenseDateDisplay(formatDate(editing.expense_date));
       setPaymentMode(editing.payment_mode);
@@ -111,28 +131,36 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
   }, [modalEntity, visible, loadHeads]);
 
   useEffect(() => {
-    if (selectedHead) {
-      setSubCategory(selectedHead.sub_category);
-    }
-  }, [selectedHead?.id]);
-
-  useEffect(() => {
     if (!visible || editing || headId || activeHeads.length === 0) return;
-    setHeadId(activeHeads[0].id);
+    const first = activeHeads[0].id;
+    setHeadId(first);
+    prevHeadId.current = first;
   }, [visible, editing, headId, activeHeads]);
 
-  useEffect(() => {
-    if (!visible || amountManual) return;
-    const r = parseFloat(rate) || 0;
-    const q = parseFloat(qty) || 0;
-    if (r > 0 && q > 0) setAmount(String(Math.round(r * q)));
-  }, [rate, qty, amountManual, visible]);
+  const selectHead = (id: string) => {
+    if (id !== prevHeadId.current) {
+      prevHeadId.current = id;
+      setItemRows([newItemRow()]);
+    }
+    setHeadId(id);
+  };
+
+  const updateRow = (id: string, patch: Partial<ItemRow>) => {
+    setItemRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  };
+
+  const addRow = () => setItemRows((rows) => [...rows, newItemRow()]);
+
+  const removeRow = (id: string) => {
+    setItemRows((rows) => (rows.length <= 1 ? rows : rows.filter((row) => row.id !== id)));
+  };
 
   const onEntityChange = (entity: ExpenseEntityId) => {
     if (entity === modalEntity) return;
     setModalEntity(entity);
     setHeadId("");
-    setSubCategory("");
+    prevHeadId.current = "";
+    setItemRows([newItemRow()]);
   };
 
   const onUrgencyChange = (next: ExpenseUrgency) => {
@@ -150,27 +178,38 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
       Alert.alert("Invalid date", `Use format ${DATE_PLACEHOLDER}.`);
       return;
     }
-    const amt = parseInrInput(amount);
-    if (amt <= 0) {
-      Alert.alert("Required", "Amount must be greater than zero.");
+    const items: ExpenseLineItem[] = [];
+    for (const row of itemRows) {
+      const name = row.itemName.trim();
+      const rate = parseFloat(row.rate);
+      const qty = parseFloat(row.qty);
+      const amount = rowAmount(row);
+      if (!name) {
+        Alert.alert("Required", "Each item needs a name / description.");
+        return;
+      }
+      if (!rate || rate <= 0 || !qty || qty <= 0 || amount <= 0) {
+        Alert.alert("Required", `Enter valid rate and quantity for "${name}".`);
+        return;
+      }
+      items.push({ item_name: name, rate, quantity: qty, amount });
+    }
+    if (grandTotal <= 0) {
+      Alert.alert("Required", "Total amount must be greater than zero.");
       return;
     }
     if (referenceRequired && !reference.trim()) {
       Alert.alert("Required", "Reference number is required for non-cash payments.");
       return;
     }
-    const rateNum = rate.trim() ? parseFloat(rate) : undefined;
-    const qtyNum = qty.trim() ? parseFloat(qty) : undefined;
     await onSubmit({
       entity_id: modalEntity,
       expense_head_id: headId,
       expense_date: isoDate,
-      amount: amt,
+      amount: grandTotal,
       payment_mode: paymentMode,
       reference_number: reference.trim() || undefined,
-      sub_category: subCategory.trim() || selectedHead?.sub_category,
-      rate: rateNum,
-      quantity: qtyNum,
+      items,
       urgency,
     });
   };
@@ -180,7 +219,7 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
       <Pressable style={s.backdrop} onPress={onClose}>
         <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
           <Text style={s.title}>{editing ? "Edit Expense" : "Add New Expense"}</Text>
-          <ScrollView style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled">
             <FormLabel label="Choose Entity" />
             <View style={s.row}>
               {(["pws", "alpha"] as ExpenseEntityId[]).map((e) => (
@@ -200,7 +239,7 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
                   <TouchableOpacity
                     key={h.id}
                     style={[s.headOption, headId === h.id && s.headOptionActive]}
-                    onPress={() => setHeadId(h.id)}
+                    onPress={() => selectHead(h.id)}
                   >
                     <Text style={[s.headOptionTitle, headId === h.id && s.headOptionTitleActive]}>{h.sub_category}</Text>
                     <Text style={[s.headOptionMeta, headId === h.id && s.headOptionMetaActive]}>{h.category_code} · {h.main_category}</Text>
@@ -209,29 +248,66 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
               </View>
             )}
 
-            <FormLabel label="Sub-Category" />
-            <TextInput style={s.input} value={subCategory} onChangeText={setSubCategory} placeholder="From selected head" />
-
-            <FormLabel label="Estimated Cost Breakdown" />
-            <View style={s.breakdownRow}>
-              <View style={s.breakdownCol}>
-                <Text style={s.breakdownLabel}>Rate (₹)</Text>
-                <TextInput style={s.input} value={rate} onChangeText={(v) => { setAmountManual(false); setRate(v); }} keyboardType="decimal-pad" placeholder="0" />
-              </View>
-              <View style={s.breakdownCol}>
-                <Text style={s.breakdownLabel}>Qty</Text>
-                <TextInput style={s.input} value={qty} onChangeText={(v) => { setAmountManual(false); setQty(v); }} keyboardType="decimal-pad" placeholder="0" />
-              </View>
-              <View style={s.breakdownCol}>
-                <Text style={s.breakdownLabel}>Amount (₹)</Text>
+            <FormLabel label="Line Items" />
+            {itemRows.map((row, index) => (
+              <View key={row.id} style={s.itemRow}>
+                <View style={s.itemRowTop}>
+                  <Text style={s.itemIndex}>Item {index + 1}</Text>
+                  {itemRows.length > 1 && (
+                    <TouchableOpacity onPress={() => removeRow(row.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Feather name="trash-2" size={16} color={colors.danger} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={s.fieldLabel}>Item / Description</Text>
                 <TextInput
-                  style={[s.input, amountManual && s.inputHighlight]}
-                  value={amount}
-                  onChangeText={(v) => { setAmountManual(true); setAmount(v); }}
-                  keyboardType="numeric"
-                  placeholder="Auto: Rate × Qty"
+                  style={s.input}
+                  value={row.itemName}
+                  onChangeText={(v) => updateRow(row.id, { itemName: v })}
+                  placeholder="Describe this item"
                 />
+                <View style={s.breakdownRow}>
+                  <View style={s.breakdownCol}>
+                    <Text style={s.fieldLabel}>Rate (₹)</Text>
+                    <TextInput
+                      style={s.input}
+                      value={row.rate}
+                      onChangeText={(v) => updateRow(row.id, { rate: v })}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                    />
+                  </View>
+                  <View style={s.breakdownCol}>
+                    <Text style={s.fieldLabel}>Qty</Text>
+                    <TextInput
+                      style={s.input}
+                      value={row.qty}
+                      onChangeText={(v) => updateRow(row.id, { qty: v })}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                    />
+                  </View>
+                  <View style={s.breakdownCol}>
+                    <Text style={s.fieldLabel}>Amount (₹)</Text>
+                    <TextInput
+                      style={[s.input, s.inputReadonly]}
+                      value={rowAmount(row) > 0 ? String(rowAmount(row)) : ""}
+                      editable={false}
+                      placeholder="Auto"
+                    />
+                  </View>
+                </View>
               </View>
+            ))}
+
+            <TouchableOpacity style={s.addRowBtn} onPress={addRow}>
+              <Feather name="plus" size={14} color={colors.primary} />
+              <Text style={s.addRowTxt}>Add Another Item</Text>
+            </TouchableOpacity>
+
+            <View style={s.grandTotalBox}>
+              <Text style={s.grandTotalLabel}>Total Amount (₹)</Text>
+              <Text style={s.grandTotalValue}>{formatInr(grandTotal)}</Text>
             </View>
 
             <FormLabel label="Urgency" />
@@ -282,7 +358,7 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "center", padding: spacing.lg },
-  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, maxWidth: 600, width: "100%", alignSelf: "center", borderWidth: 1, borderColor: colors.border },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, maxWidth: 640, width: "100%", alignSelf: "center", borderWidth: 1, borderColor: colors.border },
   title: { fontSize: 17, fontWeight: "800", color: colors.ink, marginBottom: spacing.md },
   row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
   paymentRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
@@ -297,11 +373,29 @@ const s = StyleSheet.create({
   headOptionTitleActive: { color: colors.primary },
   headOptionMeta: { fontSize: 10, color: colors.muted2, marginTop: 2 },
   headOptionMetaActive: { color: colors.muted },
+  itemRow: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+    padding: spacing.sm, marginBottom: spacing.sm, backgroundColor: colors.surface2,
+  },
+  itemRowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.xs },
+  itemIndex: { fontSize: 11, fontWeight: "800", color: colors.muted },
+  fieldLabel: { fontSize: 10, fontWeight: "700", color: colors.muted2, marginBottom: 4 },
   input: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: Platform.OS === "web" ? 8 : 10, marginBottom: spacing.sm, fontSize: 13, color: colors.ink, backgroundColor: colors.surface },
-  inputHighlight: { borderColor: colors.accent },
-  breakdownRow: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
+  inputReadonly: { backgroundColor: colors.borderSoft, color: colors.muted },
+  breakdownRow: { flexDirection: "row", gap: spacing.sm },
   breakdownCol: { flex: 1 },
-  breakdownLabel: { fontSize: 10, fontWeight: "700", color: colors.muted2, marginBottom: 4 },
+  addRowBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start",
+    paddingVertical: 8, paddingHorizontal: 10, marginBottom: spacing.md,
+  },
+  addRowTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
+  grandTotalBox: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.primarySofter,
+    borderWidth: 1, borderColor: colors.primary, marginBottom: spacing.md,
+  },
+  grandTotalLabel: { fontSize: 13, fontWeight: "800", color: colors.primary },
+  grandTotalValue: { fontSize: 18, fontWeight: "800", color: colors.ink },
   hint: { fontSize: 12, color: colors.muted2, marginBottom: spacing.md, fontStyle: "italic" },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.md },
   cancelBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.sm, backgroundColor: colors.borderSoft },

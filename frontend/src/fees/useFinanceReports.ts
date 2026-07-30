@@ -89,12 +89,48 @@ export function getExportMatrix(
 
   if (filters.reportView === "expense_outflow") {
     const d = data as ExpenseOutflowReportData;
+    const summary = d.summary ?? {
+      totalAmount: d.totals?.amount || 0,
+      totalCount: d.totals?.count || 0,
+      pendingCount: 0,
+      pendingAmount: 0,
+      approvedCount: d.totals?.count || 0,
+      approvedAmount: d.totals?.amount || 0,
+      rejectedCount: 0,
+      rejectedAmount: 0,
+    };
+    const exportRows = (d.rows || []).flatMap((r) => {
+      const items = r.items?.length
+        ? r.items
+        : [{ item_name: r.subCategory || "Expense", rate: 0, quantity: 1, amount: r.amount }];
+      return items.map((it) => [
+        r.urgency ? `${formatDate(r.date)} · ${r.urgency}` : formatDate(r.date),
+        r.entity,
+        r.head,
+        it.item_name,
+        r.referenceNumber ? `${r.paymentMethod} · Ref ${r.referenceNumber}` : r.paymentMethod,
+        inr(it.amount),
+        r.status,
+        r.submittedBy,
+      ]);
+    });
     return {
-      columns: ["Date", "Entity", "Expense Head", "Vendor", "Venue", "Amount"],
-      rows: (d.rows || []).map((r) => [formatDate(r.date), r.entity, r.expense_head, r.vendor, r.venue || "—", inr(r.amount)]),
+      columns: [
+        "Date / Urgency",
+        "Entity",
+        "Head / Category",
+        "Item / Description",
+        "Payment Method & Ref No.",
+        "Amount",
+        "Status",
+        "Submitted By",
+      ],
+      rows: exportRows,
       summaryRows: [
-        ["Total Outflow", inr(d.totals?.amount || 0)],
-        ["Approved Expenses", String(d.totals?.count || 0)],
+        ["Total Expenses", inr(summary.totalAmount)],
+        ["Pending Approvals", `${summary.pendingCount} (${inr(summary.pendingAmount)})`],
+        ["Approved Expenses", `${summary.approvedCount} (${inr(summary.approvedAmount)})`],
+        ["Rejected", `${summary.rejectedCount} (${inr(summary.rejectedAmount)})`],
       ],
     };
   }

@@ -1,4 +1,5 @@
 import type { FinanceCentre, FinanceEntity, PeriodFilter, ReportView } from "./financeReportsFilters";
+import type { ExpenseLineItem } from "../expenses/expenseTypes";
 
 export type FinanceReportFilters = {
   centre: FinanceCentre;
@@ -68,11 +69,37 @@ export type CollectionsSummaryData = {
   receiptsLog?: DailyReceiptRow[];
 };
 
+export type ExpenseReportRow = {
+  date: string;
+  urgency?: string | null;
+  entity: string;
+  head: string;
+  mainCategory?: string;
+  subCategory?: string;
+  items?: ExpenseLineItem[];
+  paymentMethod: string;
+  referenceNumber?: string | null;
+  amount: number;
+  status: string;
+  submittedBy: string;
+  venue?: string;
+};
+
 export type ExpenseOutflowReportData = {
+  summary: {
+    totalAmount: number;
+    totalCount: number;
+    pendingCount: number;
+    pendingAmount: number;
+    approvedCount: number;
+    approvedAmount: number;
+    rejectedCount: number;
+    rejectedAmount: number;
+  };
   totals: { amount: number; count: number };
   byExpenseHead: { expense_head: string; main_category?: string; amount: number; count: number }[];
   byVenue: { venue: string; amount: number }[];
-  rows: { date: string; expense_head: string; vendor: string; amount: number; venue?: string; entity: string }[];
+  rows: ExpenseReportRow[];
 };
 
 export type RevenueLineItem = {
@@ -144,7 +171,7 @@ export function reportViewTitle(view: ReportView): string {
     past_due_aging: "Past Due & Aging Receivables",
     collections_summary: "Fee Collections Summary",
     revenue_breakdown: "Revenue Breakdown by Line Item",
-    expense_outflow: "Expense & Outflow Summary",
+    expense_outflow: "Expense Report",
     discounts_waivers: "Discounts, Waivers & Concessions",
     refunds_cancellations: "Refunds & Cancellations",
   };

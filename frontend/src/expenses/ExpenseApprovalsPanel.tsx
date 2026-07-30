@@ -12,6 +12,8 @@ import {
   approveExpenseEntry, bulkApproveExpenses, fetchExpenseApprovals, fetchExpenseAttachment, rejectExpenseEntry,
 } from "./expenseApi";
 import { formatInr } from "./expenseFormat";
+import { expenseItemsSummary } from "./expenseItemUtils";
+import { ExpenseItemsBreakdown } from "./ExpenseItemsBreakdown";
 import type { ExpenseAuditEntry, ExpenseEntry, ExpenseEntityId } from "./expenseTypes";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -127,13 +129,9 @@ function ExpenseApprovalCard({
   }, [expanded, expandAnim]);
 
   const headLabel = row.expense_head_name || row.main_category || "Expense";
-  const subCategory = row.sub_category || row.expense_head_name || "—";
+  const summaryLabel = expenseItemsSummary(row);
   const submitter = row.entered_by_name || row.created_by_name || "—";
   const submitterRole = formatRole(row.entered_by_role || row.created_by_role);
-  const breakdown =
-    row.rate != null && row.quantity != null
-      ? `${formatInr(row.rate, 0)} × ${row.quantity} = ${formatInr(row.amount)}`
-      : formatInr(row.amount);
 
   return (
     <View style={[s.card, expanded && s.cardExpanded]}>
@@ -149,7 +147,7 @@ function ExpenseApprovalCard({
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={s.reqId}>{row.request_id}</Text>
             <Text style={s.title} numberOfLines={expanded ? undefined : 1}>
-              {subCategory} · {formatInr(row.amount)}
+              {summaryLabel}
             </Text>
             <View style={s.badgeRow}>
               <EntityBadge entityId={row.entity_id} />
@@ -182,9 +180,10 @@ function ExpenseApprovalCard({
         <View style={s.details}>
           <DetailRow label="Entity" value={row.entity_id.toUpperCase()} />
           <DetailRow label="Head" value={headLabel} />
-          <DetailRow label="Sub-Category" value={subCategory} />
-          {row.category_code ? <DetailRow label="Category Code" value={row.category_code} /> : null}
-          <DetailRow label="Cost Breakdown" value={breakdown} />
+          <View style={s.itemsBlock}>
+            <Text style={s.itemsTitle}>Line Items</Text>
+            <ExpenseItemsBreakdown entry={row} />
+          </View>
           <DetailRow
             label="Urgency & Date"
             value={`${row.urgency || "—"} · ${formatDate(row.expense_date)}`}
@@ -436,6 +435,8 @@ const s = StyleSheet.create({
   detailRow: { flexDirection: "row", gap: spacing.sm, paddingVertical: 5 },
   detailLabel: { width: 118, fontSize: 11, fontWeight: "700", color: colors.muted2 },
   detailValue: { flex: 1, fontSize: 12, fontWeight: "600", color: colors.ink, lineHeight: 17 },
+  itemsBlock: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  itemsTitle: { fontSize: 11, fontWeight: "800", color: colors.muted, marginBottom: spacing.sm, textTransform: "uppercase", letterSpacing: 0.6 },
   auditBlock: { marginTop: spacing.md, paddingTop: spacing.sm },
   auditTitle: { fontSize: 11, fontWeight: "800", color: colors.muted, marginBottom: spacing.sm, textTransform: "uppercase", letterSpacing: 0.6 },
   auditItem: { flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },

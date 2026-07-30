@@ -158,27 +158,87 @@ export async function fetchRevenueBreakdown(filters: FinanceReportFilters): Prom
 
 export async function fetchExpenseOutflow(filters: FinanceReportFilters): Promise<ExpenseOutflowReportData> {
   const { from, to } = computePeriodRange(filters.period, filters.customFrom, filters.customTo);
-  const params: Record<string, string> = { date_from: from, date_to: to };
+  const params: Record<string, string | boolean> = { date_from: from, date_to: to, all_statuses: true };
   if (filters.entity === "pws") params.entity_id = "pws";
   else if (filters.entity === "alpha") params.entity_id = "alpha";
   if (filters.centre !== "all") params.venue = filters.centre;
   const { data } = await api.get<{
+    summary?: {
+      total_amount: number;
+      total_count: number;
+      pending_count: number;
+      pending_amount: number;
+      approved_count: number;
+      approved_amount: number;
+      rejected_count: number;
+      rejected_amount: number;
+    };
     totals: { amount: number; count: number };
     by_expense_head: { expense_head: string; main_category?: string; amount: number; count: number }[];
     by_venue: { venue: string; amount: number }[];
-    rows: { expense_date?: string; expense_head_name?: string; vendor_name?: string; amount: number; venue?: string; entity_id?: string }[];
+    rows: {
+      expense_date?: string;
+      urgency?: string | null;
+      entity_id?: string;
+      expense_head_name?: string;
+      main_category?: string;
+      sub_category?: string;
+      items?: { item_name: string; rate: number; quantity: number; amount: number }[];
+      payment_mode?: string;
+      reference_number?: string | null;
+      amount: number;
+      status?: string;
+      created_by_name?: string;
+      venue?: string;
+    }[];
   }>("/expenses/summary", { params });
+
+  const statusLabel = (status?: string) => {
+    if (status === "pending") return "Pending Approval";
+    if (status === "approved") return "Approved";
+    if (status === "rejected") return "Rejected";
+    return status || "—";
+  };
+
+  const summary = data.summary || {
+    total_amount: data.totals?.amount || 0,
+    total_count: data.totals?.count || 0,
+    pending_count: 0,
+    pending_amount: 0,
+    approved_count: data.totals?.count || 0,
+    approved_amount: data.totals?.amount || 0,
+    rejected_count: 0,
+    rejected_amount: 0,
+  };
+
   return {
+    summary: {
+      totalAmount: summary.total_amount || 0,
+      totalCount: summary.total_count || 0,
+      pendingCount: summary.pending_count || 0,
+      pendingAmount: summary.pending_amount || 0,
+      approvedCount: summary.approved_count || 0,
+      approvedAmount: summary.approved_amount || 0,
+      rejectedCount: summary.rejected_count || 0,
+      rejectedAmount: summary.rejected_amount || 0,
+    },
     totals: data.totals,
     byExpenseHead: data.by_expense_head || [],
     byVenue: data.by_venue || [],
     rows: (data.rows || []).map((r) => ({
       date: r.expense_date || "",
-      expense_head: r.expense_head_name || "Other",
-      vendor: r.vendor_name || "—",
-      amount: r.amount || 0,
-      venue: r.venue,
+      urgency: r.urgency,
       entity: (r.entity_id || "pws").toUpperCase(),
+      head: r.main_category || r.expense_head_name || "Other",
+      mainCategory: r.main_category,
+      subCategory: r.sub_category || r.expense_head_name || "—",
+      items: r.items,
+      paymentMethod: r.payment_mode || "—",
+      referenceNumber: r.reference_number,
+      amount: r.amount || 0,
+      status: statusLabel(r.status),
+      submittedBy: r.created_by_name || "—",
+      venue: r.venue,
     })),
   };
 }
