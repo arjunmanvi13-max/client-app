@@ -171,6 +171,7 @@ export default function Attendance() {
   const [calendarInfo, setCalendarInfo] = useState<CalendarDayInfo>(() => calendarDayInfo(toISODate()));
 
   const usesAbsentOnly = kind === "staff" || kind === "teacher" || kind === "coach";
+  const isStudentAttendance = kind === "student";
   const isHoliday = Boolean(calendarInfo?.holiday_for?.[kind]);
   const readOnly = isHoliday;
 
@@ -183,6 +184,10 @@ export default function Attendance() {
     if (!next) return;
     setKind((current) => (kindOptions.some((k) => k.key === current) ? current : next));
   }, [user, kindOptions, isTeacherLocked]);
+
+  useEffect(() => {
+    if (kind === "student") setSession("morning");
+  }, [kind]);
 
   useEffect(() => {
     setStaffOrg(resolveDefaultStaffOrg(user));
@@ -523,7 +528,7 @@ export default function Attendance() {
         date: attendanceDateIso,
         kind,
         group: kind === "player" ? null : group,
-        session,
+        session: isStudentAttendance ? "morning" : session,
         sport:
           kind === "player"
             ? (playerSports.length === 1 ? playerSports[0] : people[0]?.sport || null)
@@ -738,18 +743,29 @@ export default function Attendance() {
                   testID="attendance-date"
                 />
               </View>
-              <View style={s.sessionRow}>
-                {SESSIONS.map((sess) => (
-                  <TouchableOpacity
-                    key={sess}
-                    testID={`session-${sess}`}
-                    onPress={() => setSession(sess)}
-                    style={[s.sessionChip, session === sess && s.sessionChipActive]}
-                  >
-                    <Text style={[s.sessionText, session === sess && s.sessionTextActive]}>{sess}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {isStudentAttendance ? (
+                <View style={s.studentSessionWrap}>
+                  <View style={s.sessionRow}>
+                    <View style={[s.sessionChip, s.sessionChipActive, s.sessionChipLocked]} testID="session-morning">
+                      <Text style={[s.sessionText, s.sessionTextActive]}>Morning</Text>
+                    </View>
+                  </View>
+                  <Text style={s.sessionHint}>Student attendance is recorded once daily in the morning.</Text>
+                </View>
+              ) : (
+                <View style={s.sessionRow}>
+                  {SESSIONS.map((sess) => (
+                    <TouchableOpacity
+                      key={sess}
+                      testID={`session-${sess}`}
+                      onPress={() => setSession(sess)}
+                      style={[s.sessionChip, session === sess && s.sessionChipActive]}
+                    >
+                      <Text style={[s.sessionText, session === sess && s.sessionTextActive]}>{sess}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
 
@@ -1006,6 +1022,8 @@ const s = StyleSheet.create({
   filterRowWide: { flexDirection: "row", alignItems: "flex-end", flexWrap: "wrap" },
   filterCell: { width: "100%" },
   sessionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  studentSessionWrap: { flex: 1, gap: 4 },
+  sessionHint: { fontSize: 11, color: colors.muted2, fontStyle: "italic" },
   sessionChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1015,6 +1033,7 @@ const s = StyleSheet.create({
     borderColor: colors.border,
   },
   sessionChipActive: { backgroundColor: colors.ink, borderColor: colors.ink },
+  sessionChipLocked: { opacity: 1 },
   sessionText: { fontSize: 12, fontWeight: "700", color: colors.muted, textTransform: "capitalize" },
   sessionTextActive: { color: "#fff" },
   hScroll: { flexGrow: 0, marginBottom: spacing.md },
