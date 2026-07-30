@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useAuth, userHasPermission } from "../../src/auth";
 import { BusinessEntity, Permission } from "../../src/rbac";
+import { useEntityScope } from "../../src/useEntityScope";
 import { formatDate, parseToISO, toISODate } from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { FinanceReportsFilterPanel } from "../../src/components/fees/FinanceReportsFilterPanel";
@@ -31,9 +32,15 @@ import type { FinanceReportFilters } from "../../src/fees/financeReportsTypes";
 
 export default function FinanceReportsScreen() {
   const router = useRouter();
-  const { tab: tabParam } = useLocalSearchParams<{ tab?: string | string[] }>();
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string | string[]; entity?: string | string[] }>();
   const { user } = useAuth();
   const { horizontalPadding } = useBreakpoint();
+
+  const entityScope = useEntityScope({
+    syncUrl: true,
+    permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES],
+    defaultEntity: "alpha",
+  });
 
   const [centre, setCentre] = useState<FinanceCentre>("all");
   const [entity, setEntity] = useState<FinanceEntity>("alpha");
@@ -46,21 +53,29 @@ export default function FinanceReportsScreen() {
 
   const allowed = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)
     || userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
-  const canViewPws = userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS);
-  const canViewAlpha = userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA);
-  const showEntityFilter = canViewPws && canViewAlpha;
+  const canViewPws = entityScope.availableEntities.includes("pws");
+  const canViewAlpha = entityScope.availableEntities.includes("alpha");
+  const showEntityFilter = entityScope.canSwitch;
   const showVenue = entity !== "pws";
+
+  useEffect(() => {
+    if (!showEntityFilter) {
+      setEntity(entityScope.entity);
+    }
+  }, [showEntityFilter, entityScope.entity]);
 
   useEffect(() => {
     const fromParam = reportViewFromParam(tabParam);
     if (fromParam) setReportView(fromParam);
   }, [tabParam]);
 
-  useEffect(() => {
-    if (!showEntityFilter) {
-      setEntity(canViewAlpha ? "alpha" : "pws");
-    }
-  }, [showEntityFilter, canViewAlpha]);
+  const onEntityChange = useCallback((next: FinanceEntity) => {
+    if (next === "pws" && !canViewPws) return;
+    if (next === "alpha" && !canViewAlpha) return;
+    if (next === "all" && !showEntityFilter) return;
+    setEntity(next);
+    if (next !== "all") entityScope.setEntity(next);
+  }, [canViewPws, canViewAlpha, showEntityFilter, entityScope]);
 
   const historyBounds = useMemo(() => {
     const fromIso = parseToISO(customFrom) || defaultRange.from;
@@ -137,7 +152,7 @@ export default function FinanceReportsScreen() {
           onCentre={setCentre}
           showVenue={showVenue}
           entity={entity}
-          onEntity={setEntity}
+          onEntity={onEntityChange}
           showEntity={showEntityFilter}
           reportView={reportView}
           onReportView={handleReportViewChange}

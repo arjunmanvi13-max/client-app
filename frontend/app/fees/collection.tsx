@@ -12,6 +12,8 @@ import { useRouter } from "expo-router";
 import { api, useAuth } from "../../src/auth";
 import { colors, radii, spacing } from "../../src/theme";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useEntityScope } from "../../src/useEntityScope";
+import { Permission } from "../../src/rbac";
 import { FeeSummaryBar } from "../../src/components/fees/FeeSummaryBar";
 import { CompactFilterBar } from "../../src/components/fees/CompactFilterBar";
 import { PlayerFeeRow, PlayerListSkeleton } from "../../src/components/fees/PlayerFeeRow";
@@ -29,10 +31,12 @@ export default function FeesCollection() {
   const { user } = useAuth();
   const router = useRouter();
   const { isDesktop, horizontalPadding, contentMaxWidth } = useBreakpoint();
-  const defaultInstitution: Institution =
-    user?.role === "principal" || user?.role === "vice_principal" ? "PWS" : "ALPHA";
-
-  const [institution, setInstitution] = useState<Institution>(defaultInstitution);
+  const entityScope = useEntityScope({
+    permissions: [Permission.COLLECT_PWS_FEES, Permission.COLLECT_ALPHA_FEES],
+    defaultEntity: user?.role === "principal" || user?.role === "vice_principal" ? "pws" : "alpha",
+  });
+  const institution = entityScope.institution;
+  const canSwitchInstitution = entityScope.canSwitch;
   const [centre, setCentre] = useState<string | null>(null);
   const [sport, setSport] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
@@ -48,10 +52,9 @@ export default function FeesCollection() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [receipt, setReceipt] = useState<PaymentReceipt | null>(null);
 
-  const canSwitchInstitution =
-    user?.role !== "admin" &&
-    user?.role !== "principal" &&
-    user?.role !== "vice_principal";
+  const setInstitution = (inst: Institution) => {
+    entityScope.setEntity(inst === "PWS" ? "pws" : "alpha");
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput.trim()), 300);

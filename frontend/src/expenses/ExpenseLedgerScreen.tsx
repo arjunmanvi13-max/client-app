@@ -300,6 +300,7 @@ export function ExpenseLedgerScreen({ entityId, title, overline }: Props) {
       <ExpenseEntryFormModal
         visible={modalOpen}
         defaultEntity={entityId}
+        lockedEntity={entityId}
         editing={editing}
         saving={saving}
         onClose={() => { setModalOpen(false); setEditing(null); }}

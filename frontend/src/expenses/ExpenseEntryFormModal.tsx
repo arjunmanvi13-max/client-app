@@ -6,6 +6,9 @@ import { Feather } from "@expo/vector-icons";
 import { FormLabel, getApiError } from "../ScreenStates";
 import { DATE_PLACEHOLDER, formatDate, maskDisplayDateInput, parseToISO, toISODate } from "../dateFormat";
 import { colors, formColors, radii, spacing } from "../theme";
+import { EntityScopeToggle } from "../components/EntityScopeToggle";
+import { useEntityScope } from "../useEntityScope";
+import { Permission } from "../rbac";
 import { fetchExpenseHeads } from "./expenseApi";
 import { formatInr } from "./expenseFormat";
 import { getExpenseLineItems } from "./expenseItemUtils";
@@ -33,6 +36,8 @@ type ItemRow = {
 type Props = {
   visible: boolean;
   defaultEntity: ExpenseEntityId;
+  /** When set, entity toggle is locked to this scope. */
+  lockedEntity?: ExpenseEntityId;
   editing: ExpenseEntry | null;
   saving: boolean;
   onClose: () => void;
@@ -69,8 +74,14 @@ function itemsFromEntry(entry: ExpenseEntry): ItemRow[] {
   }));
 }
 
-export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving, onClose, onSubmit }: Props) {
-  const [modalEntity, setModalEntity] = useState<ExpenseEntityId>(defaultEntity);
+export function ExpenseEntryFormModal({ visible, defaultEntity, lockedEntity, editing, saving, onClose, onSubmit }: Props) {
+  const entityScope = useEntityScope({
+    locked: lockedEntity,
+    defaultEntity,
+    permissions: [Permission.CAPTURE_PWS_EXPENSES, Permission.CAPTURE_ALPHA_EXPENSES],
+  });
+  const modalEntity = entityScope.entity;
+  const setModalEntity = entityScope.setEntity;
   const [heads, setHeads] = useState<ExpenseHead[]>([]);
   const [headsLoading, setHeadsLoading] = useState(false);
   const [headId, setHeadId] = useState("");
@@ -98,7 +109,7 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
   }, []);
 
   const resetForm = useCallback((entity: ExpenseEntityId) => {
-    setModalEntity(entity);
+    if (entity !== modalEntity) setModalEntity(entity);
     setHeadId("");
     prevHeadId.current = "";
     setItemRows([newItemRow()]);
@@ -156,7 +167,8 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
   };
 
   const onEntityChange = (entity: ExpenseEntityId) => {
-    if (entity === modalEntity) return;
+    if (entity === modalEntity || !entityScope.canSwitch) return;
+    if (!entityScope.assertSubmitAllowed(entity)) return;
     setModalEntity(entity);
     setHeadId("");
     prevHeadId.current = "";
@@ -202,6 +214,10 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
       Alert.alert("Required", "Reference number is required for non-cash payments.");
       return;
     }
+    if (!entityScope.assertSubmitAllowed(modalEntity)) {
+      Alert.alert("Not allowed", `You can only submit expenses for ${entityScope.assignedEntity}.`);
+      return;
+    }
     await onSubmit({
       entity_id: modalEntity,
       expense_head_id: headId,
@@ -221,13 +237,15 @@ export function ExpenseEntryFormModal({ visible, defaultEntity, editing, saving,
           <Text style={s.title}>{editing ? "Edit Expense" : "Add New Expense"}</Text>
           <ScrollView style={{ maxHeight: 560 }} keyboardShouldPersistTaps="handled">
             <FormLabel label="Choose Entity" />
-            <View style={s.row}>
-              {(["pws", "alpha"] as ExpenseEntityId[]).map((e) => (
-                <TouchableOpacity key={e} style={[s.chip, modalEntity === e && s.chipActive]} onPress={() => onEntityChange(e)}>
-                  <Text style={[s.chipTxt, modalEntity === e && s.chipTxtActive]}>{e.toUpperCase()}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <EntityScopeToggle
+              value={modalEntity}
+              available={entityScope.availableEntities}
+              canSwitch={entityScope.canSwitch && !editing}
+              onChange={onEntityChange}
+            />
+            {entityScope.isRestricted && (
+              <Text style={s.hint}>Scoped to {entityScope.assignedEntity} — other entities are disabled.</Text>
+            )}
 
             <FormLabel label="Choose Head" />
             {headsLoading ? <Text style={s.hint}>Loading expense heads…</Text> : null}
