@@ -22,6 +22,7 @@ import {
   type DashboardEntity,
   type AttendanceKindStats,
 } from "./dashboardApi";
+import { orgDashboardSubtitle, isAccountsDashboardRole } from "./dashboardRouting";
 import { colors, radii, shadow } from "./theme";
 
 type Entity = DashboardEntity;
@@ -122,9 +123,12 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
   const [quickOpen, setQuickOpen] = useState(false);
 
   const isSuperAdmin = user?.role === "super_admin";
-  const isPwsLocked = lockedEntity === "pws";
-  const isAlphaLocked = lockedEntity === "alpha";
+  const isAccountsRole = isAccountsDashboardRole(user?.role);
   const effectiveEntity: Entity = lockedEntity ?? (isSuperAdmin ? entity : "alpha");
+  const lockedSubtitle =
+    lockedEntity === "pws" || lockedEntity === "alpha"
+      ? orgDashboardSubtitle(user?.role, lockedEntity)
+      : null;
 
   const load = useCallback(async () => {
     setError("");
@@ -264,7 +268,9 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
   const pwsEnrollmentVisible = pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0);
 
   const quickActions = [
-    { label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" },
+    ...(!isAccountsRole
+      ? [{ label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" }]
+      : []),
     { label: "Collect fees", icon: "credit-card" as const, href: "/fees/collection" },
     { label: "New task", icon: "plus-square" as const, href: "/task/new" },
     { label: "Reports", icon: "bar-chart-2" as const, href: "/reports" },
@@ -297,13 +303,8 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
             <Text style={[s.h1, isWide && s.h1Wide]}>Hello, {user.name.split(" ")[0]}</Text>
             {!isWide && (
               <Text style={s.sub}>
-                {isPwsLocked
-                  ? "Prarambhika World School operations"
-                  : isAlphaLocked
-                    ? "ALPHA Sports Academy operations"
-                    : isSuperAdmin
-                      ? "Operations snapshot — PWS & ALPHA"
-                      : "Operations snapshot"}
+                {lockedSubtitle
+                  ?? (isSuperAdmin ? "Operations snapshot — PWS & ALPHA" : "Operations snapshot")}
               </Text>
             )}
           </View>
