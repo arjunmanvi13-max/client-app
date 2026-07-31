@@ -1143,6 +1143,9 @@ export default function ManageEdit() {
             router.back();
             return;
           }
+          if (updated?.fee_sync && !updated.fee_sync.skipped) {
+            setManageDirectoryToast("Fee schedules and pending dues updated in Financials.");
+          }
         }
       } else {
         const body: any = {
@@ -1197,6 +1200,9 @@ export default function ManageEdit() {
             setManageDirectoryToast("Custom fee override detected. This request has been sent to the Principal/Super Admin for approval before going live.");
             router.back();
             return;
+          }
+          if (updated?.fee_sync && !updated.fee_sync.skipped) {
+            setManageDirectoryToast("Fee schedules and pending dues updated in Financials.");
           }
         }
       }
