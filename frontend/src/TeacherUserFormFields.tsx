@@ -501,7 +501,7 @@ export function TeacherUserFormFields({
         >
           {isDirectoryProfile ? (
             <Text style={s.fieldHelp}>
-              No login account yet. Provision a @prarambhika.com login under System & Settings when ready.
+              No login account yet. Enable system login below or re-add the teacher with login enabled from Directory → Teachers.
             </Text>
           ) : (
             <>

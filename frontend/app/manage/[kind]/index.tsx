@@ -29,7 +29,7 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
   const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
   const canAccessList = canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher);
-  const canShowAdd = kind !== "super_admin" && (canManageUsersRosters || (kind === UserRole.PWS_TEACHER && canAddTeacher));
+  const canShowAdd = kind !== "super_admin" && canManageUsersRosters;
 
   const load = useCallback(async () => {
     if (authLoading || !canAccessList) return;
@@ -120,6 +120,15 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
           onSubmitEditing={load}
         />
       </View>
+
+      {kind === UserRole.PWS_TEACHER && (
+        <View style={s.teacherNote}>
+          <Feather name="info" size={14} color="#1E40AF" />
+          <Text style={s.teacherNoteText}>
+            New teachers are added from Directory → Teachers. Use this list to manage existing login accounts.
+          </Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={s.scroll}>
         {loadError ? (
@@ -243,4 +252,15 @@ const s = StyleSheet.create({
   blockedBox: { marginHorizontal: 20, marginTop: 16, padding: 20, backgroundColor: "#FEF2F2", borderRadius: 14, borderWidth: 1, borderColor: "#FECACA", alignItems: "center", gap: 8 },
   blockedTitle: { fontSize: 16, fontWeight: "800", color: "#991B1B" },
   blockedText: { textAlign: "center", color: "#7F1D1D", lineHeight: 20 },
+  teacherNote: {
+    flexDirection: "row",
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 10,
+    padding: 12,
+    backgroundColor: "#DBEAFE",
+    borderRadius: 12,
+    alignItems: "flex-start",
+  },
+  teacherNoteText: { flex: 1, color: "#1E40AF", fontSize: 12, lineHeight: 18 },
 });

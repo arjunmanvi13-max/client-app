@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
+  Switch,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { api } from "../../auth";
@@ -43,6 +44,9 @@ type FormState = {
   guardianMobile: string;
   referenceName: string;
   referenceMobile: string;
+  enableLogin: boolean;
+  loginEmail: string;
+  loginPassword: string;
 };
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
@@ -61,6 +65,9 @@ const EMPTY_FORM: FormState = {
   guardianMobile: "",
   referenceName: "",
   referenceMobile: "",
+  enableLogin: false,
+  loginEmail: "",
+  loginPassword: "",
 };
 
 function isValidEmail(value: string): boolean {
@@ -73,6 +80,10 @@ function normalizeAadhaarNumber(value: string): string {
 
 function isValidAadhaar(value: string): boolean {
   return /^[A-Z0-9]{12}$/.test(normalizeAadhaarNumber(value));
+}
+
+function isValidPrarambhikaEmail(value: string): boolean {
+  return value.trim().toLowerCase().endsWith("@prarambhika.com");
 }
 
 function validateForm(form: FormState): FormErrors {
@@ -98,6 +109,12 @@ function validateForm(form: FormState): FormErrors {
   if (!form.referenceName.trim()) errors.referenceName = "Reference name is required";
   if (!form.referenceMobile.trim()) errors.referenceMobile = "Reference mobile is required";
   else if (!isValidIndianMobile(form.referenceMobile)) errors.referenceMobile = "Enter a valid 10-digit mobile number";
+  if (form.enableLogin) {
+    if (!form.loginEmail.trim()) errors.loginEmail = "System login email is required";
+    else if (!isValidPrarambhikaEmail(form.loginEmail)) errors.loginEmail = "Use an @prarambhika.com email";
+    if (!form.loginPassword.trim()) errors.loginPassword = "Temporary password is required";
+    else if (form.loginPassword.trim().length < 6) errors.loginPassword = "Password must be at least 6 characters";
+  }
   return errors;
 }
 
@@ -157,6 +174,9 @@ export function AddTeacherModal({
       guardian_mobile: normalizeIndianMobile(form.guardianMobile),
       reference_name: form.referenceName.trim(),
       reference_mobile: normalizeIndianMobile(form.referenceMobile),
+      enable_login: form.enableLogin,
+      login_email: form.enableLogin ? form.loginEmail.trim().toLowerCase() : null,
+      password: form.enableLogin ? form.loginPassword : null,
     };
   }, [form, showQualificationOther]);
 
@@ -169,7 +189,9 @@ export function AddTeacherModal({
     setSubmitError(null);
     try {
       await api.post("/users/directory-teachers", payload);
-      onCreated("Teacher added successfully");
+      onCreated(form.enableLogin
+        ? "Teacher added with system login. Assign classes under Academic Structure → Teacher Assignments."
+        : "Teacher added successfully. Assign classes under Academic Structure → Teacher Assignments.");
       reset();
       onClose();
     } catch (e: any) {
@@ -394,6 +416,59 @@ export function AddTeacherModal({
                 </View>
               </FormFieldGrid>
             </FormSectionCard>
+
+            <FormSectionCard overline="Section D" title="System Login (optional)">
+              <View style={s.loginToggleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.loginToggleTitle}>Enable System Login</Text>
+                  <Text style={s.loginToggleHint}>
+                    Creates a @prarambhika.com login so the teacher can sign in immediately.
+                  </Text>
+                </View>
+                <Switch
+                  value={form.enableLogin}
+                  onValueChange={(v) => {
+                    setField("enableLogin", v);
+                    if (!v) {
+                      setField("loginEmail", "");
+                      setField("loginPassword", "");
+                    }
+                  }}
+                  testID="teacher-enable-login"
+                />
+              </View>
+
+              {form.enableLogin ? (
+                <FormFieldGrid columns={2} isWide={isWide}>
+                  <View>
+                    <FormTextField
+                      label="Login Email"
+                      required
+                      value={form.loginEmail}
+                      onChangeText={(v) => setField("loginEmail", v)}
+                      placeholder="name@prarambhika.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      testID="teacher-login-email"
+                    />
+                    {renderError("loginEmail" as keyof FormState)}
+                  </View>
+                  <View>
+                    <FormTextField
+                      label="Temporary Password"
+                      required
+                      value={form.loginPassword}
+                      onChangeText={(v) => setField("loginPassword", v)}
+                      placeholder="Min 6 characters"
+                      secureTextEntry={Platform.OS !== "web"}
+                      testID="teacher-login-password"
+                      hint="User must change this on first login."
+                    />
+                    {renderError("loginPassword" as keyof FormState)}
+                  </View>
+                </FormFieldGrid>
+              ) : null}
+            </FormSectionCard>
           </ScrollView>
 
           <View style={s.footer}>
@@ -497,4 +572,12 @@ const s = StyleSheet.create({
     color: colors.ink,
     marginTop: spacing.sm,
   },
+  loginToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: spacing.sm,
+  },
+  loginToggleTitle: { fontSize: 14, fontWeight: "700", color: colors.ink },
+  loginToggleHint: { fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 16 },
 });

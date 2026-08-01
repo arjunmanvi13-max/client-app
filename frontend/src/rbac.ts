@@ -134,7 +134,9 @@ export function isPrincipalUser(user: RBACUser | null | undefined): boolean {
 }
 
 export function canAddDirectoryTeacher(user: RBACUser | null | undefined): boolean {
-  return isSuperAdminUser(user) || isPrincipalUser(user);
+  if (isSuperAdminUser(user) || isPrincipalUser(user)) return true;
+  return hasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS)
+    || hasPermission(user, Permission.MANAGE_USERS_ROSTERS);
 }
 
 // ---------------------------------------------------------------------------

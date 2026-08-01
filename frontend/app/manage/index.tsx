@@ -3,7 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth, userHasPermission } from "../../src/auth";
-import { BusinessEntity, Permission, UserRole } from "../../src/rbac";
+import { Permission } from "../../src/rbac";
 import { USER_TYPE_CATALOG } from "../../src/userClassification";
 
 export default function ManageHub() {
@@ -21,13 +21,9 @@ export default function ManageHub() {
   if (!user) return null;
 
   const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
-  const canAddTeacher = userHasPermission(user, Permission.ADD_NEW_TEACHER, BusinessEntity.PWS);
-  const canAccessHub = canManageUsersRosters || canAddTeacher;
+  const canAccessHub = canManageUsersRosters;
 
-  const visibleTypes = USER_TYPE_CATALOG.filter((item) => {
-    if (canManageUsersRosters) return true;
-    return canAddTeacher && item.code === UserRole.PWS_TEACHER;
-  });
+  const visibleTypes = USER_TYPE_CATALOG.filter(() => canManageUsersRosters);
 
   if (!canAccessHub) {
     return (
@@ -45,7 +41,7 @@ export default function ManageHub() {
           <Feather name="shield-off" size={36} color="#94A3B8" />
           <Text style={s.emptyTitle}>Access restricted</Text>
           <Text style={s.emptyText}>
-            Manage Users &amp; Rosters requires the Manage Users &amp; Rosters permission, or Add New Teacher for teacher provisioning only.
+            Manage Users &amp; Rosters requires the Manage Users &amp; Rosters permission. To add teachers, use Directory → Teachers.
           </Text>
         </View>
       </SafeAreaView>
@@ -61,7 +57,7 @@ export default function ManageHub() {
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>Manage Users & Rosters</Text>
           <Text style={s.sub}>
-            {canManageUsersRosters ? "Approved login user types only" : "Create PWS teacher login accounts"}
+            {canManageUsersRosters ? "Approved login user types only" : "Access restricted"}
           </Text>
         </View>
       </View>

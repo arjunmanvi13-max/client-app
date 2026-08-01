@@ -117,7 +117,7 @@ export const USER_TYPE_CATALOG: UserTypeCatalogItem[] = [
     entityScope: "PWS",
     category: "Teaching",
     description: "PWS student attendance and marks",
-    manageDescription: "PWS student attendance and marks",
+    manageDescription: "Manage teacher login accounts — add new teachers from Directory → Teachers",
     allowedDesignations: [],
     requiresAssignedSport: false,
     requiresAssignedVenue: false,

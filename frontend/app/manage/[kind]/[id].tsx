@@ -262,10 +262,10 @@ export default function ManageEdit() {
   const studentSingleScreen = isStudentKind && isDesktop;
 
   useEffect(() => {
-    if (isNew && isTeacherUserForm) {
-      router.replace("/manage/pws_teacher/new");
+    if (isNew && (isTeacherUserForm || userTypeKind === UserRole.PWS_TEACHER)) {
+      router.replace("/manage/teacher?add=1");
     }
-  }, [isNew, isTeacherUserForm, router]);
+  }, [isNew, isTeacherUserForm, userTypeKind, router]);
 
   useEffect(() => {
     if (!isNew || userTypeKind !== UserRole.PWS_TEACHER) return;

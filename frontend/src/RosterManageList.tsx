@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { api, ROLE_COLORS, useAuth, userHasPermission } from "./auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole, canAddDirectoryTeacher } from "./rbac";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage, unwrapCoachPlayerList } from "./coachAccess";
@@ -47,6 +47,7 @@ function sortByName<T extends { name?: string }>(rows: T[]): T[] {
 /** Roster records (students, players, staff) and legacy user lists from Directory sidebar. */
 export function RosterManageList({ kind }: { kind: string }) {
   const router = useRouter();
+  const { add: addParam } = useLocalSearchParams<{ add?: string | string[] }>();
   const { user } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -164,6 +165,15 @@ export function RosterManageList({ kind }: { kind: string }) {
   }, [load, coachBlocked]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  useEffect(() => {
+    if (!isTeacherList || !canAddDirectoryTeacherBtn) return;
+    const raw = Array.isArray(addParam) ? addParam[0] : addParam;
+    if (raw === "1") {
+      setAddTeacherOpen(true);
+      router.replace("/manage/teacher");
+    }
+  }, [addParam, isTeacherList, canAddDirectoryTeacherBtn, router]);
 
   useFocusEffect(useCallback(() => {
     const message = consumeManageDirectoryToast();
