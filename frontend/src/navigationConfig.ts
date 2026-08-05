@@ -5,7 +5,7 @@
 import type { User } from "./auth";
 import { canAccessTakeAttendance } from "./attendanceAccess";
 import { isCoachUser } from "./coachAccess";
-import { BusinessEntity, Permission, hasPermission, isSuperAdminUser } from "./rbac";
+import { BusinessEntity, Permission, canAccessTimetable, hasPermission, isSuperAdminUser } from "./rbac";
 import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
 
 function matchManageLoginUsers(pathname: string): boolean {
@@ -304,6 +304,20 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         href: "/admin/report-cards",
         match: (p) => p.startsWith("/admin/report-cards") || p.startsWith("/report-cards"),
         permissions: [Permission.MANAGE_MARKS_ASSESSMENT, Permission.MANAGE_TEACHERS_MAP_SUBJECTS],
+        pwsOnly: true,
+      },
+      {
+        id: "timetable",
+        label: "Time Table",
+        icon: "clock",
+        href: "/academics/timetable",
+        match: (p) => p.startsWith("/academics/timetable"),
+        isVisible: (ctx) => canAccessTimetable(ctx.user),
+        permissions: [
+          Permission.TIMETABLE_VIEW_ALL,
+          Permission.TIMETABLE_VIEW_OWN,
+          Permission.TIMETABLE_CREATE,
+        ],
         pwsOnly: true,
       },
     ],

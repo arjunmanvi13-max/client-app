@@ -85,6 +85,15 @@ export enum Permission {
   MANAGE_EXPENSE_STRUCTURE = "MANAGE_EXPENSE_STRUCTURE",
   CAPTURE_PWS_EXPENSES = "CAPTURE_PWS_EXPENSES",
   CAPTURE_ALPHA_EXPENSES = "CAPTURE_ALPHA_EXPENSES",
+
+  TIMETABLE_VIEW_ALL = "TIMETABLE_VIEW_ALL",
+  TIMETABLE_VIEW_OWN = "TIMETABLE_VIEW_OWN",
+  TIMETABLE_CREATE = "TIMETABLE_CREATE",
+  TIMETABLE_EDIT = "TIMETABLE_EDIT",
+  TIMETABLE_DELETE = "TIMETABLE_DELETE",
+  TIMETABLE_SUBSTITUTE = "TIMETABLE_SUBSTITUTE",
+  TIMETABLE_PUBLISH = "TIMETABLE_PUBLISH",
+  TIMETABLE_EXPORT = "TIMETABLE_EXPORT",
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +148,40 @@ export function canAddDirectoryTeacher(user: RBACUser | null | undefined): boole
     || hasPermission(user, Permission.MANAGE_USERS_ROSTERS);
 }
 
+export function isAcademicHeadUser(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  return (user.designation || "").toUpperCase() === "ACADEMIC_HEAD";
+}
+
+export function isPwsTeacherUser(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  const role = normalizeRole(user.role);
+  return role === UserRole.PWS_TEACHER || user.role === "teacher";
+}
+
+export function canViewTimetableAll(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  // Designation / principal checks first — do not require TIMETABLE_* in effective_permissions
+  // (production may lag behind until category permissions are re-saved).
+  if (isAcademicHeadUser(user) || isPrincipalUser(user)) return true;
+  const d = (user.designation || "").toUpperCase();
+  if (d === "VICE_PRINCIPAL" || user.role === "vice_principal" || user.role === "principal") return true;
+  const role = normalizeRole(user.role);
+  if (role === UserRole.PWS_ADMIN) return true;
+  if (hasPermission(user, Permission.TIMETABLE_VIEW_ALL, BusinessEntity.PWS)) return true;
+  return false;
+}
+
+export function canViewTimetableOwn(user: RBACUser | null | undefined): boolean {
+  return canViewTimetableAll(user) || hasPermission(user, Permission.TIMETABLE_VIEW_OWN, BusinessEntity.PWS) || isPwsTeacherUser(user);
+}
+
+export function canAccessTimetable(user: RBACUser | null | undefined): boolean {
+  return canViewTimetableAll(user) || canViewTimetableOwn(user);
+}
+
 // ---------------------------------------------------------------------------
 // Role → permission matrix
 // ---------------------------------------------------------------------------
@@ -157,6 +200,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MANAGE_EXPENSE_STRUCTURE,
     Permission.CAPTURE_PWS_EXPENSES,
     Permission.CAPTURE_ALPHA_EXPENSES,
+    Permission.TIMETABLE_VIEW_ALL,
+    Permission.TIMETABLE_VIEW_OWN,
+    Permission.TIMETABLE_CREATE,
+    Permission.TIMETABLE_EDIT,
+    Permission.TIMETABLE_DELETE,
+    Permission.TIMETABLE_SUBSTITUTE,
+    Permission.TIMETABLE_PUBLISH,
+    Permission.TIMETABLE_EXPORT,
   ],
   [UserRole.PWS_ADMIN]: [
     Permission.MARK_PWS_ATTENDANCE,
@@ -166,6 +217,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.APPROVE_REQUESTS,
     Permission.DASHBOARD_ACCESS,
     Permission.CAPTURE_PWS_EXPENSES,
+    Permission.TIMETABLE_VIEW_ALL,
+    Permission.TIMETABLE_EXPORT,
   ],
   [UserRole.ALPHA_ADMIN]: [
     Permission.MARK_ALPHA_ATTENDANCE,
@@ -196,6 +249,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     Permission.MANAGE_MARKS_ASSESSMENT,
     Permission.MANAGE_TEACHER_TASKS,
     Permission.DASHBOARD_ACCESS,
+    Permission.TIMETABLE_VIEW_OWN,
+    Permission.TIMETABLE_EXPORT,
   ],
   [UserRole.ALPHA_COACH]: [
     Permission.MARK_PLAYER_ATTENDANCE,
@@ -234,6 +289,7 @@ export interface RBACUser {
   assigned_centres?: ("Balua" | "Harding Park")[];
   assigned_sports?: ("Cricket" | "Football")[];
   coach_type?: "head" | "assistant";
+  designation?: string;
 }
 
 export interface TeacherSubjectAssignment {
@@ -366,6 +422,14 @@ export function hasPermission(
     [Permission.DASHBOARD_ACCESS]: ["dashboard_access"],
     [Permission.ADD_NEW_TEACHER]: ["manage_users"],
     [Permission.MANAGE_USERS_ROSTERS]: ["manage_users_rosters", "manage_users"],
+    [Permission.TIMETABLE_VIEW_ALL]: ["timetable_view_all"],
+    [Permission.TIMETABLE_VIEW_OWN]: ["timetable_view_own"],
+    [Permission.TIMETABLE_CREATE]: ["timetable_create"],
+    [Permission.TIMETABLE_EDIT]: ["timetable_edit"],
+    [Permission.TIMETABLE_DELETE]: ["timetable_delete"],
+    [Permission.TIMETABLE_SUBSTITUTE]: ["timetable_substitute"],
+    [Permission.TIMETABLE_PUBLISH]: ["timetable_publish"],
+    [Permission.TIMETABLE_EXPORT]: ["timetable_export"],
   };
   const keys = legacyBridge[permission] || [];
   if (keys.some((k) => user.permissions?.[k])) return true;
@@ -411,6 +475,14 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.MANAGE_PLAYER_ASSESSMENT]: "Player assessments",
   [Permission.MANAGE_COACH_TASKS]: "Manage coach tasks",
   [Permission.DASHBOARD_ACCESS]: "Dashboard access",
+  [Permission.TIMETABLE_VIEW_ALL]: "View full school timetable",
+  [Permission.TIMETABLE_VIEW_OWN]: "View own timetable",
+  [Permission.TIMETABLE_CREATE]: "Create timetable allocations",
+  [Permission.TIMETABLE_EDIT]: "Edit timetable allocations",
+  [Permission.TIMETABLE_DELETE]: "Delete timetable allocations",
+  [Permission.TIMETABLE_SUBSTITUTE]: "Manage substitutions",
+  [Permission.TIMETABLE_PUBLISH]: "Publish timetable",
+  [Permission.TIMETABLE_EXPORT]: "Export timetable",
 };
 
 export const ROLE_LABELS: Record<UserRole, string> = {

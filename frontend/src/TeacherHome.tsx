@@ -12,11 +12,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
+import { canViewTimetableOwn } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { fetchDashboardMvp } from "./dashboardApi";
 import { colors, radii, shadow, spacing } from "./theme";
+import { MyClassesTodayCard } from "./timetable/MyClassesTodayCard";
 
 type AssignedClass = {
   section_id: string;
@@ -283,6 +285,10 @@ export default function TeacherHome() {
                 onPress={() => router.push("/(tabs)/attendance")}
               />
             </View>
+
+            {canViewTimetableOwn(user) && (
+              <MyClassesTodayCard />
+            )}
 
             {/* Main grid */}
             <View style={[s.grid, isWide && s.gridWide]}>
