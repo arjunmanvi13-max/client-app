@@ -50,7 +50,15 @@ export default function Login() {
         goAfterLogin(r.role);
       }
     } catch (er: any) {
-      setErr(er?.response?.data?.detail || "Invalid email or password");
+      const status = er?.response?.status;
+      const detail = er?.response?.data?.detail;
+      if (!er?.response) {
+        setErr("Cannot reach the server. Check your connection or that the backend is running.");
+      } else if (status === 404 || status >= 500) {
+        setErr("Login service is unavailable. The backend may be down or misconfigured.");
+      } else {
+        setErr(typeof detail === "string" ? detail : "Invalid email or password");
+      }
       setLoading(false);
     }
   };
