@@ -23,7 +23,7 @@ export default function DeptSchool() {
           <Stat label="Teachers" value={data.teachers_count} icon="book-open" tint="#1E40AF" />
         </View>
 
-        <Text style={s.section}>Today's class-wise attendance</Text>
+        <Text style={s.section}>Today&apos;s class-wise attendance</Text>
         {Object.keys(data.by_class).length === 0 ? (
           <Text style={s.empty}>No attendance marked yet today.</Text>
         ) : Object.entries(data.by_class).map(([cls, vals]: any) => (

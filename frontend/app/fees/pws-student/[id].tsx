@@ -13,28 +13,11 @@ import { api } from "../../../src/auth";
 import { colors, radii, spacing } from "../../../src/theme";
 import { LoadingState, ErrorState, getApiError } from "../../../src/ScreenStates";
 import { PWS_ACADEMIC_YEAR } from "../../../src/pwsFeeStructure";
+import { downloadPdf as downloadPdfFile } from "../../../src/pdfDownload";
 
-const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
 async function downloadInvoicePdf(studentId: string, filename: string) {
-  const token = Platform.OS === "web" && typeof window !== "undefined"
-    ? window.localStorage.getItem("pws_alpha_token")
-    : null;
-  const res = await fetch(`${API_ROOT}/api/pws-fees/invoice/${studentId}/pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("PDF download failed");
-  const blob = await res.blob();
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-    return url;
-  }
-  return `${API_ROOT}/api/pws-fees/invoice/${studentId}/pdf`;
+  await downloadPdfFile(`/pws-fees/invoice/${studentId}/pdf`, filename);
 }
 
 type RoadmapItem = {
@@ -92,8 +75,7 @@ export default function PwsStudentFees() {
   const exportInvoice = async () => {
     if (!id) return;
     try {
-      const url = await downloadInvoicePdf(id, invoiceFilename);
-      if (Platform.OS !== "web") Linking.openURL(url);
+      await downloadInvoicePdf(id, invoiceFilename);
     } catch {
       Alert.alert("Export failed", "Could not download the invoice PDF.");
     }

@@ -258,4 +258,5 @@ const s = StyleSheet.create({
   backTxt: { color: colors.muted, fontSize: 13, fontWeight: "600" },
   metaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8, alignItems: "center" },
   metaTxt: { color: colors.muted, fontSize: 12 },
+  helpNote: { color: colors.muted, fontSize: 12, marginTop: 16, textAlign: "center" },
 });

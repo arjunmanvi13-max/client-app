@@ -10,7 +10,7 @@ import { api, useAuth, userHasPermission } from "../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
-import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
+import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO , toISODate} from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
 import {
   classGroupPrefix,
@@ -117,7 +117,7 @@ function reportMeta(id: string) {
 
 export default function ReportsScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { isDesktop, isMobile, horizontalPadding, contentMaxWidth } = useBreakpoint();
   const { width } = useWindowDimensions();
   const printRef = useRef<View>(null);
@@ -335,7 +335,7 @@ export default function ReportsScreen() {
       const ext = format === "pdf" ? "pdf" : "xlsx";
       const a = document.createElement("a");
       a.href = URL.createObjectURL(r.data);
-      a.download = `${mvpReportId}-${new Date().toISOString().slice(0, 10)}.${ext}`;
+      a.download = `${mvpReportId}-${toISODate()}.${ext}`;
       if (format === "pdf") a.target = "_blank";
       document.body.appendChild(a);
       a.click();
@@ -343,8 +343,7 @@ export default function ReportsScreen() {
       setExportMenuOpen(false);
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.message || "Could not export";
-      if (Platform.OS === "web" && typeof window !== "undefined") window.alert(`Export failed: ${msg}`);
-      else Alert.alert("Export failed", msg);
+      Alert.alert("Export failed", msg);
     }
   };
 
@@ -355,6 +354,13 @@ export default function ReportsScreen() {
     setExportMenuOpen(false);
   };
 
+  if (authLoading || !user) {
+    return (
+      <SafeAreaView style={s.wrap}>
+        <View style={{ padding: 24 }}><ActivityIndicator size="small" color="#1E40AF" /></View>
+      </SafeAreaView>
+    );
+  }
   if (!canAccess) {
     return (
       <SafeAreaView style={s.wrap}>

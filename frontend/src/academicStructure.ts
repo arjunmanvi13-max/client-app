@@ -232,3 +232,42 @@ export function describeTeacherAllocationFailure(
   }
   return null;
 }
+
+export const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
+
+export const PWS_CLASS_OPTIONS = [
+  "Nursery",
+  "LKG",
+  "UKG",
+  "Class I",
+  "Class II",
+  "Class III",
+  "Class IV",
+  "Class V",
+  "Class VI",
+  "Class VII",
+  "Class VIII",
+  "Class IX",
+  "Class X",
+] as const;
+
+export const PWS_CLASS_FILTER_LABELS: Record<string, string> = {
+  Nursery: "Nur",
+  LKG: "LKG",
+  UKG: "UKG",
+  "Class I": "Std 1",
+  "Class II": "Std 2",
+  "Class III": "Std 3",
+  "Class IV": "Std 4",
+  "Class V": "Std 5",
+  "Class VI": "Std 6",
+  "Class VII": "Std 7",
+  "Class VIII": "Std 8",
+  "Class IX": "Std 9",
+  "Class X": "Std 10",
+};
+
+export function pwsClassFilterLabel(pwsClass?: string | null) {
+  if (!pwsClass) return "";
+  return PWS_CLASS_FILTER_LABELS[pwsClass] || pwsClass;
+}

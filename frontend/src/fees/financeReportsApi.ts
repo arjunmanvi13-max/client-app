@@ -1,7 +1,7 @@
 import { api } from "../auth";
 import { computePeriodRange } from "./financeReportsFilters";
 import type { FinanceReportFilters } from "./financeReportsTypes";
-import type { CollectionsSummaryData, DailyReceiptRow, ExpenseOutflowReportData, RevenueBreakdownData } from "./financeReportsTypes";
+import type { AgingBucket, CollectionsSummaryData, DailyReceiptRow, ExpenseOutflowReportData, PastDueReportData, PastDueRow, RevenueBreakdownData } from "./financeReportsTypes";
 
 type FinancialSummaryResponse = {
   totals: {
@@ -92,6 +92,76 @@ function mapReceiptRows(receipts: DailyCollectionsResponse["receipts"]): DailyRe
     feeType: r.fee_type,
     collectedBy: r.collected_by_name,
   }));
+}
+
+type AgingTotals = { count: number; amount: number };
+
+type DefaultersResponse = {
+  aging?: Record<AgingBucket, AgingTotals>;
+  totals?: { amount: number; count: number; payers: number; truncated: boolean };
+  rows: {
+    id?: string | null;
+    player_id?: string | null;
+    player_name?: string | null;
+    centre?: string | null;
+    sport?: string | null;
+    category?: string | null;
+    fee_type?: string | null;
+    amount_due?: number | null;
+    due_date?: string | null;
+    days_overdue?: number | null;
+  }[];
+};
+
+function agingBucket(days: number): AgingBucket {
+  if (days <= 30) return "1_30";
+  if (days <= 60) return "31_60";
+  if (days <= 90) return "61_90";
+  return "90_plus";
+}
+
+export async function fetchPastDueAging(filters: FinanceReportFilters): Promise<PastDueReportData> {
+  const { data } = await api.get<DefaultersResponse>("/reports/financial/defaulters", {
+    params: reportApiParams(filters),
+  });
+
+  const empty = { count: 0, amount: 0 };
+  const buckets: PastDueReportData["buckets"] = {
+    "1_30": data?.aging?.["1_30"] ?? { ...empty },
+    "31_60": data?.aging?.["31_60"] ?? { ...empty },
+    "61_90": data?.aging?.["61_90"] ?? { ...empty },
+    "90_plus": data?.aging?.["90_plus"] ?? { ...empty },
+  };
+
+  const rows: PastDueRow[] = (data?.rows || []).map((r, i) => {
+    const daysOverdue = Math.max(r.days_overdue || 0, 0);
+    const bucket = agingBucket(daysOverdue);
+    const outstanding = r.amount_due || 0;
+    return {
+      id: r.id || `${r.player_id || "row"}-${r.fee_type || ""}-${r.due_date || ""}-${i}`,
+      studentName: r.player_name || "—",
+      venue: r.centre || "—",
+      program: r.sport || r.category || "—",
+      type: r.fee_type || "—",
+      dueDate: r.due_date || "",
+      daysOverdue,
+      bucket,
+      outstanding,
+    };
+  });
+
+  const fallbackTotal = Object.values(buckets).reduce((sum, b) => sum + b.amount, 0);
+  const totalPastDue = data?.totals?.amount ?? fallbackTotal;
+  const studentsWithDues = data?.totals?.payers ?? 0;
+  return {
+    summary: {
+      totalPastDue,
+      studentsWithDues,
+      avgOutstanding: studentsWithDues ? Math.round(totalPastDue / studentsWithDues) : 0,
+    },
+    buckets,
+    rows,
+  };
 }
 
 export async function fetchCollectionsSummary(filters: FinanceReportFilters): Promise<CollectionsSummaryData> {

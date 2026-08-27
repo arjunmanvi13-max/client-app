@@ -1,4 +1,5 @@
-import { View, StyleSheet, type ReactNode } from "react-native";
+import type { ReactNode } from "react";
+import { View, StyleSheet, type DimensionValue } from "react-native";
 import { spacing } from "../../theme";
 
 type FormFieldGridProps = {
@@ -9,7 +10,7 @@ type FormFieldGridProps = {
 
 export function FormFieldGrid({ columns, isWide, children }: FormFieldGridProps) {
   const items = Array.isArray(children) ? children : [children];
-  const basis = isWide ? `${100 / columns}%` : "100%";
+  const basis: DimensionValue = isWide ? (`${100 / columns}%` as DimensionValue) : "100%";
 
   return (
     <View style={[s.row, isWide && s.rowWide]}>

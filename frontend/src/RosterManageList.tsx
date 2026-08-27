@@ -80,10 +80,10 @@ export function RosterManageList({ kind }: { kind: string }) {
     if (isTeacherList) return false;
     if (isTeacher && kind === "student") return false;
     if (isAdmin) return true;
-    if (meta.isUser) return (user?.can_manage || []).includes(kind);
+    if (meta.isUser) return ((user?.can_manage || []) as string[]).includes(kind);
     if (kind === "student") return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
     if (kind === "player") return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
-    return (user?.can_manage || []).includes(kind);
+    return ((user?.can_manage || []) as string[]).includes(kind);
   })();
 
   useEffect(() => {
@@ -303,7 +303,7 @@ export function RosterManageList({ kind }: { kind: string }) {
           placeholder="Search name, ID, phone…"
           placeholderTextColor="#94A3B8"
           style={s.searchInput}
-          onSubmitEditing={load}
+          onSubmitEditing={() => load()}
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => { setSearch(""); }}>

@@ -98,6 +98,8 @@ export const EXPENSE_MAIN_CATEGORIES = [
   "Maintenance",
 ] as const;
 
+export type ExpenseMainCategory = (typeof EXPENSE_MAIN_CATEGORIES)[number];
+
 export const EXPENSE_PAYMENT_MODES: ExpensePaymentMode[] = [
   "Cash", "UPI", "Bank Transfer", "Cheque", "Credit Card",
 ];

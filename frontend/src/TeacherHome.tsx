@@ -14,7 +14,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth } from "./auth";
 import { canViewTimetableOwn } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
-import { formatDate } from "./dateFormat";
+import { formatDate , toISODate} from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import { fetchDashboardMvp } from "./dashboardApi";
 import { colors, radii, shadow, spacing } from "./theme";
@@ -72,7 +72,7 @@ function pct(marked: number, total: number) {
 function formatDueLabel(due?: string) {
   if (!due) return "—";
   const iso = due.slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISODate();
   if (iso === today) return "Today";
   return formatDate(iso);
 }
@@ -440,7 +440,7 @@ export default function TeacherHome() {
                   {openTasks.length === 0 ? (
                     <View style={s.caughtUpRow}>
                       <Feather name="check-circle" size={16} color={colors.success} />
-                      <Text style={s.caughtUpTxt}>No open tasks — you're caught up</Text>
+                      <Text style={s.caughtUpTxt}>No open tasks — you&apos;re caught up</Text>
                     </View>
                   ) : (
                     openTasks.map((task, idx) => {

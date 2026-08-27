@@ -321,7 +321,7 @@ export default function TaskTracker() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.pageBg },
+  safe: { flex: 1, backgroundColor: colors.bg },
   page: {
     paddingTop: spacing.lg,
     paddingBottom: 100,

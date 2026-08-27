@@ -76,6 +76,7 @@ export type PaymentReceipt = {
     name?: string;
     mobile?: string;
     admission_number?: string;
+    player_id?: string;
     centre?: string;
     sport?: string;
     group?: string;

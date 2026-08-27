@@ -80,7 +80,7 @@ export default function CoachHome() {
         </View>
 
         <View style={s.heroCard}>
-          <Text style={s.heroLabel}>Today's player attendance</Text>
+          <Text style={s.heroLabel}>Today&apos;s player attendance</Text>
           <Text style={s.heroValue}>{data?.mvp?.attendance_today?.marked ?? data?.today?.marked ?? "—"}</Text>
           <Text style={s.heroSub}>of {data?.total_players ?? "—"} players marked</Text>
           <View style={s.heroFooter}>

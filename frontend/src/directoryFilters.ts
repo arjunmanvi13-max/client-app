@@ -1,4 +1,4 @@
-import { PWS_CLASS_OPTIONS, SECTION_LETTERS } from "./StudentRosterFormFields";
+import { PWS_CLASS_OPTIONS, SECTION_LETTERS } from "./academicStructure";
 import type { FormSelectOption } from "./components/forms/FormSelect";
 
 export type OrgFilter = "all" | "PWS" | "ALPHA";

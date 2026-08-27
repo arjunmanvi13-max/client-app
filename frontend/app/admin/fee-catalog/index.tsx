@@ -19,6 +19,7 @@ import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { Permission, isSuperAdminUser } from "../../../src/rbac";
 import { LoadingState, EmptyState, ErrorState, FormLabel, InlineFieldError, getApiError } from "../../../src/ScreenStates";
 import { useBreakpoint } from "../../../src/useBreakpoint";
+import { useSubmitGuard } from "../../../src/useSubmitGuard";
 
 type Tab = "catalogue" | "plans";
 
@@ -46,6 +47,7 @@ export default function FeeCatalogAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [formErr, setFormErr] = useState("");
+  const { submitting: creating, run: runCreate } = useSubmitGuard();
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -93,7 +95,7 @@ export default function FeeCatalogAdmin() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const createItem = async () => {
+  const createItem = () => runCreate(async () => {
     if (!canManage) return;
     const missing: string[] = [];
     if (!name.trim()) missing.push("name");
@@ -122,7 +124,7 @@ export default function FeeCatalogAdmin() {
     } catch (e: any) {
       setFormErr(getApiError(e, "Could not create catalogue item."));
     }
-  };
+  });
 
   const openEdit = (item: CatalogueItem) => {
     if (!canEditCatalogue) return;
@@ -274,8 +276,8 @@ export default function FeeCatalogAdmin() {
                     ))}
                   </ScrollView>
                   {formErr ? <Text style={s.formErr}>{formErr}</Text> : null}
-                  <TouchableOpacity style={s.primaryBtn} onPress={createItem}>
-                    <Text style={s.primaryBtnTxt}>Add item</Text>
+                  <TouchableOpacity style={s.primaryBtn} onPress={createItem} disabled={creating}>
+                    <Text style={s.primaryBtnTxt}>{creating ? "Adding…" : "Add item"}</Text>
                   </TouchableOpacity>
                 </View>
               )}

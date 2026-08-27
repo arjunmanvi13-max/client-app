@@ -29,7 +29,7 @@ export function BucketCards({ buckets }: { buckets: { label: string; count: numb
         <View key={b.label} style={s.bucketCard}>
           <Text style={s.bucketLabel}>{b.label}</Text>
           <Text style={s.bucketAmt}>{inr(b.amount)}</Text>
-          <Text style={s.bucketSub}>{b.count} students</Text>
+          <Text style={s.bucketSub}>{b.count} {b.count === 1 ? "due" : "dues"}</Text>
         </View>
       ))}
     </View>

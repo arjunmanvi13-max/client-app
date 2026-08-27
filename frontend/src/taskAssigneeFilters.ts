@@ -1,7 +1,6 @@
 /** Task assignee role filter chips and list filtering. */
 import { isActiveUser } from "./userStatus";
-import { userHasPermission } from "./auth";
-import { BusinessEntity, Permission } from "./rbac";
+import { BusinessEntity, Permission, hasPermission as userHasPermission, type RBACUser } from "./rbac";
 
 export type AssigneeRoleFilter =
   | "all"
@@ -109,7 +108,7 @@ const ADMIN_DELEGATE_ROLES = new Set([
 
 /** Filter directory users the current user may delegate tasks to. */
 export function filterAssignableUsersForCreator(
-  currentUser: { id?: string; role?: string; permissions?: string[] } | null | undefined,
+  currentUser: RBACUser | null | undefined,
   users: AssigneeUser[],
 ): AssigneeUser[] {
   if (!currentUser?.id) return [];
