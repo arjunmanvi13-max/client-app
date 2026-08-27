@@ -14,7 +14,7 @@ import {
 } from "../../../src/expenses/expenseApi";
 import { formatInr } from "../../../src/expenses/expenseFormat";
 import type { ExpenseEntityId, ExpenseHead } from "../../../src/expenses/expenseTypes";
-import { EXPENSE_MAIN_CATEGORIES } from "../../../src/expenses/expenseTypes";
+import { EXPENSE_MAIN_CATEGORIES, type ExpenseMainCategory } from "../../../src/expenses/expenseTypes";
 
 function normalizeEntityId(value?: string | null, fallbackCode?: string): ExpenseEntityId {
   const normalized = (value || "").toLowerCase();
@@ -40,7 +40,7 @@ export default function ExpenseStructurePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ExpenseHead | null>(null);
   const [modalEntity, setModalEntity] = useState<ExpenseEntityId>("pws");
-  const [mainCategory, setMainCategory] = useState(EXPENSE_MAIN_CATEGORIES[0]);
+  const [mainCategory, setMainCategory] = useState<ExpenseMainCategory>(EXPENSE_MAIN_CATEGORIES[0]);
   const [subCategory, setSubCategory] = useState("");
   const [code, setCode] = useState("");
   const [budget, setBudget] = useState("");

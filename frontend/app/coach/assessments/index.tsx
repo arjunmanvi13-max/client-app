@@ -98,7 +98,6 @@ function playerFormLocked(
 
 const stopWebScrollCapture = Platform.OS === "web"
   ? {
-      // @ts-expect-error react-native-web mouse event
       onMouseDown: (e: { stopPropagation: () => void }) => { e.stopPropagation(); },
     }
   : {};
@@ -396,8 +395,7 @@ export default function CoachAssessmentEntry() {
     if (!pid || !showGrid || !playerType) return;
     if (playerType === "Daily" && !sessionType) {
       const msg = "Select a session type (Morning or Evening) before exporting.";
-      if (Platform.OS === "web" && typeof window !== "undefined") window.alert(msg);
-      else Alert.alert("Export PDF", msg);
+      Alert.alert("Export PDF", msg);
       return;
     }
     try {
@@ -443,8 +441,7 @@ export default function CoachAssessmentEntry() {
       } else {
         msg = await getApiErrorFromResponse(e, "Could not export PDF");
       }
-      if (Platform.OS === "web" && typeof window !== "undefined") window.alert(`Export failed: ${msg}`);
-      else Alert.alert("Export failed", msg);
+      Alert.alert("Export failed", msg);
     }
   };
 
@@ -491,7 +488,7 @@ export default function CoachAssessmentEntry() {
 
   const programLabel = useMemo(() => {
     if (!playerType) return "—";
-    const parts = [sport, playerType];
+    const parts: string[] = [sport, playerType];
     if (playerType === "Daily" && sessionType) parts.push(sessionType);
     parts.push(centre);
     return parts.join(" · ");
@@ -525,7 +522,7 @@ export default function CoachAssessmentEntry() {
   return (
     <SafeAreaView style={s.wrap} testID="coach-assessment-screen">
       <ScrollView
-        style={Platform.OS === "web" ? { flex: 1, overflow: "auto" } : { flex: 1 }}
+        style={Platform.OS === "web" ? { flex: 1, overflow: "scroll" } : { flex: 1 }}
         keyboardShouldPersistTaps="handled"
         nestedScrollEnabled
         contentContainerStyle={{

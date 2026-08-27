@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
-  Platform,
   StyleSheet,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -63,14 +62,10 @@ function calcAge(dob: string): number | null {
 }
 
 function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === "web") {
-    if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) onConfirm();
-  } else {
-    Alert.alert(title, message, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Confirm", style: "destructive", onPress: onConfirm },
-    ]);
-  }
+  Alert.alert(title, message, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Confirm", style: "destructive", onPress: onConfirm },
+  ]);
 }
 
 function FieldLabel({ children, required }: { children: string; required?: boolean }) {
@@ -139,7 +134,7 @@ export type PlayerRosterFormFieldsProps = {
   adhocFees: { fee_type: string; amount: string; due_date: string }[];
   setAdhocFees: Dispatch<SetStateAction<{ fee_type: string; amount: string; due_date: string }[]>>;
   coachSportLocked: boolean;
-  coachAssignedSport?: string;
+  coachAssignedSport?: string | null;
   status: "active" | "deactivated";
   setStatus: (v: "active" | "deactivated") => void;
   boardingClass: string;

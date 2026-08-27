@@ -117,9 +117,9 @@ export function CreateTaskModal({ visible, task, onClose, onSaved }: CreateTaskM
     setLoadingUsers(true);
     (async () => {
       try {
-        const { data } = await api.get("/users/directory");
-        const active = filterActiveUsers(
-          data.filter((u: AssigneeUser) => !NON_ASSIGNABLE_ROLES.includes(u.role || "")),
+        const { data } = await api.get<AssigneeUser[]>("/users/directory");
+        const active = filterActiveUsers<AssigneeUser>(
+          data.filter((u) => !NON_ASSIGNABLE_ROLES.includes(u.role || "")),
         );
         setUsers(filterAssignableUsersForCreator(user, active));
       } finally {

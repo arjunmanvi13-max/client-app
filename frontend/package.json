@@ -11,7 +11,11 @@
     "lint": "expo lint",
     "build": "expo export --platform web",
     "test:nav": "npx --yes tsx src/navigationConfig.verify.ts",
-    "test:category-perms": "npx --yes tsx src/categoryPermissions.verify.ts && npx --yes tsx src/categoryPermissionsUtil.verify.ts"
+    "test:category-perms": "npx --yes tsx src/categoryPermissions.verify.ts && npx --yes tsx src/categoryPermissionsUtil.verify.ts",
+    "test:filters": "npx --yes tsx src/directoryFilters.verify.ts && npx --yes tsx src/feesCollectionFilters.verify.ts",
+    "test:forms": "npx --yes tsx src/teachers/teacherFormState.verify.ts",
+    "test:all": "yarn test:nav && yarn test:category-perms && yarn test:filters && yarn test:forms && yarn test:alert",
+    "test:alert": "npx --yes tsx src/webAlert.verify.ts"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",
@@ -53,6 +57,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.1.0",
+    "@types/react-dom": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.3"

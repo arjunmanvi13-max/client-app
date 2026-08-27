@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, spacing, radii } from "./theme";
 
@@ -52,11 +52,6 @@ export function confirmAction(
 ) {
   const confirmLabel = options?.confirmLabel || "Confirm";
   const cancelLabel = options?.cancelLabel || "Cancel";
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
-  const { Alert } = require("react-native");
   Alert.alert(title, message, [
     { text: cancelLabel, style: "cancel" },
     { text: confirmLabel, style: options?.destructive ? "destructive" : "default", onPress: onConfirm },
@@ -76,22 +71,27 @@ export function EmptyState({
   icon = "inbox",
   title = "Nothing here yet",
   message,
+  subtitle,
   actionLabel,
   onAction,
+  compact,
 }: {
   icon?: IconName;
   title?: string;
   message?: string;
+  subtitle?: string;
   actionLabel?: string;
   onAction?: () => void;
+  compact?: boolean;
 }) {
+  const body = message ?? subtitle;
   return (
-    <View style={st.center} testID="empty-state">
+    <View style={[st.center, compact && { paddingVertical: spacing.md }]} testID="empty-state">
       <View style={st.emptyIcon}>
         <Feather name={icon} size={32} color={colors.hint} />
       </View>
       <Text style={st.emptyTitle}>{title}</Text>
-      {message ? <Text style={st.emptyMsg}>{message}</Text> : null}
+      {body ? <Text style={st.emptyMsg}>{body}</Text> : null}
       {actionLabel && onAction ? (
         <TouchableOpacity style={st.emptyBtn} onPress={onAction}>
           <Text style={st.emptyBtnTxt}>{actionLabel}</Text>
@@ -137,10 +137,10 @@ export function InlineFieldError({ message }: { message?: string }) {
   );
 }
 
-export function FormLabel({ children, required }: { children: string; required?: boolean }) {
+export function FormLabel({ children, label, required }: { children?: string; label?: string; required?: boolean }) {
   return (
     <Text style={st.formLabel}>
-      {children}
+      {children ?? label ?? ""}
       {required ? <Text style={st.required}> *</Text> : null}
     </Text>
   );

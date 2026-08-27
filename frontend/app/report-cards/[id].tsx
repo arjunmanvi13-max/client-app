@@ -8,29 +8,11 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../src/auth";
 import { BusinessEntity, Permission } from "../../src/rbac";
 import { canExportPdf, isReportCardLocked, ReportCardSheet } from "../../src/reportCards/ReportCardSheet";
+import { downloadPdf as downloadPdfFile } from "../../src/pdfDownload";
 
-const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
 async function downloadPdf(cardId: string, filename: string) {
-  const token = Platform.OS === "web" && typeof window !== "undefined"
-    ? window.localStorage.getItem("pws_alpha_token")
-    : null;
-  const res = await fetch(`${API_ROOT}/api/report-cards/${cardId}/pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || "PDF download failed");
-  }
-  const blob = await res.blob();
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  await downloadPdfFile(`/report-cards/${cardId}/pdf`, filename);
 }
 
 export default function ReportCardView() {

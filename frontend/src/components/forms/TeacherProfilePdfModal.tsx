@@ -5,21 +5,11 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { colors, radii, shadow, spacing } from "../../theme";
 import { useBreakpoint } from "../../useBreakpoint";
+import { fetchPdfBlob } from "../../pdfDownload";
 
-const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
 async function fetchTeacherProfilePdf(userId: string): Promise<string> {
-  const token = Platform.OS === "web" && typeof window !== "undefined"
-    ? window.localStorage.getItem("pws_alpha_token")
-    : null;
-  const res = await fetch(`${API_ROOT}/api/users/${userId}/profile-pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || "PDF preview failed");
-  }
-  const blob = await res.blob();
+  const blob = await fetchPdfBlob(`/users/${userId}/profile-pdf`);
   return URL.createObjectURL(blob);
 }
 

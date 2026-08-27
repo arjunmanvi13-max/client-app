@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform, Linking, Alert } fr
 import { Feather } from "@expo/vector-icons";
 import { api } from "../../auth";
 import { colors } from "../../theme";
+import { useSubmitGuard } from "../../useSubmitGuard";
 
 export function BulkReminderBar({
   count,
@@ -14,9 +15,10 @@ export function BulkReminderBar({
   onDone: () => void;
   onClear: () => void;
 }) {
+  const { submitting, run } = useSubmitGuard();
   if (count === 0) return null;
 
-  const send = async () => {
+  const send = () => run(async () => {
     try {
       const { data } = await api.post("/fees/remind", { player_ids: playerIds, channel: "whatsapp" });
       const links = (data.reminders || []).filter((r: any) => r.whatsapp_url);
@@ -34,7 +36,7 @@ export function BulkReminderBar({
     } catch (e: any) {
       Alert.alert("Reminder failed", e?.response?.data?.detail || "Could not send reminders.");
     }
-  };
+  });
 
   return (
     <View style={s.bar} testID="bulk-reminder-bar">
@@ -43,9 +45,9 @@ export function BulkReminderBar({
         <TouchableOpacity onPress={onClear} style={s.clearBtn} testID="bulk-clear">
           <Text style={s.clearTxt}>Clear</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={send} style={s.remindBtn} testID="bulk-remind">
+        <TouchableOpacity onPress={send} style={s.remindBtn} testID="bulk-remind" disabled={submitting}>
           <Feather name="message-circle" size={14} color="#fff" />
-          <Text style={s.remindTxt}>Send Reminder</Text>
+          <Text style={s.remindTxt}>{submitting ? "Sending…" : "Send Reminder"}</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -33,7 +33,7 @@ export default function DeptSports() {
           ))}
         </View>
 
-        <Text style={s.section}>Today's attendance by slot</Text>
+        <Text style={s.section}>Today&apos;s attendance by slot</Text>
         {Object.keys(data.by_slot).length === 0 ? (
           <Text style={s.empty}>No attendance marked yet today.</Text>
         ) : Object.entries(data.by_slot).map(([slot, vals]: any) => (

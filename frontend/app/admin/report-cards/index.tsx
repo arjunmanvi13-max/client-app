@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState , useEffect} from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl,
@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission } from "../../../src/rbac";
 import { isPwsTeacherUser } from "../../../src/teacherAccess";
+import { useSubmitGuard } from "../../../src/useSubmitGuard";
 
 type Tab = "teacher" | "review" | "list";
 
@@ -18,6 +19,7 @@ export default function ReportCardsAdmin() {
   const [tab, setTab] = useState<Tab>("teacher");
   const [loading, setLoading] = useState(true);
   const [cards, setCards] = useState<any[]>([]);
+  const { submitting: publishing, run: runPublish } = useSubmitGuard();
   const [terms, setTerms] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [termId, setTermId] = useState<string | null>(null);
@@ -31,6 +33,14 @@ export default function ReportCardsAdmin() {
   const isAdmin = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
   const isTeacher = isPwsTeacherUser(user);
+
+  useEffect(() => {
+    const available: Tab[] = [
+      ...(isTeacher ? (["teacher"] as Tab[]) : []),
+      ...(isAdmin ? (["list", "review"] as Tab[]) : []),
+    ];
+    if (available.length && !available.includes(tab)) setTab(available[0]);
+  }, [isTeacher, isAdmin, tab]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -104,7 +114,7 @@ export default function ReportCardsAdmin() {
     }
   };
 
-  const publish = async (card: any) => {
+  const publish = (card: any) => runPublish(async () => {
     try {
       await api.post(`/report-cards/${card.id}/publish`, {
         coach_remark: card.has_alpha_participation ? (coachRemark || card.suggested_coach_remark || card.approved_coach_remark) : undefined,
@@ -115,7 +125,7 @@ export default function ReportCardsAdmin() {
     } catch (e: any) {
       Alert.alert("Error", e?.response?.data?.detail || "Publish failed");
     }
-  };
+  });
 
   const openCard = async (card: any) => {
     router.push(`/report-cards/${card.id}`);

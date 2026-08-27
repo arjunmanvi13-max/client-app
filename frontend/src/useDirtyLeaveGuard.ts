@@ -1,8 +1,12 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 
+type BeforeRemoveEvent = { preventDefault: () => void; data: { action: unknown } };
+
 type NavigationLike = {
-  addListener?: (event: string, callback: (e: { preventDefault: () => void; data: { action: unknown } }) => void) => () => void;
-  dispatch?: (action: unknown) => void;
+  /** Loose on the event name so expo-router's narrower union still assigns; the
+   *  return value stays typed because useEffect uses it as the cleanup. */
+  addListener?: (event: any, callback: (e: any) => void) => () => void;
+  dispatch?: (action: any) => void;
 };
 
 /**
@@ -24,7 +28,7 @@ export function useDirtyLeaveGuard(
     if (!enabled) return;
     if (typeof navigation?.addListener !== "function") return;
 
-    return navigation.addListener("beforeRemove", (e) => {
+    return navigation.addListener("beforeRemove", (e: BeforeRemoveEvent) => {
       if (skipRef.current || !isDirtyRef.current) return;
       e.preventDefault();
       onBlocked(() => {

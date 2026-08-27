@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Platform } from "react-native";
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Platform, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -8,26 +8,11 @@ import { entityLabelsFor, ENTITY_COLORS } from "../../../src/parentPortal";
 import { LoadingState, ErrorState, EmptyState, getApiError } from "../../../src/ScreenStates";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 import { formatDate, formatMonth } from "../../../src/dateFormat";
+import { downloadPdf as downloadPdfFile } from "../../../src/pdfDownload";
 
-const API_ROOT = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
 
 async function downloadReportPdf(cardId: string, filename: string) {
-  const token = Platform.OS === "web" && typeof window !== "undefined"
-    ? window.localStorage.getItem("pws_alpha_token")
-    : null;
-  const res = await fetch(`${API_ROOT}/api/report-cards/${cardId}/pdf`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) throw new Error("PDF failed");
-  const blob = await res.blob();
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  await downloadPdfFile(`/report-cards/${cardId}/pdf`, filename);
 }
 
 const STATUS_TINT: Record<string, { bg: string; fg: string; label: string }> = {
@@ -125,8 +110,8 @@ export default function WardDetail() {
   const showCoach = coachAsm.length > 0 || labels.some((l) => l.code === "ALPHA");
 
   const openReceipt = (pdfPath: string) => {
-    const url = `${API_ROOT}/api${pdfPath}`;
-    if (typeof window !== "undefined") window.open(url, "_blank");
+    const base = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
+    if (typeof window !== "undefined") window.open(`${base}/api${pdfPath}`, "_blank");
   };
 
   return (
@@ -251,8 +236,8 @@ export default function WardDetail() {
                   onPress={async () => {
                     try {
                       await downloadReportPdf(rc.id, `${(rc.person_name || "report").replace(/\s+/g, "_")}_report_card.pdf`);
-                    } catch {
-                      if (typeof window !== "undefined") window.open(`${API_ROOT}/api/report-cards/${rc.id}/pdf`, "_blank");
+                    } catch (e: any) {
+                      Alert.alert("Download failed", getApiError(e));
                     }
                   }}
                 >

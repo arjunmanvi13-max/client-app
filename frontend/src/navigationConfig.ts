@@ -390,6 +390,14 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         permissions: [Permission.BULK_UPLOAD_USERS],
       },
       {
+        id: "factory-reset",
+        label: "Clear All Data",
+        icon: "trash-2",
+        href: "/admin/settings/reset",
+        match: matchPrefix(["/admin/settings/reset"]),
+        isVisible: (ctx) => isSuperAdminUser(ctx.user),
+      },
+      {
         id: "settings",
         label: "Settings",
         icon: "settings",
@@ -411,8 +419,17 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   },
 ];
 
+const NON_STAFF_ROLES = ["student", "player", "parent"];
+
+const NON_STAFF_ALLOWED_ITEM_IDS = [
+  "dashboard", "tasks", "task-tracker", "notifications", "settings", "profile",
+];
+
 export function isNavigationItemAllowed(item: NavigationItem, ctx: NavigationContext): boolean {
   const { user } = ctx;
+  if (NON_STAFF_ROLES.includes(String(user.role)) && !NON_STAFF_ALLOWED_ITEM_IDS.includes(item.id)) {
+    return false;
+  }
   if (item.isVisible && !item.isVisible(ctx)) return false;
   if (item.excludeRoles?.includes(user.role)) return false;
   if (item.pwsOnly && user.organization === "ALPHA") return false;

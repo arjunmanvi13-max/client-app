@@ -131,24 +131,16 @@ function calcAge(dob: string): number | null {
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) yrs--;
   return Math.max(yrs, 0);
 }
-// React Native Web's Alert.alert doesn't show buttons. Use window.confirm on web.
 function confirmAction(title: string, message: string, onConfirm: () => void) {
-  if (Platform.OS === "web") {
-    // eslint-disable-next-line no-undef
-    if (typeof window !== "undefined" && window.confirm(`${title}\n\n${message}`)) {
-      onConfirm();
-    }
-  } else {
-    Alert.alert(title, message, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Confirm", style: "destructive", onPress: onConfirm },
-    ]);
-  }
+  Alert.alert(title, message, [
+    { text: "Cancel", style: "cancel" },
+    { text: "Confirm", style: "destructive", onPress: onConfirm },
+  ]);
 }
 
 function navigateToTeachersList(router: ReturnType<typeof useRouter>) {
   const href = "/manage/teacher";
-  const go = () => router.replace(href);
+  const go = () => router.replace(href as never);
   if (Platform.OS === "web") {
     setTimeout(go, 0);
     return;
@@ -158,7 +150,7 @@ function navigateToTeachersList(router: ReturnType<typeof useRouter>) {
 
 function navigateToManageUserList(router: ReturnType<typeof useRouter>, kind: string) {
   const href = `/manage/${kind}`;
-  const go = () => router.replace(href);
+  const go = () => router.replace(href as never);
   if (Platform.OS === "web") {
     setTimeout(go, 0);
     return;
@@ -239,8 +231,8 @@ export default function ManageEdit() {
       if (isStudentKind) return userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS);
       if (isPlayerKind) return userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA);
       if (isTeacherUserForm) return isSuper || canManageTeachers;
-      if (isLegacyUserKind) return (user?.can_manage || []).includes(kindParam);
-      return (user?.can_manage || []).includes(kindParam);
+      if (isLegacyUserKind) return ((user?.can_manage || []) as string[]).includes(kindParam);
+      return ((user?.can_manage || []) as string[]).includes(kindParam);
     }
     if (isTeacher && isStudentKind) return false;
     if (isAdmin) return true;
@@ -251,7 +243,7 @@ export default function ManageEdit() {
     }
     if (isTeacherUserForm) return isSuper || canManageTeachers;
     if (isLegacyUserKind) return isAdmin;
-    return (user?.can_manage || []).includes(kindParam);
+    return ((user?.can_manage || []) as string[]).includes(kindParam);
   })();
   const canDelete = canEdit && !isNew && !isTeacherUserForm
     && (isAdmin || isStudentKind || isPlayerKind || isStaffKind || isLoginUserKind);
@@ -1509,10 +1501,9 @@ export default function ManageEdit() {
                   await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
                   setResetPwdVal("");
                   Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
-                  if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
                 } catch (e: any) {
                   const msg = e?.response?.data?.detail || "Failed";
-                  if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                  Alert.alert("Error", msg);
                 } finally { setResetBusy(false); }
               } : undefined}
               resetBusy={resetBusy}
@@ -1588,10 +1579,9 @@ export default function ManageEdit() {
                   await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
                   setResetPwdVal("");
                   Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
-                  if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
                 } catch (e: any) {
                   const msg = e?.response?.data?.detail || "Failed";
-                  if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                  Alert.alert("Error", msg);
                 } finally { setResetBusy(false); }
               } : undefined}
               resetBusy={resetBusy}
@@ -1645,10 +1635,9 @@ export default function ManageEdit() {
                   await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
                   setResetPwdVal("");
                   Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
-                  if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
                 } catch (e: any) {
                   const msg = e?.response?.data?.detail || "Failed";
-                  if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                  Alert.alert("Error", msg);
                 } finally { setResetBusy(false); }
               } : undefined}
               resetBusy={resetBusy}
@@ -1925,10 +1914,9 @@ export default function ManageEdit() {
                           await api.post(`/users/${id}/reset-password`, { new_password: resetPwdVal });
                           setResetPwdVal("");
                           Alert.alert("Done", "Temporary password set. Share it with the user — they must change it on next login.");
-                          if (Platform.OS === "web") window.alert("Temporary password set. Share it with the user — they must change it on next login.");
                         } catch (e: any) {
                           const msg = e?.response?.data?.detail || "Failed";
-                          if (Platform.OS === "web") window.alert(`Error: ${msg}`); else Alert.alert("Error", msg);
+                          Alert.alert("Error", msg);
                         } finally { setResetBusy(false); }
                       }}
                     >
@@ -2067,7 +2055,7 @@ export default function ManageEdit() {
                 <Feather name="users" size={14} color="#7C3AED" />
                 <Text style={s.parentBoxTitle}>Linked Parents</Text>
               </View>
-              <Text style={s.feesBoxSub}>Parents linked here can see this {kindParam}'s attendance and fees from their parent portal.</Text>
+              <Text style={s.feesBoxSub}>Parents linked here can see this {kindParam}&apos;s attendance and fees from their parent portal.</Text>
 
               {parentUserIds.length === 0 && (
                 <Text style={s.parentEmpty} testID="no-linked-parents">No parents linked yet.</Text>
@@ -2125,7 +2113,7 @@ export default function ManageEdit() {
               </TouchableOpacity>
               <Pressable
                 testID="save-btn"
-                onPress={save}
+                onPress={() => { void save(); }}
                 disabled={saving}
                 style={({ pressed, hovered }) => [
                   isPlayerKind ? s.saveBtnPlayer : s.saveBtnPrimary,

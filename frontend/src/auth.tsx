@@ -37,11 +37,43 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+const SESSION_SCOPED_KEYS = ["pws_alpha_nav_expand_v1", "manage_directory_toast"];
+
+export function clearSessionScopedStorage() {
+  if (Platform.OS !== "web" || typeof window === "undefined") return;
+  for (const k of SESSION_SCOPED_KEYS) {
+    try {
+      window.sessionStorage.removeItem(k);
+      window.localStorage.removeItem(k);
+    } catch {}
+  }
+}
+
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
+
+api.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const status = error?.response?.status;
+    const url: string = error?.config?.url || "";
+    const isLoginAttempt = url.includes("/auth/login");
+    if (status === 401 && !isLoginAttempt) {
+      await storage.removeItem(TOKEN_KEY);
+      onUnauthorized?.();
+    }
+    return Promise.reject(error);
+  },
+);
+
 export type User = {
   id: string;
   email: string;
   name: string;
-  role: "super_admin" | "admin" | "principal" | "vice_principal" | "pws_accounts" | "alpha_accounts" | "teacher" | "coach" | "warden" | "staff" | "student" | "player" | "parent";
+  role: "super_admin" | "admin" | "pws_admin" | "alpha_admin" | "principal" | "vice_principal" | "pws_accounts" | "alpha_accounts" | "pws_teacher" | "alpha_coach" | "teacher" | "coach" | "warden" | "staff" | "student" | "player" | "parent";
   role_canonical?: string;
   user_type?: "super_admin" | "pws_admin" | "alpha_admin" | "pws_accounts" | "alpha_accounts" | "pws_teacher" | "alpha_coach";
   user_type_display?: string;
@@ -92,6 +124,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearSessionScopedStorage();
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const token = await storage.getItem(TOKEN_KEY);
       if (token) {
@@ -117,15 +157,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const changePassword: AuthCtx["changePassword"] = async (current_password, new_password) => {
-    await api.post("/auth/password/change", { current_password, new_password });
-    try {
-      const { data } = await api.get("/auth/me");
-      setUser(data);
-    } catch {}
+    const { data: changed } = await api.post("/auth/password/change", { current_password, new_password });
+    if (changed?.access_token) await storage.setItem(TOKEN_KEY, changed.access_token);
+    const { data } = await api.get("/auth/me");
+    setUser(data);
   };
 
   const logout = async () => {
     await storage.removeItem(TOKEN_KEY);
+    clearSessionScopedStorage();
     setUser(null);
   };
 

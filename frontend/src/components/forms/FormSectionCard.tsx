@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, Platform, type ReactNode, type ViewStyle } from "react-native";
+import type { ReactNode } from "react";
+import { View, Text, StyleSheet, Platform, type ViewStyle } from "react-native";
 import { colors, radii, spacing } from "../../theme";
 
 type FormSectionCardProps = {

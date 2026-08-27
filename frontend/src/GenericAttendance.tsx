@@ -28,7 +28,7 @@ import {
   type PlayerSport,
   type PlayerCategory,
 } from "./attendanceAccess";
-import { coachSportAssignmentMessage, resolveCoachDataScope } from "./coachAccess";
+import { coachSportAssignmentMessage, resolveCoachDataScope, unwrapCoachPlayerList } from "./coachAccess";
 import { isPwsTeacherUser, resolveTeacherDataScope } from "./teacherAccess";
 import { formatDate, toISODate, parseToISO } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
@@ -149,7 +149,9 @@ export default function Attendance() {
   const teacherScope = useMemo(() => resolveTeacherDataScope(user), [user]);
   const isTeacherLocked = teacherScope.isTeacher;
 
-  const [kind, setKind] = useState<AttendanceKind>("student");
+  const [kind, setKind] = useState<AttendanceKind>(
+    () => defaultAttendanceKind(user, getAttendanceKindOptions(user)) ?? "student",
+  );
   const [groups, setGroups] = useState<string[]>([]);
   const [group, setGroup] = useState<string | null>(null);
   const [playerVenues, setPlayerVenues] = useState<PlayerVenue[]>([]);
@@ -344,7 +346,7 @@ export default function Attendance() {
 
         const { data } = await api.get("/people", { params });
         const roster = filterPlayersBySelection(
-          data as Person[],
+          unwrapCoachPlayerList(data as Person[] | { data?: Person[] }),
           playerVenues,
           playerSports,
           playerCategories,
@@ -388,7 +390,8 @@ export default function Attendance() {
       }
 
       const { data } = await api.get("/people", { params });
-      setPeople(data);
+      const roster = unwrapCoachPlayerList(data as Person[] | { data?: Person[] });
+      setPeople(roster);
 
       const attParams: Record<string, string> = {
         date: attendanceDateIso,
@@ -400,7 +403,7 @@ export default function Attendance() {
 
       const att = await api.get("/attendance", { params: attParams });
       const m: Record<string, AttendanceStatus> = {};
-      data.forEach((p: Person) => {
+      roster.forEach((p: Person) => {
         m[p.id] = "present";
       });
       att.data.forEach((r: { person_id: string; status: AttendanceStatus }) => {
@@ -621,7 +624,7 @@ export default function Attendance() {
             <View style={{ flex: 1 }}>
               <Text style={s.rowName}>{p.name}</Text>
               <Text style={s.rowMeta}>
-                {kind === "player" ? playerMetaLine(p) : `${p.group || kind}${p.organization ? ` · ${p.organization}` : ""}${p.sport ? ` · ${p.sport}` : ""}${p.centre ? ` · ${p.centre}` : ""}`}
+                {`${p.group || kind}${p.organization ? ` · ${p.organization}` : ""}${p.sport ? ` · ${p.sport}` : ""}${p.centre ? ` · ${p.centre}` : ""}`}
               </Text>
             </View>
             <Text style={[s.statusPill, { color: isAbs ? colors.danger : colors.success }]}>
