@@ -62,6 +62,7 @@ export const ALPHA_VENUE_FILTER_OPTIONS: FormSelectOption[] = [
   { value: "", label: "All venues" },
   { value: "Balua", label: "Balua" },
   { value: "Harding Park", label: "Harding Park" },
+  { value: "Defense Colony", label: "Defense Colony" },
 ];
 
 function parseSectionLetter(group?: string | null): string | null {

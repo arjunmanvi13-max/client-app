@@ -13,7 +13,7 @@ import { api, useAuth } from "./auth";
 import { colors } from "./theme";
 import { formatDateTime } from "./dateFormat";
 
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
 
 type Filters = { centre: string | null; sport: string | null };

@@ -116,7 +116,8 @@ const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] 
     { key: "approve_deactivation", label: "Approve deactivation" },
   ]},
 ];
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
+const DAILY_ONLY_CENTRES: ReadonlySet<string> = new Set(["Harding Park", "Defense Colony"]);
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
 
 function calcAge(dob: string): number | null {
@@ -331,7 +332,7 @@ export default function ManageEdit() {
   const [city, setCity] = useState("");
   const [slot, setSlot] = useState<"Morning" | "Evening" | "Both" | "">("");
   const [assignedCoachId, setAssignedCoachId] = useState<string | null>(null);
-  const [centre, setCentre] = useState<"Balua" | "Harding Park" | "">("");
+  const [centre, setCentre] = useState<typeof CENTRES[number] | "">("");
   const [playerType, setPlayerType] = useState<PlayerType | "">("");
   const [boardingClass, setBoardingClass] = useState("");
   const [boardingSectionLetter, setBoardingSectionLetter] = useState("");
@@ -890,8 +891,8 @@ export default function ManageEdit() {
       Alert.alert("Centre, Player Type, Skill level and Slot are required for players");
       return;
     }
-    if (isPlayerKind && centre === "Harding Park" && playerType !== "Daily") {
-      Alert.alert("Harding Park allows Daily players only");
+    if (isPlayerKind && DAILY_ONLY_CENTRES.has(centre) && playerType !== "Daily") {
+      Alert.alert(`${centre} allows Daily players only`);
       return;
     }
     if (isPlayerKind && !dateOfAdmission) {

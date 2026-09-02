@@ -114,6 +114,7 @@ const CENTRE_OPTIONS: FormSelectOption[] = [
   ALL_OPTION("All centres"),
   { value: "Balua", label: "Balua" },
   { value: "Harding Park", label: "Harding Park" },
+  { value: "Defense Colony", label: "Defense Colony" },
 ];
 
 const PLAYER_CATEGORY_OPTIONS: FormSelectOption[] = [

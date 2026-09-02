@@ -10,7 +10,7 @@ import type { AttendanceKind } from "./attendanceCalendar";
 import { isCoachUser, resolveCoachDataScope } from "./coachAccess";
 import { isPwsTeacherUser } from "./teacherAccess";
 
-export const PLAYER_VENUES = ["Balua", "Harding Park"] as const;
+export const PLAYER_VENUES = ["Balua", "Harding Park", "Defense Colony"] as const;
 export const PLAYER_SPORTS = ["Cricket", "Football"] as const;
 export const PLAYER_CATEGORIES = ["Daily", "Day Boarding", "Boarding", "Hostel"] as const;
 

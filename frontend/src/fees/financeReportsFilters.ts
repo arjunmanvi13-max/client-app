@@ -1,7 +1,7 @@
 import { toISODate } from "../dateFormat";
 
 export type FinanceEntity = "alpha" | "pws" | "all";
-export type FinanceCentre = "all" | "Balua" | "Harding Park";
+export type FinanceCentre = "all" | "Balua" | "Harding Park" | "Defense Colony";
 export type ReportView =
   | "past_due_aging"
   | "collections_summary"

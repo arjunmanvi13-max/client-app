@@ -7,7 +7,7 @@ import type {
   RevenueBreakdownData,
 } from "./financeReportsTypes";
 
-const VENUES = ["Balua", "Harding Park"] as const;
+const VENUES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const PROGRAMS = ["Cricket", "Football"] as const;
 const TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"] as const;
 
@@ -35,6 +35,7 @@ export function buildPastDueReport(filters: FinanceReportFilters): PastDueReport
     { id: "pd6", studentName: "Sneha Das", venue: "Balua", program: "Cricket", type: "Daily", dueDate: "2026-07-10", daysOverdue: 18, bucket: "1_30", outstanding: 2800 },
     { id: "pd7", studentName: "Vikram Singh", venue: "Harding Park", program: "Football", type: "Hostel", dueDate: "2026-03-20", daysOverdue: 130, bucket: "90_plus", outstanding: 15500 },
     { id: "pd8", studentName: "Meera Nair", venue: "Balua", program: "Football", type: "Boarding", dueDate: "2026-06-05", daysOverdue: 53, bucket: "31_60", outstanding: 9200 },
+    { id: "pd9", studentName: "Mohit Yadav", venue: "Defense Colony", program: "Cricket", type: "Daily", dueDate: "2026-07-08", daysOverdue: 20, bucket: "1_30", outstanding: 2500 },
   ];
 
   const rows = seed.filter((r) => venueMatch(filters.centre, r.venue));

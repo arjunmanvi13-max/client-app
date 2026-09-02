@@ -21,7 +21,7 @@ import { FilterSelect, filterSelectSlotStyle, TOOLBAR_CONTROL_HEIGHT } from "./c
 
 const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"] as const;
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 const PLAYER_GREEN = "#10B981";

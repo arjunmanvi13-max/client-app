@@ -32,6 +32,7 @@ const CENTRE_OPTIONS = [
   { id: "all", label: "All Centres" },
   { id: "Balua", label: "Balua" },
   { id: "Harding Park", label: "Harding Park" },
+  { id: "Defense Colony", label: "Defense Colony" },
 ];
 
 const ENTITY_OPTIONS = [

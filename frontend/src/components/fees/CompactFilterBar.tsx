@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radii } from "../../theme";
 import type { FeeSort, FeeStatusFilter, Institution } from "../../feesCollectionTypes";
 
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
 const ALL_VALUE = "all";
 

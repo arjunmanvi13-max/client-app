@@ -10,14 +10,14 @@ import { FormSelect } from "../src/components/forms/FormSelect";
 import { colors, radii, spacing } from "../src/theme";
 import { useBreakpoint } from "../src/useBreakpoint";
 
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 
 type Staff = {
   id: string;
   name: string;
   group?: string;  // role/designation
   organization: "PWS" | "ALPHA";
-  centre?: "Balua" | "Harding Park" | null;
+  centre?: typeof CENTRES[number] | null;
 };
 
 export default function StaffAttendance() {
@@ -28,7 +28,7 @@ export default function StaffAttendance() {
   const [refreshing, setRefreshing] = useState(false);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [absent, setAbsent] = useState<Set<string>>(new Set());
-  const [centre, setCentre] = useState<"Balua" | "Harding Park" | null>(null);
+  const [centre, setCentre] = useState<typeof CENTRES[number] | null>(null);
   const [shift, setShift] = useState("morning");
   const [date] = useState(toISODate());
   const { isMobile } = useBreakpoint();
@@ -40,12 +40,12 @@ export default function StaffAttendance() {
   const allowed = isAdmin || isHeadCoach || isPrincipalVP;
 
   // Head-coach assigned centres restrict the dropdown
-  const availableCentres = useMemo<("Balua" | "Harding Park")[]>(() => {
+  const availableCentres = useMemo<(typeof CENTRES)[number][]>(() => {
     if (isHeadCoach) {
       const mine = user?.assigned_centres || [];
-      return (CENTRES.filter((c) => mine.includes(c)) as any) || [];
+      return CENTRES.filter((c) => mine.includes(c));
     }
-    return CENTRES as any;
+    return [...CENTRES];
   }, [user, isHeadCoach]);
 
   // Initialise default centre for head coach with single centre
@@ -151,7 +151,7 @@ export default function StaffAttendance() {
                 compact
                 value={centre || availableCentres[0]}
                 options={availableCentres.map((c) => ({ value: c, label: c }))}
-                onChange={(v) => setCentre(v as "Balua" | "Harding Park")}
+                onChange={(v) => setCentre(v as (typeof CENTRES)[number])}
                 testID="sa-centre"
               />
             </View>

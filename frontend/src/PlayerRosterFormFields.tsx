@@ -23,7 +23,7 @@ import { PWS_CLASS_OPTIONS, SECTION_LETTERS } from "./StudentRosterFormFields";
 
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
 const SLOTS = ["Morning", "Evening", "Both"] as const;
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
 const PLAYER_TYPES = ["Daily", "Hostel Only", "Day Boarding", "Boarding"] as const;
 const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Other"] as const;
@@ -32,10 +32,14 @@ const ADHOC_FEE_TYPES = ["Uniform", "Kit", "Tournament", "Books", "Event", "Othe
 export const BOARDING_FLAT_MONTHLY_FEE = 3000;
 
 export type PlayerType = typeof PLAYER_TYPES[number];
+export type AlphaCentre = typeof CENTRES[number];
+
+const DAILY_ONLY_CENTRES: ReadonlySet<string> = new Set(["Harding Park", "Defense Colony"]);
 
 const CENTRE_TYPES: Record<string, PlayerType[]> = {
   Balua: ["Daily", "Hostel Only", "Day Boarding", "Boarding"],
   "Harding Park": ["Daily"],
+  "Defense Colony": ["Daily"],
 };
 
 const RATE_CARD: Record<PlayerType, Record<string, { registration: number; monthly: number }>> = {
@@ -111,8 +115,8 @@ export type PlayerRosterFormFieldsProps = {
   setLocality: (v: string) => void;
   city: string;
   setCity: (v: string) => void;
-  centre: "Balua" | "Harding Park" | "";
-  setCentre: (v: "Balua" | "Harding Park" | "") => void;
+  centre: AlphaCentre | "";
+  setCentre: (v: AlphaCentre | "") => void;
   playerType: PlayerType | "";
   setPlayerType: (v: PlayerType | "") => void;
   sport: string;
@@ -230,8 +234,8 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
       : (rc?.monthly ?? 0);
 
   const onCentreChange = (c: string) => {
-    setCentre(c as "Balua" | "Harding Park");
-    if (c === "Harding Park" && playerType !== "Daily") {
+    setCentre(c as AlphaCentre);
+    if (DAILY_ONLY_CENTRES.has(c) && playerType !== "Daily") {
       setPlayerType("Daily");
       setSlot("");
     }
@@ -437,8 +441,8 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
         {coachSportLocked && coachAssignedSport && (
           <Text style={s.help}>Assigned sport: {coachAssignedSport}</Text>
         )}
-        {centre === "Harding Park" && (
-          <Text style={s.help}>Harding Park allows Daily players only.</Text>
+        {DAILY_ONLY_CENTRES.has(centre) && (
+          <Text style={s.help}>{centre} allows Daily players only.</Text>
         )}
         {playerType && (
           <View style={s.typeHintBox}>

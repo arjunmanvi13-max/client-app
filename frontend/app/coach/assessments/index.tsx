@@ -36,7 +36,7 @@ type LoadState = "idle" | "loading" | "ready" | "outdated" | "error" | "locked";
 type PlayerType = "Daily" | "Day Boarding" | "Hostel" | "Boarding";
 
 const PLAYER_TYPES: PlayerType[] = ["Daily", "Day Boarding", "Hostel", "Boarding"];
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const SPORTS = ["Cricket", "Football"] as const;
 const SESSIONS = ["Morning", "Evening"] as const;
 

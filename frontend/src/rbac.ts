@@ -286,7 +286,7 @@ export interface RBACUser {
   effective_permissions?: (Permission | string)[];
   can_manage?: ManageKind[];
   coach_permissions?: ("view_players" | "add_players" | "edit_players")[];
-  assigned_centres?: ("Balua" | "Harding Park")[];
+  assigned_centres?: ("Balua" | "Harding Park" | "Defense Colony")[];
   assigned_sports?: ("Cricket" | "Football")[];
   coach_type?: "head" | "assistant";
   designation?: string;
@@ -312,7 +312,7 @@ export interface CoachSportAssignment {
   id: string;
   coach_user_id: string;
   sport: "Cricket" | "Football";
-  centre: "Balua" | "Harding Park";
+  centre: "Balua" | "Harding Park" | "Defense Colony";
   coach_type?: "head" | "assistant";
   is_active?: boolean;
 }
@@ -329,7 +329,7 @@ export interface StudentEnrollment {
 export interface PlayerEnrollment {
   id: string;
   player_person_id: string;
-  centre: "Balua" | "Harding Park";
+  centre: "Balua" | "Harding Park" | "Defense Colony";
   sport: "Cricket" | "Football";
   player_type: "Daily" | "Day Boarding" | "Hostel" | "Hostel Only" | "Boarding";
   slot?: "Morning" | "Evening" | "Both";
@@ -345,7 +345,7 @@ export interface PersonRecord {
   status?: "active" | "deactivated";
   section_id?: string;
   group?: string;
-  centre?: "Balua" | "Harding Park";
+  centre?: "Balua" | "Harding Park" | "Defense Colony";
   sport?: "Cricket" | "Football";
   player_type?: string;
   date_of_admission?: string;

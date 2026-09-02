@@ -9,7 +9,7 @@ import { formatDate, toISODate } from "../src/dateFormat";
 import { isCoachUser, resolveCoachDataScope, coachSportAssignmentMessage } from "../src/coachAccess";
 
 const SKILL_TINT: Record<string, string> = { Beginner: "#10B981", Intermediate: "#0EA5E9", Advanced: "#EF4444", Unassigned: "#94A3B8" };
-const ALL_CENTRES = ["Balua", "Harding Park"] as const;
+const ALL_CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const ALL_SPORTS = ["Cricket", "Football"] as const;
 
 export default function CoachAttendance() {
@@ -19,8 +19,8 @@ export default function CoachAttendance() {
   const allowedCentres = scope.assignedCentres.length ? scope.assignedCentres : [...ALL_CENTRES];
 
   const [slot, setSlot] = useState<"Morning" | "Evening">("Morning");
-  const [centre, setCentre] = useState<"Balua" | "Harding Park">(
-    (allowedCentres[0] as "Balua" | "Harding Park") || "Balua",
+  const [centre, setCentre] = useState<"Balua" | "Harding Park" | "Defense Colony">(
+    (allowedCentres[0] as "Balua" | "Harding Park" | "Defense Colony") || "Balua",
   );
   const [sport, setSport] = useState<"Cricket" | "Football">(
     lockedSport || "Cricket",

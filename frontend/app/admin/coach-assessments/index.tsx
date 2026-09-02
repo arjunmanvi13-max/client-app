@@ -25,7 +25,7 @@ export default function CoachAssessmentAdmin() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [centre, setCentre] = useState<"Balua" | "Harding Park">("Balua");
+  const [centre, setCentre] = useState<"Balua" | "Harding Park" | "Defense Colony">("Balua");
   const [sport, setSport] = useState<"Cricket" | "Football">("Cricket");
   const [playerType, setPlayerType] = useState<typeof PLAYER_TYPES[number]>("Daily");
   const [session, setSession] = useState<typeof SESSIONS[number]>("Morning");
@@ -97,7 +97,7 @@ export default function CoachAssessmentAdmin() {
       <ScrollView contentContainerStyle={s.scroll} refreshControl={<RefreshControl refreshing={loading} onRefresh={() => {}} />}>
         <View style={s.card}>
           <Text style={s.cardTitle}>Batch scope</Text>
-          <ChipRow label="Centre" values={["Balua", "Harding Park"]} selected={centre} onSelect={setCentre as any} />
+          <ChipRow label="Centre" values={["Balua", "Harding Park", "Defense Colony"]} selected={centre} onSelect={setCentre as any} />
           <ChipRow label="Sport" values={["Cricket", "Football"]} selected={sport} onSelect={setSport as any} />
           <ChipRow label="Player type" values={PLAYER_TYPES} selected={playerType} onSelect={setPlayerType as any} />
           {playerType === "Daily" && (

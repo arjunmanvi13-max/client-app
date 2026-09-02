@@ -56,7 +56,7 @@ const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] 
   ]},
 ];
 
-const CENTRES = ["Balua", "Harding Park"] as const;
+const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
 const PLAYER_SPORTS = ["Cricket", "Football"] as const;
 type PlayerSport = typeof PLAYER_SPORTS[number];
 

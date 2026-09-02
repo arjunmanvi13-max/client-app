@@ -58,7 +58,7 @@ export type User = {
   coach_type?: "head" | "assistant" | null;
   role_category?: string;
   assigned_sport?: string | null;
-  assigned_centres?: ("Balua" | "Harding Park")[];
+  assigned_centres?: ("Balua" | "Harding Park" | "Defense Colony")[];
   assigned_sports?: ("Cricket" | "Football")[];
   linked_person_ids?: string[];
   permissions?: Record<string, boolean>;
