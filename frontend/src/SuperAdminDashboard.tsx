@@ -15,7 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "./auth";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
-import { formatDate } from "./dateFormat";
+import { formatDate , toISODate} from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import {
   fetchSuperAdminDashboardBundle,
@@ -55,7 +55,7 @@ function priorityStyle(priority?: string) {
 function formatDueLabel(due?: string) {
   if (!due) return "—";
   const iso = due.slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISODate();
   if (iso === today) return "Today";
   return formatDate(iso);
 }

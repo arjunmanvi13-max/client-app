@@ -1,7 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { formatDate } from "../dateFormat";
-import { fetchCollectionsSummary, fetchExpenseOutflow, fetchRevenueBreakdown } from "./financeReportsApi";
-import { buildFinanceReportData } from "./financeReportsMockData";
+import { fetchCollectionsSummary, fetchExpenseOutflow, fetchPastDueAging, fetchRevenueBreakdown } from "./financeReportsApi";
 import type { FinanceReportFilters } from "./financeReportsTypes";
 import type {
   CollectionsSummaryData,
@@ -13,7 +12,15 @@ import type {
 } from "./financeReportsTypes";
 import { reportViewTitle } from "./financeReportsTypes";
 
-const LIVE_VIEWS = new Set(["collections_summary", "revenue_breakdown", "expense_outflow"]);
+const LIVE_VIEWS = new Set(["collections_summary", "revenue_breakdown", "expense_outflow", "past_due_aging"]);
+
+export type FinanceReportData =
+  | CollectionsSummaryData
+  | DiscountsReportData
+  | ExpenseOutflowReportData
+  | PastDueReportData
+  | RefundsReportData
+  | RevenueBreakdownData;
 
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
@@ -21,7 +28,7 @@ function inr(n: number) {
 
 export function getExportMatrix(
   filters: FinanceReportFilters,
-  data: ReturnType<typeof buildFinanceReportData>,
+  data: FinanceReportData,
 ): {
   columns: string[];
   rows: string[][];
@@ -160,26 +167,24 @@ export function getExportMatrix(
   };
 }
 
-export function useFinanceReportData(filters: FinanceReportFilters) {
-  const mockData = useMemo(
-    () => buildFinanceReportData(filters),
-    [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo],
-  );
-  const isLiveView = LIVE_VIEWS.has(filters.reportView);
-  const [data, setData] = useState(mockData);
-  const [loading, setLoading] = useState(isLiveView);
-  const [error, setError] = useState<string | null>(null);
+export const NOT_IMPLEMENTED_MESSAGE =
+  "This report is not available yet. It will appear here once the backend report is live.";
 
-  // Set loading before paint when switching to a live-backed view (avoids stale-data flash).
+export function useFinanceReportData(filters: FinanceReportFilters) {
+  const isLiveView = LIVE_VIEWS.has(filters.reportView);
+  const [data, setData] = useState<FinanceReportData | null>(null);
+  const [loading, setLoading] = useState(isLiveView);
+  const [error, setError] = useState<string | null>(isLiveView ? null : NOT_IMPLEMENTED_MESSAGE);
+
   useLayoutEffect(() => {
     if (isLiveView) setLoading(true);
   }, [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo, isLiveView]);
 
   useEffect(() => {
     if (!isLiveView) {
-      setData(mockData);
+      setData(null);
       setLoading(false);
-      setError(null);
+      setError(NOT_IMPLEMENTED_MESSAGE);
       return;
     }
 
@@ -192,7 +197,9 @@ export function useFinanceReportData(filters: FinanceReportFilters) {
           ? await fetchCollectionsSummary(filters)
           : filters.reportView === "expense_outflow"
             ? await fetchExpenseOutflow(filters)
-            : await fetchRevenueBreakdown(filters);
+            : filters.reportView === "past_due_aging"
+              ? await fetchPastDueAging(filters)
+              : await fetchRevenueBreakdown(filters);
         if (!cancelled) {
           setData(live);
           setLoading(false);
@@ -201,7 +208,7 @@ export function useFinanceReportData(filters: FinanceReportFilters) {
         if (!cancelled) {
           const message = e instanceof Error ? e.message : "Failed to load report data";
           setError(message);
-          setData(mockData);
+          setData(null);
           setLoading(false);
         }
       }
@@ -210,7 +217,7 @@ export function useFinanceReportData(filters: FinanceReportFilters) {
     return () => {
       cancelled = true;
     };
-  }, [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo, mockData, isLiveView]);
+  }, [filters.centre, filters.entity, filters.reportView, filters.period, filters.customFrom, filters.customTo, isLiveView]);
 
   return { data, loading, error };
 }

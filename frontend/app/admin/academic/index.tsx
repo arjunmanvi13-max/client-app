@@ -46,7 +46,7 @@ function gradeNamesForSubject(sub: any, grades: any[]): string {
   return ids
     .map((gid: string) => grades.find((g) => g.id === gid)?.name)
     .filter(Boolean)
-    .map((name) => stdLabel(String(name)))
+    .map((name: unknown) => stdLabel(String(name)))
     .join(", ") || "all";
 }
 

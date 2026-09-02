@@ -4,8 +4,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { api, useAuth } from "../../src/auth";
 import { LoadingState, EmptyState, ErrorState, FormLabel, InlineFieldError, getApiError, confirmAction } from "../../src/ScreenStates";
-import { formatDateTime } from "../../src/dateFormat";
+import { formatDateTime , toISODate} from "../../src/dateFormat";
 import { useBreakpoint } from "../../src/useBreakpoint";
+import { useSubmitGuard } from "../../src/useSubmitGuard";
 
 export default function Hostel() {
   const { user } = useAuth();
@@ -18,6 +19,9 @@ export default function Hostel() {
   const [session, setSession] = useState<"morning" | "evening">("morning");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { submitting: rollBusy, run: runRoll } = useSubmitGuard();
+  const { submitting: passBusy, run: runPass } = useSubmitGuard();
+  const { submitting: deciding, run: runDecide } = useSubmitGuard();
   const [rollErr, setRollErr] = useState("");
   const [passErr, setPassErr] = useState("");
   const [passFieldErr, setPassFieldErr] = useState<{ resident?: string; reason?: string }>({});
@@ -49,33 +53,36 @@ export default function Hostel() {
   useEffect(() => { load(); }, [load]);
 
   const decide = (id: string, decision: "approved" | "rejected") => {
+    if (deciding) return;
     const label = decision === "approved" ? "Approve" : "Reject";
     confirmAction(
       `${label} gate pass?`,
       `This will ${decision === "approved" ? "approve" : "reject"} the resident's gate pass request.`,
       async () => {
         try {
-          await api.post(`/hostel/gate-pass/${id}/decision`, { decision });
-          await load();
+          await runDecide(async () => {
+            await api.post(`/hostel/gate-pass/${id}/decision`, { decision });
+            await load();
+          });
         } catch (e: any) { Alert.alert("Error", getApiError(e, "Could not update gate pass.")); }
       },
       { confirmLabel: label, destructive: decision === "rejected" },
     );
   };
 
-  const submitRollCall = async () => {
+  const submitRollCall = () => runRoll(async () => {
     const entries = Object.entries(rollMarks).map(([resident_id, present]) => ({ resident_id, present }));
     if (!entries.length) { setRollErr("Mark at least one resident as present or absent."); return; }
     setRollErr("");
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = toISODate();
       await api.post("/hostel/roll-call", { date: today, session, entries });
       setRollSaved(`Roll call saved for ${entries.length} resident(s).`);
       setRollMarks({});
     } catch (e: any) { setRollErr(getApiError(e, "Could not save roll call.")); }
-  };
+  });
 
-  const createPass = async () => {
+  const createPass = () => runPass(async () => {
     const errs: { resident?: string; reason?: string } = {};
     if (!residentId) errs.resident = "Select a resident.";
     if (!reason.trim()) errs.reason = "Enter a reason for the gate pass.";
@@ -89,7 +96,7 @@ export default function Hostel() {
       setModal(false); setReason(""); setDestination(""); setResidentId(null); setPassFieldErr({});
       await load();
     } catch (e: any) { setPassErr(getApiError(e, "Could not create gate pass.")); }
-  };
+  });
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>

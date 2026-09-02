@@ -14,6 +14,7 @@ type Coach = {
   coach_type?: "head" | "assistant" | null;
   assigned_centres?: string[];
   assigned_sports?: string[];
+  assigned_sport?: string | null;
 };
 
 export default function CoachAttendance() {
@@ -107,7 +108,7 @@ export default function CoachAttendance() {
                </View>
                <View style={{ flex: 1 }}>
                  <Text style={s.name}>{c.name}</Text>
-                 <Text style={s.meta}>ALPHA Coach · {c.assigned_sport || "—"} · {(c.assigned_centres || []).join(", ") || "—"}</Text>
+                 <Text style={s.meta}>ALPHA Coach · {(c.assigned_sports || []).join(", ") || c.assigned_sport || "—"} · {(c.assigned_centres || []).join(", ") || "—"}</Text>
                </View>
                <Text style={[s.statusBadge, { color: isAbs ? "#EF4444" : "#10B981" }]}>{isAbs ? "Absent" : "Present"}</Text>
              </TouchableOpacity>

@@ -278,7 +278,7 @@ export interface RBACUser {
   role: string;
   role_canonical?: string;
   organization?: BusinessEntity | "PWS" | "ALPHA" | "BOTH";
-  department?: string;
+  department?: string | null;
   is_active?: boolean;
   status?: "active" | "deactivated";
   permissions?: Record<string, boolean>;
@@ -288,8 +288,8 @@ export interface RBACUser {
   coach_permissions?: ("view_players" | "add_players" | "edit_players")[];
   assigned_centres?: ("Balua" | "Harding Park" | "Defense Colony")[];
   assigned_sports?: ("Cricket" | "Football")[];
-  coach_type?: "head" | "assistant";
-  designation?: string;
+  coach_type?: "head" | "assistant" | null;
+  designation?: string | null;
 }
 
 export interface TeacherSubjectAssignment {
@@ -483,6 +483,14 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   [Permission.TIMETABLE_SUBSTITUTE]: "Manage substitutions",
   [Permission.TIMETABLE_PUBLISH]: "Publish timetable",
   [Permission.TIMETABLE_EXPORT]: "Export timetable",
+  [Permission.VIEW_ATTENDANCE]: "View attendance",
+  [Permission.CORRECT_ATTENDANCE]: "Correct attendance",
+  [Permission.MARK_HOSTEL_ATTENDANCE]: "Mark hostel attendance",
+  [Permission.MANAGE_COACH_ASSESSMENTS_ADMIN]: "Manage coach assessments",
+  [Permission.APPROVE_REQUESTS]: "Approve requests",
+  [Permission.MANAGE_EXPENSE_STRUCTURE]: "Manage expense structure",
+  [Permission.CAPTURE_PWS_EXPENSES]: "Record PWS expenses",
+  [Permission.CAPTURE_ALPHA_EXPENSES]: "Record ALPHA expenses",
 };
 
 export const ROLE_LABELS: Record<UserRole, string> = {

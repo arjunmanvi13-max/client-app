@@ -26,7 +26,7 @@ export default function CoachAttendance() {
     lockedSport || "Cricket",
   );
   const [date, setDate] = useState<string>(() => toISODate());
-  const [groups, setGroups] = useState<Record<string, Record<string, any[]>>>({});
+  const [groups, setGroups] = useState<Record<string, any[]>>({});
   const [absent, setAbsent] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

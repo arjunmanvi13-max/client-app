@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [attSummary, setAttSummary] = useState<any>(null);
+  const canMarkAttendance = !["student", "player", "parent"].includes(String(user?.role));
 
   const load = useCallback(async () => {
     setError("");
@@ -29,11 +30,11 @@ export default function Dashboard() {
       const [d, t, a] = await Promise.all([
         api.get("/dashboard"),
         api.get("/tasks", { params: { mine: true } }),
-        api.get("/attendance/summary"),
+        api.get("/attendance/summary").catch(() => null),
       ]);
       setData(d.data);
       setTasks(t.data.slice(0, 5));
-      setAttSummary(a.data);
+      setAttSummary(a ? a.data : null);
     } catch (e: any) {
       setError(getApiError(e));
       setData(null);
@@ -111,7 +112,9 @@ export default function Dashboard() {
         {/* Quick actions */}
         <Text style={s.sectionTitle}>Quick actions</Text>
         <View style={s.actionsRow}>
-          <Action icon="check-square" label="Mark Attendance" tint="#10B981" onPress={() => router.push("/(tabs)/attendance")} testID="qa-attendance" />
+          {canMarkAttendance && (
+            <Action icon="check-square" label="Mark Attendance" tint="#10B981" onPress={() => router.push("/(tabs)/attendance")} testID="qa-attendance" />
+          )}
           <Action icon="plus-square" label="New Task" tint="#1E40AF" onPress={() => router.push("/task/new")} testID="qa-newtask" />
           {["warden", "admin", "super_admin"].includes(user.role) && (
             <Action icon="log-out" label="Gate Pass" tint="#7C3AED" onPress={() => router.push("/(tabs)/hostel")} testID="qa-hostel" />
@@ -124,7 +127,7 @@ export default function Dashboard() {
         {/* Today attendance summary */}
         {attSummary?.summary && Object.keys(attSummary.summary).length > 0 && (
           <>
-            <Text style={s.sectionTitle}>Today's attendance</Text>
+            <Text style={s.sectionTitle}>Today&apos;s attendance</Text>
             <View style={s.attCard}>
               {Object.entries(attSummary.summary).map(([kind, vals]: any) => (
                 <View key={kind} style={s.attRow}>

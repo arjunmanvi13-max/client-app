@@ -32,13 +32,14 @@ type TableRow = {
 function buildTableRows(receipt: PaymentReceipt, institution: "PWS" | "ALPHA"): TableRow[] {
   const rows: TableRow[] = [];
   for (const fee of receipt.fees || []) {
+    const discount = fee.discount_applied || 0;
+    const billed = fee.amount_due != null ? fee.amount_due + discount : (fee.amount ?? 0);
     rows.push({
       key: fee.id,
       head: feeHeadLabel(fee.fee_type, institution),
       period: formatMonthLong(fee.period_month),
-      amount: fee.amount ?? fee.amount_due ?? 0,
+      amount: billed,
     });
-    const discount = fee.discount_applied || 0;
     if (discount > 0) {
       const reason = (fee.discount_reason || "Concession").trim();
       rows.push({
@@ -72,7 +73,9 @@ export function PaymentReceiptModal({ receipt, onClose }: Props) {
   const grade = player.grade || player.pws_class;
   const section = player.section;
   const idLabel = institution === "PWS" ? "Admission No." : "Player ID";
-  const idValue = player.admission_number || player.id?.slice(0, 8).toUpperCase() || "—";
+  const idValue = (institution === "PWS"
+    ? player.admission_number || player.player_id
+    : player.player_id || player.admission_number) || "—";
   const balance = receipt.balance_after_payment;
 
   const download = () => {

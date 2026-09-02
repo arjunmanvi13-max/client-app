@@ -1,8 +1,9 @@
-import { userHasPermission, type User } from "./auth";
+import type { User } from "./auth";
 import {
   BusinessEntity,
   Permission,
   UserRole,
+  hasPermission as userHasPermission,
   isSuperAdminUser,
   normalizeRole,
 } from "./rbac";
@@ -141,9 +142,12 @@ export function getAttendanceKindOptions(user: User | null | undefined): Attenda
   const options: AttendanceKindOption[] = [];
 
   if (
-    canPwsAttendance
-    || userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE)
-    || role === UserRole.PWS_TEACHER
+    !isCoachUser(user)
+    && (
+      canPwsAttendance
+      || userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE)
+      || role === UserRole.PWS_TEACHER
+    )
   ) {
     options.push({ key: "student", label: "Students", icon: "book", color: "#1E40AF" });
   }
@@ -163,11 +167,12 @@ export function getAttendanceKindOptions(user: User | null | undefined): Attenda
     || canAlphaAttendance
     || role === UserRole.PWS_ADMIN
     || role === UserRole.ALPHA_ADMIN
+    || (isCoachUser(user) && user?.coach_type === "head")
   ) {
     options.push({ key: "staff", label: "Staff", icon: "users", color: "#EA580C" });
   }
 
-  if (canPwsAttendance || userHasPermission(user, Permission.MARK_TEACHER_ATTENDANCE)) {
+  if (!isCoachUser(user) && (canPwsAttendance || userHasPermission(user, Permission.MARK_TEACHER_ATTENDANCE))) {
     options.push({ key: "teacher", label: "Teachers", icon: "user-check", color: "#6366F1" });
   }
 

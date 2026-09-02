@@ -41,7 +41,7 @@ export type CoachDataScope = {
 /** Assigned sports for a coach — mirrors backend `coach_assignment_lists`. */
 export function coachAssignedSports(user: User | null | undefined): string[] {
   if (!user) return [];
-  const sports = [...(user.assigned_sports || [])];
+  const sports: string[] = [...(user.assigned_sports || [])];
   if (!sports.length && user.assigned_sport) sports.push(user.assigned_sport);
   return sports;
 }

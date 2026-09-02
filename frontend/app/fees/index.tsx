@@ -14,6 +14,7 @@ import { CollectionsSummaryReportView } from "../../src/components/fees/reports/
 import { RevenueBreakdownReportView } from "../../src/components/fees/reports/RevenueBreakdownReportView";
 import { DiscountsReportView } from "../../src/components/fees/reports/DiscountsReportView";
 import { ExpenseOutflowReportView } from "../../src/components/fees/reports/ExpenseOutflowReportView";
+import { RefundsReportView } from "../../src/components/fees/reports/RefundsReportView";
 import {
   clampHistoryRange,
   defaultHistoryRange,
@@ -33,7 +34,7 @@ import type { FinanceReportFilters } from "../../src/fees/financeReportsTypes";
 export default function FinanceReportsScreen() {
   const router = useRouter();
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string | string[]; entity?: string | string[] }>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { horizontalPadding } = useBreakpoint();
 
   const entityScope = useEntityScope({
@@ -100,6 +101,7 @@ export default function FinanceReportsScreen() {
   }, [router]);
 
   const handleExport = useCallback(async (format: "csv" | "xlsx" | "pdf") => {
+    if (!reportData) return;
     setExporting(true);
     try {
       const { columns, rows, summaryRows } = getExportMatrix(filters, reportData);
@@ -119,7 +121,14 @@ export default function FinanceReportsScreen() {
 
   const entityOverline = entity === "all" ? "PWS & ALPHA" : entityLabel(entity);
 
-  if (!user) return null;
+  if (authLoading || !user) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={s.header}><Text style={s.h1}>Finance Reports</Text></View>
+        <View style={s.empty}><ActivityIndicator size="small" color="#1E40AF" /></View>
+      </SafeAreaView>
+    );
+  }
   if (!allowed) {
     return (
       <SafeAreaView style={s.safe}>
@@ -179,28 +188,27 @@ export default function FinanceReportsScreen() {
         {!loading && error && (
           <View style={s.stateBox}>
             <Text style={s.errorText}>{error}</Text>
-            <Text style={s.stateHint}>Showing cached sample data until the connection is restored.</Text>
           </View>
         )}
-        {!loading && reportView === "past_due_aging" && (
+        {!loading && reportData && reportView === "past_due_aging" && (
           <PastDueReportView
             data={reportData as any}
             onMarkPaid={() => router.push("/fees/collection")}
           />
         )}
-        {!loading && reportView === "collections_summary" && (
+        {!loading && reportData && reportView === "collections_summary" && (
           <CollectionsSummaryReportView data={reportData as any} />
         )}
-        {!loading && reportView === "revenue_breakdown" && (
+        {!loading && reportData && reportView === "revenue_breakdown" && (
           <RevenueBreakdownReportView data={reportData as any} />
         )}
-        {!loading && reportView === "expense_outflow" && (
+        {!loading && reportData && reportView === "expense_outflow" && (
           <ExpenseOutflowReportView data={reportData as any} />
         )}
-        {!loading && reportView === "discounts_waivers" && (
+        {!loading && reportData && reportView === "discounts_waivers" && (
           <DiscountsReportView data={reportData as any} />
         )}
-        {!loading && reportView === "refunds_cancellations" && (
+        {!loading && reportData && reportView === "refunds_cancellations" && (
           <RefundsReportView data={reportData as any} />
         )}
         <View style={{ height: 48 }} />

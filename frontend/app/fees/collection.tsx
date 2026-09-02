@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { api, useAuth } from "../../src/auth";
+import type { CollectionPlayer } from "../../src/feesCollectionTypes";
 import { colors, radii, spacing } from "../../src/theme";
 import { useBreakpoint } from "../../src/useBreakpoint";
 import { useEntityScope } from "../../src/useEntityScope";
@@ -251,7 +252,9 @@ export default function FeesCollection() {
 
         <View style={s.stickyFooter} testID="collection-footer">
           <Text style={s.footerTxt}>
-            Showing {players.length} of {totalPlayers} · {inr(totalDue)} outstanding
+            {loading && !summary
+              ? "Loading register…"
+              : `Showing ${players.length} of ${totalPlayers} · ${inr(totalDue)} outstanding`}
           </Text>
         </View>
       </View>

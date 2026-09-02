@@ -1,4 +1,4 @@
-import type { TeacherClassAllocationRow, TeacherDesignation } from "./TeacherUserFormFields";
+import type { TeacherClassAllocationRow, TeacherDesignation } from "../TeacherUserFormFields";
 
 export type TeacherFormSnapshot = {
   name: string;

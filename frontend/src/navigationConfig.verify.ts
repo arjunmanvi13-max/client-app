@@ -46,8 +46,8 @@ function run() {
   const systemGroup = superGroups.find((g) => g.id === "system");
   const accessControl = systemGroup?.children.find((c) => c.id === "access-control");
   assert(!!accessControl, "System group includes Access Control submenu");
-  assert(accessControl?.children?.some((c) => c.id === "permissions"), "Access Control includes Permissions");
-  assert(accessControl?.children?.some((c) => c.id === "manage-users"), "Access Control includes Manage Users & Rosters");
+  assert(!!accessControl?.children?.some((c) => c.id === "permissions"), "Access Control includes Permissions");
+  assert(!!accessControl?.children?.some((c) => c.id === "manage-users"), "Access Control includes Manage Users & Rosters");
 
   const hrefs = flattenLeafItems(superGroups).map((i) => i.href).filter(Boolean) as string[];
   assert(new Set(hrefs).size === hrefs.length, "No duplicate hrefs in Super Admin nav tree");
@@ -79,12 +79,12 @@ function run() {
   );
 
   const systemGroupNav = NAVIGATION_GROUPS.find((g) => g.id === "system");
-  assert(systemGroupNav?.children.some((c) => c.id === "bulk-upload"), "Bulk Upload is under System & Settings");
+  assert(!!systemGroupNav?.children.some((c) => c.id === "bulk-upload"), "Bulk Upload is under System & Settings");
   assert(!operationsGroup?.children.some((c) => c.id === "bulk-upload"), "Bulk Upload removed from Operations");
 
   const assessmentsParent = NAVIGATION_GROUPS.find((g) => g.id === "academics")?.children.find((c) => c.id === "assessments");
-  assert(assessmentsParent?.children?.some((c) => c.id === "player-assessments"), "Assessments includes Player Assessments");
-  assert(assessmentsParent?.children?.some((c) => c.id === "coach-assessments"), "Assessments includes Coach Assessments");
+  assert(!!assessmentsParent?.children?.some((c) => c.id === "player-assessments"), "Assessments includes Player Assessments");
+  assert(!!assessmentsParent?.children?.some((c) => c.id === "coach-assessments"), "Assessments includes Coach Assessments");
 
   const pwsAccounts = mockUser({ role: "pws_accounts", organization: "PWS" });
   const pwsLeaves = flattenLeafItems(filterNavigationGroups({ user: pwsAccounts }));
