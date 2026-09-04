@@ -54,10 +54,11 @@ export function RosterManageList({ kind }: { kind: string }) {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const [showDeactivated, setShowDeactivated] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [classFilter, setClassFilter] = useState<string | null>(null);
-  const [centreFilter, setCentreFilter] = useState<string | null>(null);
-  const [sportFilter, setSportFilter] = useState<string | null>(null);
+  const [centreFilter, setCentreFilter] = useState<string[]>([]);
+  const [sportFilter, setSportFilter] = useState<string[]>([]);
+  const [skillFilter, setSkillFilter] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<TeacherStatusFilter>("all");
   const [addTeacherOpen, setAddTeacherOpen] = useState(false);
@@ -95,7 +96,7 @@ export function RosterManageList({ kind }: { kind: string }) {
   useEffect(() => {
     if (!isPlayer || coachBlocked) return;
     if (isCoachPlayerView && coachScope.assignedSport) {
-      setSportFilter(coachScope.assignedSport);
+      setSportFilter([coachScope.assignedSport]);
     }
   }, [isPlayer, isCoachPlayerView, coachScope.assignedSport, coachBlocked]);
 
@@ -124,9 +125,6 @@ export function RosterManageList({ kind }: { kind: string }) {
         if (searchTerm) params.q = searchTerm;
         if (isPlayer && showDeactivated) params.include_deactivated = true;
         if (isStudent && showDeactivated) params.include_deactivated = true;
-        if (isPlayer && typeFilter) params.player_type = typeFilter === "Hostel" ? "Hostel Only" : typeFilter;
-        if (isPlayer && centreFilter) params.centre = centreFilter;
-        if (isPlayer && sportFilter) params.sport = sportFilter;
         if (isStudent && classFilter) params.pws_class = classFilter;
         const { data } = await api.get("/people", { params });
         setItems(isPlayer && isCoachUser(user) ? unwrapCoachPlayerList(data) : data);
@@ -135,7 +133,7 @@ export function RosterManageList({ kind }: { kind: string }) {
       setItems([]);
       setLoadError(getApiError(e, "Could not load records. Please try again."));
     } finally { setLoading(false); }
-  }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, debouncedSearch, typeFilter, classFilter, centreFilter, sportFilter, user, coachBlocked]);
+  }, [kind, meta, isPlayer, isStudent, isTeacherList, showDeactivated, debouncedSearch, classFilter, user, coachBlocked]);
 
   const clearSearch = useCallback(() => {
     setSearch("");
@@ -206,6 +204,8 @@ export function RosterManageList({ kind }: { kind: string }) {
         setTypeFilter={setTypeFilter}
         centreFilter={centreFilter}
         setCentreFilter={setCentreFilter}
+        skillFilter={skillFilter}
+        setSkillFilter={setSkillFilter}
         canBrowseAllSports={canBrowseAllSports}
         isCoachPlayerView={isCoachPlayerView}
         coachScope={coachScope}

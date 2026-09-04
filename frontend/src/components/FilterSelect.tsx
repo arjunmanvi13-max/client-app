@@ -7,19 +7,38 @@ import type { FormSelectOption } from "./forms/FormSelect";
 /** Uniform height for directory toolbar controls (search, filters, actions). */
 export const TOOLBAR_CONTROL_HEIGHT = 38;
 
+function closedLabel(
+  selectedLabel: string | undefined,
+  groupLabel?: string,
+  badgeCount?: number,
+  fallback = "Select…",
+) {
+  const base = selectedLabel || fallback;
+  if (groupLabel && badgeCount && badgeCount > 0) return `${groupLabel} (${badgeCount})`;
+  return base;
+}
+
 export function FilterSelect({
   value,
   options,
   onChange,
   disabled,
   testID,
+  groupLabel,
+  badgeCount = 0,
 }: {
   value: string;
   options: FormSelectOption[];
   onChange: (value: string) => void;
   disabled?: boolean;
   testID?: string;
+  groupLabel?: string;
+  badgeCount?: number;
 }) {
+  const selected = options.find((o) => o.value === value);
+  const active = badgeCount > 0;
+  const display = closedLabel(selected?.label, groupLabel, badgeCount);
+
   if (Platform.OS === "web") {
     return (
       <View style={s.filterSelectWrap}>
@@ -28,13 +47,14 @@ export function FilterSelect({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
+          aria-label={groupLabel || display}
           style={{
             width: "100%",
             boxSizing: "border-box",
-            backgroundColor: disabled ? colors.surface2 : colors.surface,
+            backgroundColor: disabled ? colors.surface2 : active ? colors.accentSoft : colors.surface,
             borderWidth: 1,
             borderStyle: "solid",
-            borderColor: colors.border,
+            borderColor: active ? "#7DD3EA" : colors.border,
             borderRadius: radii.md,
             paddingTop: 0,
             paddingBottom: 0,
@@ -58,14 +78,32 @@ export function FilterSelect({
             </option>
           ))}
         </select>
-        <View style={s.filterChevron} pointerEvents="none">
-          <Feather name="chevron-down" size={14} color={colors.hint} />
-        </View>
+        {active ? (
+          <View style={s.countBadge} pointerEvents="none">
+            <View style={s.countBadgeInline}>
+              <Text style={s.countBadgeTxt}>{badgeCount}</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={s.filterChevron} pointerEvents="none">
+            <Feather name="chevron-down" size={14} color={colors.hint} />
+          </View>
+        )}
       </View>
     );
   }
 
-  return <NativeFilterSelect value={value} options={options} onChange={onChange} disabled={disabled} testID={testID} />;
+  return (
+    <NativeFilterSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      disabled={disabled}
+      testID={testID}
+      groupLabel={groupLabel}
+      badgeCount={badgeCount}
+    />
+  );
 }
 
 function NativeFilterSelect({
@@ -74,16 +112,21 @@ function NativeFilterSelect({
   onChange,
   disabled,
   testID,
+  groupLabel,
+  badgeCount = 0,
 }: {
   value: string;
   options: FormSelectOption[];
   onChange: (value: string) => void;
   disabled?: boolean;
   testID?: string;
+  groupLabel?: string;
+  badgeCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<RNView>(null);
   const selected = options.find((o) => o.value === value);
+  const active = badgeCount > 0;
 
   useEffect(() => {
     if (!open || Platform.OS !== "web" || typeof document === "undefined") return;
@@ -101,12 +144,18 @@ function NativeFilterSelect({
         testID={testID}
         disabled={disabled}
         onPress={() => setOpen((v) => !v)}
-        style={[s.filterTrigger, disabled && s.filterTriggerDisabled]}
+        style={[s.filterTrigger, disabled && s.filterTriggerDisabled, active && s.filterTriggerActive]}
       >
         <Text style={s.filterTriggerTxt} numberOfLines={1}>
-          {selected?.label || "Select…"}
+          {closedLabel(selected?.label, groupLabel, badgeCount)}
         </Text>
-        <Feather name="chevron-down" size={14} color={colors.hint} />
+        {active ? (
+          <View style={s.countBadgeInline}>
+            <Text style={s.countBadgeTxt}>{badgeCount}</Text>
+          </View>
+        ) : (
+          <Feather name="chevron-down" size={14} color={colors.hint} />
+        )}
       </Pressable>
       {open && (
         <View style={s.filterMenu}>
@@ -128,7 +177,7 @@ function NativeFilterSelect({
   );
 }
 
-export const filterSelectSlotStyle = { minWidth: 120, width: 128, flexShrink: 0 as const };
+export const filterSelectSlotStyle = { minWidth: 128, width: 140, flexShrink: 0 as const };
 
 const s = StyleSheet.create({
   filterSelectWrap: { position: "relative" },
@@ -153,7 +202,31 @@ const s = StyleSheet.create({
     height: TOOLBAR_CONTROL_HEIGHT,
   },
   filterTriggerDisabled: { backgroundColor: colors.surface2, opacity: 0.85 },
+  filterTriggerActive: { backgroundColor: colors.accentSoft, borderColor: "#7DD3EA" },
   filterTriggerTxt: { flex: 1, fontSize: 13, fontWeight: "600", color: colors.ink },
+  countBadge: {
+    position: "absolute",
+    right: 8,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  countBadgeInline: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  countBadgeTxt: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#fff",
+    textAlign: "center",
+    minWidth: 14,
+  },
   filterMenu: {
     position: "absolute",
     top: "100%",

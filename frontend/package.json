@@ -12,7 +12,7 @@
     "build": "expo export --platform web",
     "test:nav": "npx --yes tsx src/navigationConfig.verify.ts",
     "test:category-perms": "npx --yes tsx src/categoryPermissions.verify.ts && npx --yes tsx src/categoryPermissionsUtil.verify.ts",
-    "test:filters": "npx --yes tsx src/directoryFilters.verify.ts && npx --yes tsx src/feesCollectionFilters.verify.ts",
+    "test:filters": "npx --yes tsx src/directoryFilters.verify.ts && npx --yes tsx src/feesCollectionFilters.verify.ts && npx --yes tsx src/playerRosterFilters.verify.ts",
     "test:forms": "npx --yes tsx src/teachers/teacherFormState.verify.ts",
     "test:all": "yarn test:nav && yarn test:category-perms && yarn test:filters && yarn test:forms && yarn test:alert",
     "test:alert": "npx --yes tsx src/webAlert.verify.ts"

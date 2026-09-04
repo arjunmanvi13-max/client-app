@@ -8,6 +8,7 @@ export type DirectoryEntry = {
   id: string;
   name: string;
   email?: string | null;
+  mobile?: string | null;
   role: string;
   organization: string;
   department?: string | null;
@@ -16,6 +17,9 @@ export type DirectoryEntry = {
   sport?: string | null;
   centre?: string | null;
   category?: string | null;
+  skillLevel?: string | null;
+  status?: string | null;
+  playerId?: string | null;
   source: "user" | "person";
 };
 
@@ -25,6 +29,7 @@ export type DirectoryFilterState = {
   pwsSection: string;
   alphaSport: string;
   alphaVenue: string;
+  alphaSkill: string;
   category: CategoryFilter;
 };
 
@@ -65,6 +70,13 @@ export const ALPHA_VENUE_FILTER_OPTIONS: FormSelectOption[] = [
   { value: "Defense Colony", label: "Defense Colony" },
 ];
 
+export const ALPHA_SKILL_FILTER_OPTIONS: FormSelectOption[] = [
+  { value: "", label: "All skill levels" },
+  { value: "Beginner", label: "Beginner" },
+  { value: "Intermediate", label: "Intermediate" },
+  { value: "Advanced", label: "Advanced" },
+];
+
 function parseSectionLetter(group?: string | null): string | null {
   const m = (group || "").trim().match(/-([A-F])$/i);
   return m ? m[1].toUpperCase() : null;
@@ -83,10 +95,12 @@ export function userToDirectoryEntry(u: Record<string, unknown>): DirectoryEntry
     id: String(u.id),
     name: String(u.name || ""),
     email: (u.email as string) || null,
+    mobile: (u.mobile as string) || (u.phone as string) || null,
     role: String(u.role || "user"),
     organization: String(u.organization || "PWS"),
     department: (u.department as string) || null,
     category: null,
+    status: (u.status as string) || (u.is_active === false ? "deactivated" : "active"),
     source: "user",
   };
 }
@@ -105,6 +119,7 @@ export function personToDirectoryEntry(p: Record<string, unknown>): DirectoryEnt
     id: String(p.id),
     name: String(p.name || ""),
     email: (p.email as string) || null,
+    mobile: (p.mobile as string) || (p.guardian_phone as string) || null,
     role: kind,
     organization: String(p.organization || (kind === "player" ? "ALPHA" : "PWS")),
     department: subtitle || null,
@@ -113,6 +128,9 @@ export function personToDirectoryEntry(p: Record<string, unknown>): DirectoryEnt
     sport: (p.sport as string) || null,
     centre: (p.centre as string) || null,
     category: categoryRaw || null,
+    skillLevel: (p.skill_level as string) || null,
+    status: (p.status as string) || "active",
+    playerId: (p.player_id as string) || (p.admission_number as string) || null,
     source: "person",
   };
 }
@@ -155,6 +173,9 @@ export function filterDirectoryEntries(
     if (filters.alphaVenue) {
       list = list.filter((e) => e.centre === filters.alphaVenue);
     }
+    if (filters.alphaSkill) {
+      list = list.filter((e) => e.skillLevel === filters.alphaSkill);
+    }
   }
 
   if (filters.category !== "all") {
@@ -167,13 +188,17 @@ export function filterDirectoryEntries(
       (e.name || "").toLowerCase().includes(q)
       || (e.email || "").toLowerCase().includes(q)
       || (e.department || "").toLowerCase().includes(q)
-      || (e.role || "").toLowerCase().includes(q),
+      || (e.role || "").toLowerCase().includes(q)
+      || (e.centre || "").toLowerCase().includes(q)
+      || (e.sport || "").toLowerCase().includes(q)
+      || (e.skillLevel || "").toLowerCase().includes(q)
+      || (e.mobile || "").toLowerCase().includes(q),
     );
   }
 
   return list;
 }
 
-export function clearedSubFiltersForOrg(org: OrgFilter): Pick<DirectoryFilterState, "pwsClass" | "pwsSection" | "alphaSport" | "alphaVenue"> {
-  return { pwsClass: "", pwsSection: "", alphaSport: "", alphaVenue: "" };
+export function clearedSubFiltersForOrg(org: OrgFilter): Pick<DirectoryFilterState, "pwsClass" | "pwsSection" | "alphaSport" | "alphaVenue" | "alphaSkill"> {
+  return { pwsClass: "", pwsSection: "", alphaSport: "", alphaVenue: "", alphaSkill: "" };
 }

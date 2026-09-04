@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   Pressable,
-  ActivityIndicator,
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,10 +17,18 @@ import type { CoachDataScope } from "./coachAccess";
 import { coachSportAssignmentMessage } from "./coachAccess";
 import type { FormSelectOption } from "./components/forms/FormSelect";
 import { FilterSelect, filterSelectSlotStyle, TOOLBAR_CONTROL_HEIGHT } from "./components/FilterSelect";
+import { FilterMultiSelect } from "./components/FilterMultiSelect";
+import { DirectoryFilterSummary, type DirectoryFilterChip } from "./components/directory/DirectoryFilterSummary";
+import { DirectoryListSkeleton } from "./components/directory/DirectoryListSkeleton";
+import {
+  filterPlayersByFacets,
+  PLAYER_CENTRES,
+  PLAYER_SKILL_LEVELS,
+  PLAYER_SPORTS,
+  PLAYER_TYPES,
+} from "./playerRosterFilters";
 
-const BOARDING_TYPES = ["Daily", "Day Boarding", "Hostel", "Boarding"] as const;
-const PLAYER_SPORTS = ["Cricket", "Football"] as const;
-const CENTRES = ["Balua", "Harding Park", "Defense Colony"] as const;
+const BOARDING_TYPES = PLAYER_TYPES;
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 const PLAYER_GREEN = "#10B981";
@@ -36,6 +43,19 @@ function sportBadgeStyle(sport?: string) {
   if (sport === "Cricket") return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
   if (sport === "Football") return { bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0" };
   return { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
+}
+
+function skillBadgeStyle(skill?: string) {
+  if (skill === "Advanced") return { bg: "#F3E8FF", text: "#7E22CE", border: "#E9D5FF" };
+  if (skill === "Intermediate") return { bg: "#FEF3C7", text: "#B45309", border: "#FDE68A" };
+  if (skill === "Beginner") return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
+  return { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
+}
+
+function statusBadgeStyle(status?: string) {
+  if (status === "deactivated") return { bg: "#F1F5F9", text: "#64748B", border: "#E2E8F0", label: "Inactive" };
+  if (status === "pending_fee_approval") return { bg: "#FEF3C7", text: "#B45309", border: "#FDE68A", label: "Pending fee" };
+  return { bg: "#ECFDF5", text: "#047857", border: "#A7F3D0", label: "Active" };
 }
 
 function typeBadgeStyle(type?: string) {
@@ -56,12 +76,14 @@ type PlayerRosterListViewProps = {
   onClearSearch: () => void;
   showDeactivated: boolean;
   setShowDeactivated: (v: boolean) => void;
-  sportFilter: string | null;
-  setSportFilter: (v: string | null) => void;
-  typeFilter: string | null;
-  setTypeFilter: (v: string | null) => void;
-  centreFilter: string | null;
-  setCentreFilter: (v: string | null) => void;
+  sportFilter: string[];
+  setSportFilter: (v: string[]) => void;
+  typeFilter: string[];
+  setTypeFilter: (v: string[]) => void;
+  centreFilter: string[];
+  setCentreFilter: (v: string[]) => void;
+  skillFilter: string[];
+  setSkillFilter: (v: string[]) => void;
   canBrowseAllSports: boolean;
   isCoachPlayerView: boolean;
   coachScope: CoachDataScope;
@@ -89,6 +111,8 @@ export function PlayerRosterListView({
   setTypeFilter,
   centreFilter,
   setCentreFilter,
+  skillFilter,
+  setSkillFilter,
   canBrowseAllSports,
   isCoachPlayerView,
   coachScope,
@@ -111,23 +135,89 @@ export function PlayerRosterListView({
     width: contentMaxWidth ? ("100%" as const) : undefined,
   };
 
-  const total = items.length;
+  const facets = useMemo(
+    () => ({ sports: sportFilter, types: typeFilter, centres: centreFilter, skills: skillFilter }),
+    [sportFilter, typeFilter, centreFilter, skillFilter],
+  );
+  const filteredItems = useMemo(() => filterPlayersByFacets(items, facets), [items, facets]);
+  const loadedTotal = items.length;
+  const total = filteredItems.length;
+  const hasFacetFilters = sportFilter.length + typeFilter.length + centreFilter.length + skillFilter.length > 0;
+  const statusActive = showDeactivated;
+  const activeSearch = debouncedSearch.trim();
+  const isSearching = activeSearch.length > 0;
+  const hasActiveFilters = hasFacetFilters || isSearching || statusActive;
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const startIdx = total === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const endIdx = Math.min(safePage * pageSize, total);
-  const pageItems = items.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const pageItems = filteredItems.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const activeSearch = debouncedSearch.trim();
-  const isSearching = activeSearch.length > 0;
+  const resultLabel = hasActiveFilters
+    ? `Showing ${total} of ${loadedTotal} player${loadedTotal !== 1 ? "s" : ""}`
+    : `Showing ${total} player${total !== 1 ? "s" : ""}`;
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, showDeactivated, sportFilter, typeFilter, centreFilter, total, pageSize]);
+  }, [debouncedSearch, showDeactivated, sportFilter, typeFilter, centreFilter, skillFilter, loadedTotal, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+
+  const clearFacets = useCallback(() => {
+    if (!isCoachPlayerView) setSportFilter([]);
+    setTypeFilter([]);
+    setCentreFilter([]);
+    setSkillFilter([]);
+    setShowDeactivated(false);
+    if (isSearching) onClearSearch();
+  }, [isCoachPlayerView, isSearching, onClearSearch, setCentreFilter, setShowDeactivated, setSkillFilter, setSportFilter, setTypeFilter]);
+
+  const chips: DirectoryFilterChip[] = useMemo(() => {
+    const next: DirectoryFilterChip[] = [];
+    if (isSearching) {
+      next.push({ id: "search", label: `Search: ${activeSearch}`, onRemove: onClearSearch });
+    }
+    if (statusActive) {
+      next.push({ id: "status", label: "Status: All", onRemove: () => setShowDeactivated(false) });
+    }
+    sportFilter.forEach((v) => {
+      if (isCoachPlayerView) return;
+      next.push({
+        id: `sport-${v}`,
+        label: `Sport: ${v}`,
+        onRemove: () => setSportFilter(sportFilter.filter((x) => x !== v)),
+      });
+    });
+    typeFilter.forEach((v) => {
+      next.push({
+        id: `type-${v}`,
+        label: `Player type: ${v}`,
+        onRemove: () => setTypeFilter(typeFilter.filter((x) => x !== v)),
+      });
+    });
+    centreFilter.forEach((v) => {
+      next.push({
+        id: `centre-${v}`,
+        label: `Location: ${v}`,
+        onRemove: () => setCentreFilter(centreFilter.filter((x) => x !== v)),
+      });
+    });
+    skillFilter.forEach((v) => {
+      next.push({
+        id: `skill-${v}`,
+        label: `Skill: ${v}`,
+        onRemove: () => setSkillFilter(skillFilter.filter((x) => x !== v)),
+      });
+    });
+    return next;
+  }, [
+    activeSearch, centreFilter, isCoachPlayerView, isSearching, onClearSearch,
+    setCentreFilter, setShowDeactivated, setSkillFilter, setSportFilter, setTypeFilter,
+    skillFilter, sportFilter, statusActive, typeFilter,
+  ]);
 
   const statusOptions: FormSelectOption[] = [
     { value: "active", label: "Active" },
@@ -135,20 +225,14 @@ export function PlayerRosterListView({
   ];
 
   const sportOptions: FormSelectOption[] = canBrowseAllSports
-    ? [{ value: "", label: "All sports" }, ...PLAYER_SPORTS.map((sp) => ({ value: sp, label: sp }))]
+    ? PLAYER_SPORTS.map((sp) => ({ value: sp, label: sp }))
     : coachScope.assignedSport
       ? [{ value: coachScope.assignedSport, label: coachScope.assignedSport }]
       : [];
 
-  const typeOptions: FormSelectOption[] = [
-    { value: "", label: "All types" },
-    ...BOARDING_TYPES.map((t) => ({ value: t, label: t })),
-  ];
-
-  const locationOptions: FormSelectOption[] = [
-    { value: "", label: "All locations" },
-    ...CENTRES.map((c) => ({ value: c, label: c })),
-  ];
+  const typeOptions: FormSelectOption[] = BOARDING_TYPES.map((t) => ({ value: t, label: t }));
+  const locationOptions: FormSelectOption[] = PLAYER_CENTRES.map((c) => ({ value: c, label: c }));
+  const skillOptions: FormSelectOption[] = PLAYER_SKILL_LEVELS.map((sk) => ({ value: sk, label: sk }));
 
   const pageSizeOptions: FormSelectOption[] = PAGE_SIZE_OPTIONS.map((n) => ({
     value: String(n),
@@ -160,10 +244,12 @@ export function PlayerRosterListView({
   const tableHeader = (
     <View style={[s.tableRow, s.tableHead]}>
       <Text style={[s.th, s.colPlayer]}>Player</Text>
-      <Text style={[s.th, s.colId]}>Player ID</Text>
+      <Text style={[s.th, s.colId]}>ID / Contact</Text>
+      <Text style={[s.th, s.colLocation]}>Campus</Text>
       <Text style={[s.th, s.colSport]}>Sport</Text>
-      <Text style={[s.th, s.colLocation]}>Location</Text>
+      <Text style={[s.th, s.colSkill]}>Skill</Text>
       <Text style={[s.th, s.colType]}>Type</Text>
+      <Text style={[s.th, s.colStatus]}>Status</Text>
       <View style={s.colActions} />
     </View>
   );
@@ -178,11 +264,7 @@ export function PlayerRosterListView({
             </TouchableOpacity>
             <Text style={s.h1}>Players</Text>
             <View style={s.countBadge}>
-              <Text style={s.countBadgeTxt}>
-                {isSearching
-                  ? `${total} matching`
-                  : `${total} record${total !== 1 ? "s" : ""}`}
-              </Text>
+              <Text style={s.countBadgeTxt}>{resultLabel}</Text>
             </View>
             {isCoachPlayerView && coachScope.assignedSport && !coachScope.requiresSportAssignment && (
               <View style={s.scopeBadge}>
@@ -230,6 +312,8 @@ export function PlayerRosterListView({
               <View style={filterSelectSlotStyle}>
                 <FilterSelect
                   testID="toggle-status"
+                  groupLabel="Status"
+                  badgeCount={showDeactivated ? 1 : 0}
                   value={showDeactivated ? "all" : "active"}
                   options={statusOptions}
                   onChange={(v) => setShowDeactivated(v === "all")}
@@ -239,34 +323,55 @@ export function PlayerRosterListView({
 
             {showSportFilter && sportOptions.length > 0 && (
               <View style={filterSelectSlotStyle}>
-                <FilterSelect
+                <FilterMultiSelect
                   testID="sport-filter"
-                  value={sportFilter || ""}
+                  groupLabel="Sport"
+                  placeholder="Sport"
+                  values={sportFilter}
                   options={sportOptions}
                   disabled={isCoachPlayerView}
-                  onChange={(v) => setSportFilter(v || null)}
+                  onChange={setSportFilter}
                 />
               </View>
             )}
 
             <View style={filterSelectSlotStyle}>
-              <FilterSelect
+              <FilterMultiSelect
                 testID="ptype-filter"
-                value={typeFilter || ""}
+                groupLabel="Player type"
+                placeholder="Player type"
+                values={typeFilter}
                 options={typeOptions}
-                onChange={(v) => setTypeFilter(v || null)}
+                onChange={setTypeFilter}
               />
             </View>
 
             <View style={filterSelectSlotStyle}>
-              <FilterSelect
+              <FilterMultiSelect
                 testID="centre-filter"
-                value={centreFilter || ""}
+                groupLabel="Location"
+                placeholder="Location"
+                values={centreFilter}
                 options={locationOptions}
-                onChange={(v) => setCentreFilter(v || null)}
+                onChange={setCentreFilter}
+              />
+            </View>
+
+            <View style={filterSelectSlotStyle}>
+              <FilterMultiSelect
+                testID="skill-filter"
+                groupLabel="Skill"
+                placeholder="Skill"
+                values={skillFilter}
+                options={skillOptions}
+                onChange={setSkillFilter}
               />
             </View>
           </View>
+        )}
+
+        {!coachBlocked && chips.length > 0 && (
+          <DirectoryFilterSummary chips={chips} onClearAll={clearFacets} />
         )}
 
         {coachBlocked && (
@@ -280,17 +385,24 @@ export function PlayerRosterListView({
         {!coachBlocked && (
           <View style={s.tableShell}>
             {loading ? (
-              <ActivityIndicator color={PLAYER_GREEN} style={s.loader} />
+              <DirectoryListSkeleton rows={8} testID="players-skeleton" />
             ) : total === 0 ? (
               <View style={s.empty}>
-                <Feather name="users" size={32} color={colors.hint} />
-                <Text style={s.emptyText}>
-                  {isSearching ? "No matching players found." : "No players yet. Tap Add Player to create one."}
+                <View style={s.emptyIcon}>
+                  <Feather name="filter" size={28} color={colors.hint} />
+                </View>
+                <Text style={s.emptyTitle}>
+                  {hasActiveFilters ? "No players match these filters" : "No players yet"}
                 </Text>
-                {isSearching && (
-                  <TouchableOpacity style={s.clearSearchBtn} onPress={onClearSearch} testID="empty-clear-search">
+                <Text style={s.emptyText}>
+                  {hasActiveFilters
+                    ? "Try removing a filter or clearing all filters to broaden the list."
+                    : "Tap Add Player to create the first roster record."}
+                </Text>
+                {hasActiveFilters && (
+                  <TouchableOpacity style={s.clearSearchBtn} onPress={clearFacets} testID="empty-clear-search">
                     <Feather name="x-circle" size={14} color={PLAYER_GREEN} />
-                    <Text style={s.clearSearchTxt}>Clear search</Text>
+                    <Text style={s.clearSearchTxt}>Clear all filters</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -301,12 +413,14 @@ export function PlayerRosterListView({
                   <ScrollView style={s.tableBodyScroll} nestedScrollEnabled showsVerticalScrollIndicator={isDesktop}>
                     {pageItems.map((it) => {
                       const isDeact = it.status === "deactivated";
-                      const isPendingFee = it.status === "pending_fee_approval";
                       const initials = it.name.split(" ").map((n: string) => n[0]).slice(0, 2).join("");
                       const avatar = sportAvatarStyle(it.sport);
                       const sportBadge = sportBadgeStyle(it.sport);
                       const typeLabel = it.player_type === "Hostel Only" ? "Hostel" : it.player_type;
                       const typeBadge = typeBadgeStyle(typeLabel);
+                      const skillBadge = skillBadgeStyle(it.skill_level);
+                      const statusBadge = statusBadgeStyle(it.status);
+                      const contact = it.mobile || it.email || it.date_of_admission || "";
 
                       return (
                         <Pressable
@@ -322,30 +436,23 @@ export function PlayerRosterListView({
                               </Text>
                             </View>
                             <View style={s.playerMeta}>
-                              <View style={s.playerNameRow}>
-                                <Text style={[s.playerName, isDeact && s.playerNameDeact]} numberOfLines={1}>
-                                  {it.name}
-                                </Text>
-                                {isDeact && (
-                                  <View style={s.inactivePill}>
-                                    <Text style={s.inactivePillTxt}>Inactive</Text>
-                                  </View>
-                                )}
-                                {isPendingFee && (
-                                  <View style={s.pendingFeePill}>
-                                    <Text style={s.pendingFeePillTxt}>Pending fee</Text>
-                                  </View>
-                                )}
-                              </View>
+                              <Text style={[s.playerName, isDeact && s.playerNameDeact]} numberOfLines={1}>
+                                {it.name}
+                              </Text>
                               <Text style={s.playerSub} numberOfLines={1}>
-                                {[it.player_id, it.sport, it.centre].filter(Boolean).join(" · ") || "—"}
+                                {[it.sport, it.centre, it.skill_level].filter(Boolean).join(" · ") || "—"}
                               </Text>
                             </View>
                           </View>
 
-                          <Text style={[s.td, s.colId, s.idCell]} numberOfLines={1}>
-                            {it.player_id || "—"}
-                          </Text>
+                          <View style={s.colId}>
+                            <Text style={[s.td, s.idCell]} numberOfLines={1}>{it.player_id || "—"}</Text>
+                            {!!contact && (
+                              <Text style={s.contactSub} numberOfLines={1}>{contact}</Text>
+                            )}
+                          </View>
+
+                          <Text style={[s.td, s.colLocation]} numberOfLines={1}>{it.centre || "—"}</Text>
 
                           <View style={s.colSport}>
                             {it.sport ? (
@@ -357,7 +464,15 @@ export function PlayerRosterListView({
                             )}
                           </View>
 
-                          <Text style={[s.td, s.colLocation]} numberOfLines={1}>{it.centre || "—"}</Text>
+                          <View style={s.colSkill}>
+                            {it.skill_level ? (
+                              <View style={[s.tagBadge, { backgroundColor: skillBadge.bg, borderColor: skillBadge.border }]}>
+                                <Text style={[s.tagBadgeTxt, { color: skillBadge.text }]}>{it.skill_level}</Text>
+                              </View>
+                            ) : (
+                              <Text style={s.dash}>—</Text>
+                            )}
+                          </View>
 
                           <View style={s.colType}>
                             {typeLabel ? (
@@ -367,6 +482,12 @@ export function PlayerRosterListView({
                             ) : (
                               <Text style={s.dash}>—</Text>
                             )}
+                          </View>
+
+                          <View style={s.colStatus}>
+                            <View style={[s.tagBadge, { backgroundColor: statusBadge.bg, borderColor: statusBadge.border }]}>
+                              <Text style={[s.tagBadgeTxt, { color: statusBadge.text }]}>{statusBadge.label}</Text>
+                            </View>
                           </View>
 
                           <View style={s.colActions}>
@@ -391,9 +512,7 @@ export function PlayerRosterListView({
         {!coachBlocked && !loading && total > 0 && (
           <View style={s.footer}>
             <Text style={s.footerText}>
-              {isSearching
-                ? `Showing ${startIdx}–${endIdx} of ${total} matching players`
-                : `Showing ${startIdx}–${endIdx} of ${total} players`}
+              {`Showing ${startIdx}–${endIdx} of ${total} player${total !== 1 ? "s" : ""}`}
             </Text>
             <View style={s.footerRight}>
               <View style={s.pageSizeSlot}>
@@ -499,6 +618,7 @@ const s = StyleSheet.create({
     borderRadius: radii.lg,
     paddingHorizontal: 10,
     paddingVertical: 8,
+    zIndex: 8,
   },
   searchWrap: {
     flexGrow: 1,
@@ -548,7 +668,7 @@ const s = StyleSheet.create({
   },
   tableHoriz: { flex: 1 },
   table: { flex: 1, minWidth: "100%" },
-  tableWide: { minWidth: 820 },
+  tableWide: { minWidth: 1040 },
   tableBodyScroll: { flex: 1, maxHeight: Platform.OS === "web" ? 520 : 480 },
   tableRow: {
     flexDirection: "row",
@@ -585,11 +705,13 @@ const s = StyleSheet.create({
     letterSpacing: 0.6,
   },
   td: { fontSize: 12, color: colors.ink },
-  colPlayer: { flex: 2.6, minWidth: 200 },
-  colId: { flex: 1, minWidth: 88 },
-  colSport: { flex: 0.9, minWidth: 80 },
-  colLocation: { flex: 1, minWidth: 90 },
-  colType: { flex: 0.9, minWidth: 80 },
+  colPlayer: { flex: 2.2, minWidth: 180 },
+  colId: { flex: 1.2, minWidth: 110 },
+  colSport: { flex: 0.8, minWidth: 76 },
+  colLocation: { flex: 1, minWidth: 100 },
+  colSkill: { flex: 0.9, minWidth: 88 },
+  colType: { flex: 0.85, minWidth: 80 },
+  colStatus: { flex: 0.9, minWidth: 92 },
   colActions: { width: 32, alignItems: "flex-end" },
   playerCell: { flexDirection: "row", alignItems: "center", gap: 8 },
   avatar: {
@@ -603,9 +725,20 @@ const s = StyleSheet.create({
   avatarTxt: { fontWeight: "800", fontSize: 10 },
   playerMeta: { flex: 1, minWidth: 0, gap: 1 },
   playerNameRow: { flexDirection: "row", alignItems: "center", gap: 4, flexWrap: "wrap" },
-  playerName: { fontSize: 13, fontWeight: "600", color: colors.ink, flexShrink: 1 },
+  playerName: { fontSize: 13, fontWeight: "700", color: colors.ink, flexShrink: 1 },
   playerNameDeact: { color: colors.muted2 },
   playerSub: { fontSize: 11, color: colors.hint, fontWeight: "500" },
+  contactSub: { fontSize: 11, color: colors.hint, fontWeight: "500", marginTop: 1 },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surface2,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  emptyTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
   inactivePill: {
     backgroundColor: "#F1F5F9",
     paddingHorizontal: 5,
