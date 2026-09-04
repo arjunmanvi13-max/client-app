@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, type Dispatch, type SetStateAction } from "react";
 import {
   View,
   Text,
@@ -48,6 +48,29 @@ const RATE_CARD: Record<PlayerType, Record<string, { registration: number; month
   Boarding: { Cricket: { registration: 20000, monthly: 15000 }, Football: { registration: 20000, monthly: 15000 } },
 };
 
+const DEFENSE_COLONY_REGISTRATION = 7500;
+const DEFENSE_COLONY_MONTHLY_BY_SKILL: Record<"Beginner" | "Intermediate" | "Advanced", number> = {
+  Beginner: 3500,
+  Intermediate: 3500,
+  Advanced: 8000,
+};
+
+function rateCardFor(
+  centre: string,
+  playerType: PlayerType | "",
+  sport: string,
+  skillLevel: "Beginner" | "Intermediate" | "Advanced" | "",
+): { registration: number; monthly: number } | null {
+  if (centre === "Defense Colony" && playerType === "Daily") {
+    const monthly = skillLevel
+      ? DEFENSE_COLONY_MONTHLY_BY_SKILL[skillLevel]
+      : DEFENSE_COLONY_MONTHLY_BY_SKILL.Beginner;
+    return { registration: DEFENSE_COLONY_REGISTRATION, monthly };
+  }
+  if (playerType && sport) return RATE_CARD[playerType]?.[sport] ?? null;
+  return null;
+}
+
 function requiresBothSlots(pt: PlayerType | ""): boolean {
   return pt === "Hostel Only" || pt === "Boarding";
 }
@@ -87,7 +110,7 @@ function FeesEmptyState() {
       <View style={s.feesEmptyIcon}>
         <Feather name="info" size={18} color={colors.primary} />
       </View>
-      <Text style={s.feesEmptyTitle}>Select Player Type & Sport to load fee heads</Text>
+      <Text style={s.feesEmptyTitle}>Select centre, player type, skill, and sport to load fee heads</Text>
       <Text style={s.feesEmptySub}>Fee structure will appear here once admission details are complete.</Text>
     </View>
   );
@@ -214,11 +237,14 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
     (sp) => !coachSportLocked || sp === coachAssignedSport,
   ).map((sp) => ({ value: sp, label: sp }));
   const slotLockedBoth = !!(playerType && requiresBothSlots(playerType));
+  const slotLockedMorning = centre === "Defense Colony" && skillLevel === "Advanced";
   const slotOptions: FormSelectOption[] = slotLockedBoth
     ? [{ value: "Both", label: "Both (Morning & Evening)" }]
-    : SLOTS.filter((sl) => sl !== "Both").map((sl) => ({ value: sl, label: sl }));
+    : slotLockedMorning
+      ? [{ value: "Morning", label: "Morning" }]
+      : SLOTS.filter((sl) => sl !== "Both").map((sl) => ({ value: sl, label: sl }));
 
-  const rc = playerType && sport ? RATE_CARD[playerType as PlayerType]?.[sport] : null;
+  const rc = rateCardFor(centre, playerType, sport, skillLevel);
   const regEff = registrationFeeOverride
     ? parseInt(registrationFeeOverride, 10)
     : (rc?.registration ?? 0);
@@ -228,12 +254,18 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
       ? parseInt(hostelFeeOverride, 10)
       : (rc?.monthly ?? 0);
 
+  useEffect(() => {
+    if (slotLockedMorning && slot !== "Morning") setSlot("Morning");
+  }, [slotLockedMorning, slot, setSlot]);
+
   const onCentreChange = (c: string) => {
     setCentre(c as AlphaCentre);
     if (DAILY_ONLY_CENTRES.has(c) && playerType !== "Daily") {
       setPlayerType("Daily");
-      setSlot("");
+      setSlot(c === "Defense Colony" && skillLevel === "Advanced" ? "Morning" : "");
+      return;
     }
+    if (c === "Defense Colony" && skillLevel === "Advanced") setSlot("Morning");
   };
 
   const onPlayerTypeChange = (pt: string) => {
@@ -418,15 +450,19 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             disabled={readOnly}
             options={SKILL_LEVELS.map((sk) => ({ value: sk, label: sk }))}
             placeholder="Select level"
-            onChange={(v) => setSkillLevel(v as typeof skillLevel)}
+            onChange={(v) => {
+              const next = v as typeof skillLevel;
+              setSkillLevel(next);
+              if (centre === "Defense Colony" && next === "Advanced") setSlot("Morning");
+            }}
           />
           <FormSelect
             compact
             label="Slot"
             required
             testID="field-slot"
-            value={slotLockedBoth ? "Both" : slot}
-            disabled={readOnly || slotLockedBoth}
+            value={slotLockedBoth ? "Both" : slotLockedMorning ? "Morning" : slot}
+            disabled={readOnly || slotLockedBoth || slotLockedMorning}
             options={slotOptions}
             placeholder="Select slot"
             onChange={(v) => setSlot(v as typeof slot)}
@@ -452,6 +488,9 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
         )}
         {slotLockedBoth && (
           <Text style={s.help}>{playerType} players attend Morning & Evening sessions.</Text>
+        )}
+        {slotLockedMorning && (
+          <Text style={s.help}>Defense Colony Advanced players can only attend the Morning session.</Text>
         )}
 
         {isBoardingType && (
@@ -492,8 +531,11 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
 
           <View style={[s.feesUnifiedBody, isWide && (isNew || isSuper) && s.feesUnifiedBodyWide]}>
             <View style={[s.feesPanel, isWide && (isNew || isSuper) && s.feesPanelHalf]}>
-              <Text style={s.feesPanelLabel}>Fee structure{playerType ? ` · ${playerType}` : ""}</Text>
-              {!playerType || !sport ? (
+              <Text style={s.feesPanelLabel}>
+                Fee structure{playerType ? ` · ${playerType}` : ""}
+                {centre === "Defense Colony" ? " · Defense Colony" : ""}
+              </Text>
+              {!rc ? (
                 <FeesEmptyState />
               ) : (
                 <>

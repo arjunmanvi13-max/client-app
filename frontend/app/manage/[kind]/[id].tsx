@@ -887,6 +887,10 @@ export default function ManageEdit() {
       Alert.alert(`${centre} allows Daily players only`);
       return;
     }
+    if (isPlayerKind && centre === "Defense Colony" && skillLevel === "Advanced" && slot !== "Morning") {
+      Alert.alert("Defense Colony Advanced players can only attend the Morning session");
+      return;
+    }
     if (isPlayerKind && !dateOfAdmission) {
       Alert.alert("Date of Admission is required");
       return;
