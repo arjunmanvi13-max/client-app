@@ -147,43 +147,90 @@ export function FormLabel({ children, label, required }: { children?: string; la
 }
 
 /** Readable horizontal table for reports and admin lists. */
+function columnKind(label: string, index: number): "name" | "first" | "money" | "status" | "center" {
+  const c = (label || "").toLowerCase();
+  if (c === "status") return "status";
+  if (/amount|total|paid|balance|collected/.test(c)) return "money";
+  if (index === 0) return "first";
+  if (index === 1 || c === "name") return "name";
+  return "center";
+}
+
+function statusTone(value: string): "active" | "idle" | "warn" {
+  const v = value.trim().toLowerCase();
+  if (v === "active") return "active";
+  if (v.includes("pending")) return "warn";
+  return "idle";
+}
+
 export function DataTable({
   columns,
   rows,
-  numericFromIndex = 1,
+  numericFromIndex,
 }: {
   columns: string[];
   rows: string[][];
-  /** Right-align columns from this index (e.g. amount columns). */
+  /** @deprecated Alignment is derived from column titles. Kept for call-site compatibility. */
   numericFromIndex?: number;
 }) {
   if (!rows.length) {
     return <Text style={st.tableEmpty}>No rows to display.</Text>;
   }
   return (
-    <View style={st.tableWrap}>
+    <View style={st.tableWrap} testID="report-data-table">
       <View style={st.tableHead}>
-        {columns.map((c, i) => (
-          <Text
-            key={i}
-            style={[st.th, i === 0 && st.thFirst, i >= numericFromIndex && st.thNum]}
-            numberOfLines={1}
-          >
-            {c}
-          </Text>
-        ))}
+        {columns.map((c, i) => {
+          const kind = columnKind(c, i);
+          return (
+            <Text
+              key={i}
+              style={[
+                st.th,
+                kind === "first" && st.thFirst,
+                kind === "name" && st.thName,
+                kind === "money" && st.thNum,
+                kind === "center" && st.thCenter,
+                kind === "status" && st.thCenter,
+              ]}
+              numberOfLines={1}
+            >
+              {c}
+            </Text>
+          );
+        })}
       </View>
       {rows.map((row, ri) => (
         <View key={ri} style={[st.tr, ri % 2 === 1 && st.trAlt]}>
-          {row.map((cell, ci) => (
-            <Text
-              key={ci}
-              style={[st.td, ci === 0 && st.tdFirst, ci >= numericFromIndex && st.tdNum]}
-              numberOfLines={2}
-            >
-              {cell}
-            </Text>
-          ))}
+          {row.map((cell, ci) => {
+            const kind = columnKind(columns[ci] || "", ci);
+            if (kind === "status") {
+              const tone = statusTone(cell);
+              return (
+                <View key={ci} style={[st.td, st.tdStatusWrap]}>
+                  <View style={[st.statusPill, tone === "active" ? st.statusActive : tone === "warn" ? st.statusWarn : st.statusIdle]}>
+                    <Text style={[st.statusPillTxt, tone === "active" ? st.statusActiveTxt : tone === "warn" ? st.statusWarnTxt : st.statusIdleTxt]}>
+                      {cell || "—"}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }
+            return (
+              <Text
+                key={ci}
+                style={[
+                  st.td,
+                  kind === "first" && st.tdFirst,
+                  kind === "name" && st.tdName,
+                  kind === "money" && st.tdNum,
+                  kind === "center" && st.tdCenter,
+                ]}
+                numberOfLines={2}
+              >
+                {cell}
+              </Text>
+            );
+          })}
         </View>
       ))}
     </View>
@@ -223,12 +270,25 @@ const st = StyleSheet.create({
   tableWrap: { marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: "hidden" },
   tableHead: { flexDirection: "row", backgroundColor: colors.primarySofter, borderBottomWidth: 1, borderBottomColor: colors.border },
   th: { flex: 1, minWidth: COL_MIN, fontSize: 11, fontWeight: "800", color: colors.muted, textTransform: "uppercase", paddingVertical: 10, paddingHorizontal: 8 },
-  thFirst: { minWidth: COL_FIRST, flex: 1.4 },
+  thFirst: { minWidth: COL_FIRST, flex: 1.1 },
+  thName: { minWidth: COL_FIRST, flex: 1.6, textAlign: "left" },
   thNum: { textAlign: "right" },
-  tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  thCenter: { textAlign: "center" },
+  tr: { flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
   trAlt: { backgroundColor: colors.surface2 },
   td: { flex: 1, minWidth: COL_MIN, fontSize: 13, color: colors.ink, paddingVertical: 10, paddingHorizontal: 8 },
-  tdFirst: { minWidth: COL_FIRST, flex: 1.4, fontWeight: "600" },
+  tdFirst: { minWidth: COL_FIRST, flex: 1.1, fontWeight: "700" },
+  tdName: { minWidth: COL_FIRST, flex: 1.6, fontWeight: "500" },
   tdNum: { textAlign: "right", fontVariant: ["tabular-nums"] },
+  tdCenter: { textAlign: "center" },
+  tdStatusWrap: { alignItems: "center", justifyContent: "center" },
+  statusPill: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1 },
+  statusActive: { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" },
+  statusIdle: { backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" },
+  statusWarn: { backgroundColor: "#FEF3C7", borderColor: "#FDE68A" },
+  statusPillTxt: { fontSize: 11, fontWeight: "800" },
+  statusActiveTxt: { color: "#047857" },
+  statusIdleTxt: { color: "#64748B" },
+  statusWarnTxt: { color: "#B45309" },
   tableEmpty: { fontSize: 13, color: colors.hint, fontStyle: "italic", padding: spacing.md },
 });

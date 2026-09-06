@@ -10,7 +10,7 @@ import { api, useAuth, userHasPermission } from "../src/auth";
 import { BusinessEntity, Permission, UserRole, normalizeRole } from "../src/rbac";
 import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
-import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO , toISODate} from "../src/dateFormat";
+import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
 import {
   classGroupPrefix,
@@ -25,7 +25,7 @@ import {
   isPwsOnlyReportBlocked,
   resolveReportFilterFields,
 } from "../src/reports/reportFilters";
-import { ReportAdvancedFiltersPanel } from "../src/reports/ReportAdvancedFiltersPanel";
+import { reportExportFilename } from "../src/reports/reportExportFilename";
 
 type RunState = "idle" | "loading" | "ready" | "outdated" | "error";
 type PeriodKind = "this_month" | "last_month" | "ytd" | "this_quarter" | "this_year" | "custom";
@@ -333,13 +333,14 @@ export default function ReportsScreen() {
         responseType: "blob",
       });
       const ext = format === "pdf" ? "pdf" : "xlsx";
+      const filename = reportExportFilename(mvpReportId, exportParams, ext);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(r.data);
-      a.download = `${mvpReportId}-${toISODate()}.${ext}`;
-      if (format === "pdf") a.target = "_blank";
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
+      URL.revokeObjectURL(a.href);
       setExportMenuOpen(false);
     } catch (e: any) {
       const msg = e?.response?.data?.detail || e?.message || "Could not export";
@@ -349,8 +350,15 @@ export default function ReportsScreen() {
 
   const doPrint = () => {
     if (!canExport) return;
-    if (Platform.OS === "web" && typeof window !== "undefined") window.print();
-    else Alert.alert("Print", "Open Reports on desktop web for printable layout.");
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const prevTitle = window.document.title;
+      const printName = reportExportFilename(mvpReportId, exportParams, "pdf").replace(/\.pdf$/i, "");
+      window.document.title = printName;
+      window.print();
+      window.setTimeout(() => { window.document.title = prevTitle; }, 500);
+    } else {
+      Alert.alert("Print", "Open Reports on desktop web for printable layout.");
+    }
     setExportMenuOpen(false);
   };
 
@@ -382,9 +390,10 @@ export default function ReportsScreen() {
       {Platform.OS === "web" && (
         <style>{`
           @media print {
+            @page { size: landscape; margin: 12mm; }
             body * { visibility: hidden; }
             #report-print-area, #report-print-area * { visibility: visible; }
-            #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 16px; }
+            #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 8px; background: #fff; }
             .no-print { display: none !important; }
           }
         `}</style>
