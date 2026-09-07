@@ -1,5 +1,8 @@
 import { api } from "./auth";
 import { toISODate } from "./dateFormat";
+import { normalizeApprovalRequest, type ApprovalRequest } from "./approvalTypes";
+import type { ExpenseEntry } from "./expenses/expenseTypes";
+import type { TaskRecord } from "./components/tasks/taskTypes";
 
 export type DashboardEntity = "both" | "pws" | "alpha";
 
@@ -10,12 +13,44 @@ export type AttendanceKindStats = {
   leave: number;
 };
 
+export type FinanceBucket = {
+  collected: number;
+  dues: number;
+  collectedToday: number;
+  txnToday: number;
+  recoveryPct: number;
+};
+
+export type CampusAttendance = {
+  campus: string;
+  organization?: string;
+  roster: number;
+  present: number;
+  late: number;
+  absent: number;
+  leave: number;
+  checkins: number;
+};
+
+export type CampusCapacityRow = {
+  key: string;
+  campus: string;
+  sport: string;
+  enrolled: number;
+  capacity: number;
+  utilization_pct?: number | null;
+  entity?: string;
+  is_batch?: boolean;
+};
+
 export type SuperAdminDashboardBundle = {
   mvp: any;
   metrics?: SuperAdminMetrics;
   command?: {
     roster_counts?: Record<string, number>;
     attendance_by_kind?: Record<string, AttendanceKindStats>;
+    attendance_by_campus?: CampusAttendance[];
+    kpis?: { attendance_pct_today?: number };
   };
   fees?: {
     due_current_month: number;
@@ -23,15 +58,15 @@ export type SuperAdminDashboardBundle = {
     collected_today: number;
     received_total: number;
   };
-  openTasks: Array<{
-    id: string;
-    title: string;
-    priority?: string;
-    due_date?: string;
-    status?: string;
-    entity_id?: string;
-  }>;
+  financeByEntity: {
+    pws: FinanceBucket;
+    alpha: FinanceBucket;
+    combined: FinanceBucket;
+  };
+  openTasks: TaskRecord[];
   pendingApprovals: number;
+  pendingApprovalRows: ApprovalRequest[];
+  expenseApprovals: ExpenseEntry[];
 };
 
 export type EnrollmentMetric = {
@@ -54,6 +89,8 @@ export type SuperAdminMetrics = {
   }>;
   pws_total_baseline?: number;
   pws_total_active?: number;
+  campus_capacity?: CampusCapacityRow[];
+  capacity_alerts?: CampusCapacityRow[];
   alpha_totals?: { cricket: number; football: number; overall?: number };
   revenue: {
     expected_monthly: number;
@@ -108,7 +145,14 @@ function filterCommandCenter(cc: any, entity: DashboardEntity) {
       coaches: roster.coaches || 0,
     };
   }
-  return { roster_counts, attendance_by_kind: att };
+  const campuses = (cc?.attendance_by_campus || []) as CampusAttendance[];
+  const attendance_by_campus = campuses.filter((row) => {
+    const org = (row.organization || "").toUpperCase();
+    if (entity === "pws") return org === "PWS";
+    if (entity === "alpha") return org === "ALPHA";
+    return true;
+  });
+  return { roster_counts, attendance_by_kind: att, attendance_by_campus, kpis: cc?.kpis };
 }
 
 function aggregateFeesDashboard(raw: any, entity: DashboardEntity) {
@@ -122,8 +166,45 @@ function aggregateFeesDashboard(raw: any, entity: DashboardEntity) {
     due_current_month: sum("due_current_month"),
     due_past: sum("due_past"),
     collected_today: sum("collected_today"),
+    collected_today_count: sum("collected_today_count"),
     received_total: sum("received_total"),
   };
+}
+
+function emptyFinanceBucket(): FinanceBucket {
+  return { collected: 0, dues: 0, collectedToday: 0, txnToday: 0, recoveryPct: 0 };
+}
+
+function toFinanceBucket(b: any): FinanceBucket {
+  const collected = Number(b?.received_total || 0);
+  const dues = Number(b?.due_current_month || 0) + Number(b?.due_past || 0);
+  const denom = collected + dues;
+  return {
+    collected,
+    dues,
+    collectedToday: Number(b?.collected_today || 0),
+    txnToday: Number(b?.collected_today_count || 0),
+    recoveryPct: denom ? Math.round((collected / denom) * 100) : 0,
+  };
+}
+
+function mergeFinance(a: FinanceBucket, b: FinanceBucket): FinanceBucket {
+  const collected = a.collected + b.collected;
+  const dues = a.dues + b.dues;
+  const denom = collected + dues;
+  return {
+    collected,
+    dues,
+    collectedToday: a.collectedToday + b.collectedToday,
+    txnToday: a.txnToday + b.txnToday,
+    recoveryPct: denom ? Math.round((collected / denom) * 100) : 0,
+  };
+}
+
+function financeFromFeesDashboard(raw: any): SuperAdminDashboardBundle["financeByEntity"] {
+  const pws = toFinanceBucket(raw?.by_entity?.pws);
+  const alpha = toFinanceBucket(aggregateFeesDashboard(raw, "alpha"));
+  return { pws, alpha, combined: mergeFinance(pws, alpha) };
 }
 
 function filterTasksByEntity(tasks: any[], entity: DashboardEntity) {
@@ -148,33 +229,39 @@ function filterApprovalsByEntity(rows: any[], entity: DashboardEntity) {
 /** Super Admin / ALPHA Admin bento dashboard data bundle. */
 export async function fetchSuperAdminDashboardBundle(entity: DashboardEntity): Promise<SuperAdminDashboardBundle> {
   const entityParam = entity === "both" ? "both" : entity;
-  const [mvp, ccRes, tasksRes, feesRes, metricsRes, approvalsRes] = await Promise.all([
+  const expenseEntity = entity === "both" ? undefined : entity;
+  const [mvp, ccRes, tasksRes, feesRes, metricsRes, approvalsRes, expensesRes] = await Promise.all([
     fetchDashboardMvp({ entity: entityParam }),
     api.get("/command-center").catch(() => ({ data: null })),
     api.get("/tasks").catch(() => ({ data: [] })),
-    api.get("/fees/dashboard", {
-      params: entity === "pws" ? { entity_id: "pws" } : entity === "alpha" ? { entity_id: "alpha" } : {},
-    }).catch(() => ({ data: null })),
+    api.get("/fees/dashboard").catch(() => ({ data: null })),
     api.get("/dashboard/super-admin-metrics", { params: { entity: entityParam } }).catch(() => ({ data: null })),
     api.get("/approval-requests").catch(() => ({ data: [] })),
+    api.get("/expenses/approvals", { params: { status: "pending", ...(expenseEntity ? { entity_id: expenseEntity } : {}) } }).catch(() => ({ data: [] })),
   ]);
 
   const allTasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
   const entityTasks = filterTasksByEntity(allTasks, entity);
-  const openTasks = entityTasks
-    .filter((t: any) => OPEN_TASK_STATUSES.has(t.status || "open"))
-    .slice(0, 5);
+  const openTasks = entityTasks.filter((t: any) => OPEN_TASK_STATUSES.has(t.status || "open")) as TaskRecord[];
 
   const approvals = Array.isArray(approvalsRes.data) ? approvalsRes.data : [];
-  const pendingApprovals = filterApprovalsByEntity(approvals, entity).length;
+  const pendingApprovalRows = filterApprovalsByEntity(approvals, entity).map(normalizeApprovalRequest);
+  const expenseApprovals = (Array.isArray(expensesRes.data) ? expensesRes.data : []) as ExpenseEntry[];
 
   return {
     mvp: mvp,
     metrics: metricsRes.data || undefined,
     command: ccRes.data ? filterCommandCenter(ccRes.data, entity) : undefined,
     fees: feesRes.data ? aggregateFeesDashboard(feesRes.data, entity) : undefined,
+    financeByEntity: feesRes.data ? financeFromFeesDashboard(feesRes.data) : {
+      pws: emptyFinanceBucket(),
+      alpha: emptyFinanceBucket(),
+      combined: emptyFinanceBucket(),
+    },
     openTasks,
-    pendingApprovals,
+    pendingApprovals: pendingApprovalRows.length,
+    pendingApprovalRows,
+    expenseApprovals,
   };
 }
 

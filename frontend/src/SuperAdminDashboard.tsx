@@ -9,47 +9,36 @@ import {
   Pressable,
   Modal,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useAuth } from "./auth";
+import { useAuth, api } from "./auth";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
-import { formatDate , toISODate} from "./dateFormat";
+import { formatDate, toISODate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
 import {
   fetchSuperAdminDashboardBundle,
   type DashboardEntity,
-  type AttendanceKindStats,
+  type FinanceBucket,
 } from "./dashboardApi";
 import { orgDashboardSubtitle, isAccountsDashboardRole } from "./dashboardRouting";
 import { colors, radii, shadow } from "./theme";
+import { RadialGauge } from "./dashboard/RadialGauge";
+import { EnrollmentCapacityChart } from "./dashboard/EnrollmentCapacityChart";
+import { financialSummary } from "./approvalTypes";
+import type { ApprovalRequest } from "./approvalTypes";
+import { approveExpenseEntry, rejectExpenseEntry } from "./expenses/expenseApi";
+import { formatInr } from "./expenses/expenseFormat";
+import { isTaskOverdue, taskDueDate, type TaskRecord } from "./components/tasks/taskTypes";
 
 type Entity = DashboardEntity;
+type ApprovalTab = "waivers" | "onboardings" | "expenses";
+type TaskTab = "overdue" | "today" | "progress";
 
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
-}
-
-function kindTotals(stats?: AttendanceKindStats) {
-  const present = stats?.present ?? 0;
-  const absent = stats?.absent ?? 0;
-  const late = stats?.late ?? 0;
-  const leave = stats?.leave ?? 0;
-  const marked = present + absent + late + leave;
-  return { present, absent, late, leave, marked };
-}
-
-function pct(marked: number, roster: number) {
-  if (!roster) return 0;
-  return Math.min(100, Math.round((marked / roster) * 100));
-}
-
-function priorityStyle(priority?: string) {
-  const p = (priority || "low").toLowerCase();
-  if (p === "high" || p === "urgent") return { bg: colors.dangerSoft, fg: "#B91C1C", label: "High" };
-  if (p === "medium" || p === "med") return { bg: colors.warningSoft, fg: "#B45309", label: "Med" };
-  return { bg: colors.borderSoft, fg: colors.muted, label: "Low" };
 }
 
 function formatDueLabel(due?: string) {
@@ -60,38 +49,14 @@ function formatDueLabel(due?: string) {
   return formatDate(iso);
 }
 
-const PWS_FINANCE_CATEGORIES = new Set(["Day Students", "Boarding Students"]);
-const ALPHA_FINANCE_CATEGORIES = new Set(["Day Boarding", "Boarding", "Hostel", "Daily Players"]);
-
-function filterFinanceCategories(
-  rows: Array<{ category: string; expected: number; collected: number; gap: number }>,
-  entity: Entity,
-) {
-  if (entity === "pws") {
-    return rows.filter((row) => PWS_FINANCE_CATEGORIES.has(row.category));
-  }
-  if (entity === "alpha") {
-    return rows.filter((row) => ALPHA_FINANCE_CATEGORIES.has(row.category));
-  }
-  return rows;
+function recoveryTone(pct: number) {
+  if (pct >= 80) return { fg: "#047857", track: "#D1FAE5", fill: "#059669" };
+  if (pct >= 50) return { fg: "#B45309", track: "#FEF3C7", fill: "#D97706" };
+  return { fg: "#B91C1C", track: "#FEE2E2", fill: "#DC2626" };
 }
 
-const ZONE = {
-  finance: { bg: "#EFF6FF", border: "#BFDBFE", accent: "#2563EB" },
-  registry: { bg: "#F0FDF4", border: "#BBF7D0", accent: "#16A34A" },
-  people: { bg: "#FAF5FF", border: "#E9D5FF", accent: "#9333EA" },
-  workflow: { bg: "#FFFBEB", border: "#FDE68A", accent: "#D97706" },
-} as const;
-
-type ZoneKey = keyof typeof ZONE;
-
-function ZoneCard({ zone, style, children }: { zone: ZoneKey; style?: object; children: ReactNode }) {
-  const z = ZONE[zone];
-  return (
-    <View style={[s.zoneCard, { backgroundColor: z.bg, borderColor: z.border, borderLeftColor: z.accent }, style]}>
-      {children}
-    </View>
-  );
+function Card({ children, style }: { children: ReactNode; style?: object }) {
+  return <View style={[s.card, style]}>{children}</View>;
 }
 
 function CardHead({ icon, title, action }: { icon: keyof typeof Feather.glyphMap; title: string; action?: ReactNode }) {
@@ -106,21 +71,55 @@ function CardHead({ icon, title, action }: { icon: keyof typeof Feather.glyphMap
   );
 }
 
+function FinanceColumn({
+  title,
+  accent,
+  bucket,
+  emphasize,
+}: {
+  title: string;
+  accent: string;
+  bucket: FinanceBucket;
+  emphasize: boolean;
+}) {
+  const target = Math.max(bucket.collected + bucket.dues, 1);
+  const pct = Math.min(100, Math.round((bucket.collected / target) * 100));
+  const tone = recoveryTone(pct);
+  return (
+    <View style={[s.finCol, emphasize ? s.finColHot : s.finColDim, { borderTopColor: accent }]} testID={`finance-col-${title}`}>
+      <Text style={[s.finOrg, { color: accent }]}>{title}</Text>
+      <Text style={s.finCollected}>{inr(bucket.collected)}</Text>
+      <Text style={s.finMeta}>collected</Text>
+      <View style={s.finDueRow}>
+        <Text style={s.finDueLbl}>Dues</Text>
+        <Text style={s.finDueVal}>{inr(bucket.dues)}</Text>
+      </View>
+      <View style={[s.progressTrack, { backgroundColor: tone.track }]}>
+        <View style={[s.progressFill, { width: `${pct}%`, backgroundColor: tone.fill }]} />
+      </View>
+      <Text style={[s.progressCaption, { color: tone.fg }]}>{pct}% recovered</Text>
+      <Text style={s.finToday}>Today {inr(bucket.collectedToday)} · {bucket.txnToday} txn</Text>
+    </View>
+  );
+}
+
 type DashboardProps = {
-  /** When set, hides entity toggle and locks all metrics to this scope. */
   lockedEntity?: Entity;
 };
 
 export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {}) {
   const { user } = useAuth();
   const router = useRouter();
-  const { horizontalPadding, contentMaxWidth, isWide, height } = useBreakpoint();
+  const { horizontalPadding, isWide, height } = useBreakpoint();
   const [entity, setEntity] = useState<Entity>(lockedEntity || "both");
   const [bundle, setBundle] = useState<Awaited<ReturnType<typeof fetchSuperAdminDashboardBundle>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
+  const [approvalTab, setApprovalTab] = useState<ApprovalTab>("waivers");
+  const [taskTab, setTaskTab] = useState<TaskTab>("overdue");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const isSuperAdmin = user?.role === "super_admin";
   const isAccountsRole = isAccountsDashboardRole(user?.role);
@@ -151,121 +150,59 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
   const data = bundle?.mvp;
   const metrics = bundle?.metrics;
   const command = bundle?.command;
-  const fees = bundle?.fees;
+  const finance = bundle?.financeByEntity;
   const openTasks = bundle?.openTasks || [];
+  const pendingRows = bundle?.pendingApprovalRows || [];
+  const expenseRows = bundle?.expenseApprovals || [];
 
-  const finance = useMemo(() => {
-    const collectedToday = data?.fees_collected_today?.total ?? fees?.collected_today ?? 0;
-    const txn = data?.fees_collected_today?.transaction_count ?? 0;
-    const monthlyDues = metrics?.aging_dues?.current_month_dues ?? fees?.due_current_month ?? 0;
-    const historicalDues = metrics?.aging_dues?.overdue_past_month ?? fees?.due_past ?? data?.outstanding_invoices?.total ?? 0;
-    const expectedMonthly = metrics?.revenue?.expected_monthly ?? 0;
-    const collectedMonthly = metrics?.revenue?.collected_monthly ?? fees?.received_total ?? collectedToday;
-    const collectionGap = metrics?.revenue?.collection_gap ?? Math.max(expectedMonthly - collectedMonthly, 0);
-    const received = collectedMonthly;
-    const target = Math.max(expectedMonthly || received + monthlyDues + historicalDues, received, 1);
-    const progress = Math.min(100, Math.round((received / target) * 100));
-    const byCategory = filterFinanceCategories(metrics?.revenue?.by_category || [], effectiveEntity);
-    return {
-      collectedToday,
-      txn,
-      monthlyDues,
-      historicalDues,
-      expectedMonthly,
-      collectedMonthly,
-      collectionGap,
-      received,
-      target,
-      progress,
-      byCategory,
-    };
-  }, [data, fees, metrics, effectiveEntity]);
+  const waivers = pendingRows.filter((r) => ["fee_concession", "fee_edit", "refund"].includes(r.category));
+  const onboardings = pendingRows.filter((r) => r.category === "fee_override_admission");
+  const approvalCounts = {
+    waivers: waivers.length,
+    onboardings: onboardings.length,
+    expenses: expenseRows.length,
+  };
 
-  const attendanceRows = useMemo(() => {
-    const att = command?.attendance_by_kind || {};
-    const roster = command?.roster_counts || {};
-    const rows: Array<{
-      id: string;
-      label: string;
-      icon: keyof typeof Feather.glyphMap;
-      roster: number;
-      stats: ReturnType<typeof kindTotals>;
-      tint: string;
-      pending?: boolean;
-    }> = [];
+  const taskBuckets = useMemo(() => {
+    const today = toISODate();
+    const overdue: TaskRecord[] = [];
+    const dueToday: TaskRecord[] = [];
+    const inProgress: TaskRecord[] = [];
+    for (const task of openTasks) {
+      const due = taskDueDate(task)?.slice(0, 10);
+      if (isTaskOverdue(task)) overdue.push(task);
+      else if (due === today) dueToday.push(task);
+      else inProgress.push(task);
+    }
+    return { overdue, today: dueToday, progress: inProgress };
+  }, [openTasks]);
 
-    if (effectiveEntity !== "alpha") {
-      const s = kindTotals(att.student);
-      rows.push({
-        id: "students",
-        label: "Students",
-        icon: "book-open",
-        roster: roster.students || 0,
-        stats: s,
-        tint: colors.primary,
-        pending: (roster.students || 0) > 0 && s.marked === 0,
-      });
-    }
-    if (effectiveEntity !== "pws") {
-      const p = kindTotals(att.player);
-      rows.push({
-        id: "players",
-        label: "Players",
-        icon: "award",
-        roster: roster.players || 0,
-        stats: p,
-        tint: colors.accent,
-      });
-    }
-    if (effectiveEntity !== "alpha") {
-      const t = kindTotals(att.teacher);
-      rows.push({
-        id: "teachers",
-        label: "Teachers",
-        icon: "user-check",
-        roster: roster.teachers || 0,
-        stats: t,
-        tint: colors.success,
-      });
-    }
-    if (effectiveEntity !== "pws") {
-      const coachStats = metrics?.attendance_roles?.coaches;
-      const c = coachStats
-        ? kindTotals(coachStats)
-        : kindTotals(att.coach);
-      rows.push({
-        id: "coaches",
-        label: "Coaches",
-        icon: "flag",
-        roster: coachStats?.roster ?? roster.coaches ?? 0,
-        stats: c,
-        tint: "#EA580C",
-      });
-    }
-    const staffStats = metrics?.attendance_roles?.staff;
-    const staff = staffStats
-      ? kindTotals(staffStats)
-      : kindTotals(att.staff);
-    rows.push({
-      id: "staff",
-      label: "Support Staff",
-      icon: "briefcase",
-      roster: staffStats?.roster ?? roster.staff ?? 0,
-      stats: staff,
-      tint: colors.muted2,
-    });
-    return rows;
-  }, [command, effectiveEntity, metrics]);
+  const campusRows = (command?.attendance_by_campus || []).filter((row) => {
+    if (effectiveEntity === "pws") return (row.organization || "").toUpperCase() === "PWS";
+    if (effectiveEntity === "alpha") return (row.organization || "").toUpperCase() === "ALPHA";
+    return true;
+  });
+
+  const attendancePct = useMemo(() => {
+    if (command?.kpis?.attendance_pct_today != null) return command.kpis.attendance_pct_today;
+    const roster = campusRows.reduce((n, r) => n + (r.roster || 0), 0);
+    const checkins = campusRows.reduce((n, r) => n + (r.checkins || 0), 0);
+    if (!roster) return 0;
+    return Math.min(100, Math.round((checkins / roster) * 100));
+  }, [command, campusRows]);
+
+  const chartRows = (metrics?.campus_capacity || []).filter((row) => {
+    if (effectiveEntity === "pws") return row.entity === "PWS";
+    if (effectiveEntity === "alpha") return row.entity === "ALPHA";
+    return true;
+  });
+  const alerts = (metrics?.capacity_alerts || []).filter((row) => {
+    if (effectiveEntity === "pws") return row.entity === "PWS";
+    if (effectiveEntity === "alpha") return row.entity === "ALPHA";
+    return true;
+  });
 
   if (!user) return null;
-
-  const pendingApprovals = metrics?.pending_approvals ?? bundle?.pendingApprovals ?? data?.pending_approvals ?? 0;
-  const openTaskCount = metrics?.open_tasks ?? data?.open_tasks ?? openTasks.length;
-  const pwsEnrollmentRows = metrics?.pws_enrollment || [];
-  const alphaEnrollmentRows = metrics?.alpha_enrollment || [];
-  const showPwsEnrollment = effectiveEntity !== "alpha" && pwsEnrollmentRows.length > 0;
-  const showAlphaEnrollment = effectiveEntity !== "pws" && alphaEnrollmentRows.length > 0;
-  const pwsEnrollmentVisible = pwsEnrollmentRows.filter((row) => row.baseline > 0 || row.active > 0);
 
   const quickActions = [
     ...(!isAccountsRole
@@ -276,7 +213,35 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
     { label: "Reports", icon: "bar-chart-2" as const, href: "/reports" },
   ];
 
-  const categoryFinanceRows = finance.byCategory.filter((row) => row.expected > 0 || row.collected > 0);
+  const decideApproval = async (req: ApprovalRequest, action: "approve" | "reject") => {
+    setBusyId(req.id);
+    try {
+      await api.post(`/approval-requests/${req.id}/${action}`, {
+        note: action === "reject" ? "Rejected from dashboard" : undefined,
+      });
+      await load();
+    } catch (e) {
+      Alert.alert("Could not save decision", getApiError(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const decideExpense = async (id: string, action: "approve" | "reject") => {
+    setBusyId(id);
+    try {
+      if (action === "approve") await approveExpenseEntry(id);
+      else await rejectExpenseEntry(id, "Rejected from dashboard");
+      await load();
+    } catch (e) {
+      Alert.alert("Could not save decision", getApiError(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const shownApprovals = approvalTab === "waivers" ? waivers : approvalTab === "onboardings" ? onboardings : [];
+  const shownTasks = taskTab === "overdue" ? taskBuckets.overdue : taskTab === "today" ? taskBuckets.today : taskBuckets.progress;
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]} testID="super-admin-dashboard">
@@ -287,16 +252,15 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
           isWide && s.scrollWide,
           {
             paddingHorizontal: horizontalPadding,
-            maxWidth: contentMaxWidth,
-            alignSelf: contentMaxWidth ? "center" : undefined,
-            width: contentMaxWidth ? "100%" : undefined,
+            maxWidth: isWide ? 1280 : undefined,
+            alignSelf: "center",
+            width: "100%",
             minHeight: isWide ? height - 48 : undefined,
           },
         ]}
         showsVerticalScrollIndicator={!isWide}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        {/* Header */}
         <View style={[s.header, isWide && s.headerWide]}>
           <View style={{ flex: 1 }}>
             <Text style={s.overline}>Dashboard · {formatDate(data?.today)}</Text>
@@ -311,8 +275,8 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
 
           <View style={[s.headerActions, isWide && s.headerActionsWide]}>
             {isSuperAdmin && !lockedEntity && (
-              <View style={s.segment}>
-                {(["both", "pws", "alpha"] as Entity[]).map((v) => (
+              <View style={s.segment} testID="entity-toggle">
+                {(["pws", "alpha", "both"] as Entity[]).map((v) => (
                   <TouchableOpacity
                     key={v}
                     testID={`entity-${v}`}
@@ -346,281 +310,240 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
         ) : error ? (
           <ErrorState message={error} onRetry={load} />
         ) : (
-          <View style={[s.bento, isWide && s.bentoWide]}>
-            {/* Row 1 — Financial Command Center */}
-            <ZoneCard zone="finance" style={isWide ? s.financeZoneWide : undefined}>
-              <CardHead icon="dollar-sign" title="Financial Command Center" />
-
-              <View style={[s.financeTop, isWide && s.financeTopWide]}>
-                <View style={s.financeHero}>
-                  <View style={s.financeHeroTop}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.microLabel}>Collection vs exposure</Text>
-                      <Text style={s.heroValue}>
-                        {inr(finance.received)} <Text style={s.heroMuted}>collected</Text>
-                      </Text>
-                    </View>
-                    <Text style={s.targetLbl}>Exposure {inr(finance.target)}</Text>
-                  </View>
-                  <View style={s.progressTrack}>
-                    <View style={[s.progressFill, { width: `${finance.progress}%` }]} />
-                  </View>
-                  <Text style={s.progressCaption}>{finance.progress}% of fee exposure collected</Text>
-                </View>
-
-                <View style={[s.financeMetrics, isWide && s.financeMetricsWide]}>
-                  <View style={[s.miniCard, s.miniCardGreen]}>
-                    <Text style={s.microLabel}>Daily collection</Text>
-                    <Text style={s.miniValueGreen}>{inr(finance.collectedToday)}</Text>
-                    <Text style={s.miniHint}>{finance.txn} txn today</Text>
-                  </View>
-                  <View style={[s.miniCard, s.miniCardInset]}>
-                    <Text style={s.microLabel}>Monthly revenue</Text>
-                    <View style={s.dueRowCompact}>
-                      <Text style={s.dueLbl}>Expected</Text>
-                      <Text style={s.dueVal}>{inr(finance.expectedMonthly)}</Text>
-                    </View>
-                    <View style={s.dueRowCompact}>
-                      <Text style={s.dueLbl}>Collected</Text>
-                      <Text style={[s.dueVal, s.dueValGreen]}>{inr(finance.collectedMonthly)}</Text>
-                    </View>
-                    <View style={[s.dueRowCompact, s.dueRowLast]}>
-                      <Text style={s.dueLbl}>Gap</Text>
-                      <Text style={[s.dueVal, finance.collectionGap > 0 && s.dueValWarn]}>{inr(finance.collectionGap)}</Text>
-                    </View>
-                  </View>
-                  <View style={[s.miniCard, s.miniCardInset]}>
-                    <Text style={s.microLabel}>Aging dues</Text>
-                    <View style={s.dueRowCompact}>
-                      <Text style={s.dueLbl}>Current mo.</Text>
-                      <Text style={s.dueVal}>{inr(finance.monthlyDues)}</Text>
-                    </View>
-                    <View style={[s.dueRowCompact, s.dueRowLast]}>
-                      <View style={s.dueLblRow}>
-                        <Text style={s.dueLbl}>Overdue</Text>
-                        <Feather name="alert-triangle" size={10} color={colors.warning} />
-                      </View>
-                      <Text style={[s.dueVal, s.dueValWarn, s.dueValBold]}>{inr(finance.historicalDues)}</Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {categoryFinanceRows.length > 0 && (
-                <View style={s.duesTable}>
-                  <View style={[s.duesTableRow, s.duesTableHead]}>
-                    <Text style={[s.duesCell, s.duesCellCat, s.duesHeadTxt]}>Category</Text>
-                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Collected</Text>
-                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Expected</Text>
-                    <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Gap</Text>
-                  </View>
-                  {categoryFinanceRows.map((row, idx) => (
-                    <View
-                      key={row.category}
-                      style={[s.duesTableRow, idx < categoryFinanceRows.length - 1 && s.duesTableRowBorder]}
-                    >
-                      <Text style={[s.duesCell, s.duesCellCat, s.duesCatTxt]} numberOfLines={1}>{row.category}</Text>
-                      <Text style={[s.duesCell, s.duesCellNum, s.duesNumTxt]}>{inr(row.collected)}</Text>
-                      <Text style={[s.duesCell, s.duesCellNum, s.duesNumMuted]}>{inr(row.expected)}</Text>
-                      <Text style={[s.duesCell, s.duesCellNum, row.gap > 0 ? s.duesGapTxt : s.duesNumMuted]}>
-                        {inr(row.gap)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </ZoneCard>
-
-            {/* Row 2 — Enrollment + Attendance */}
-            <View style={[s.midRow, isWide && s.midRowWide]}>
-              <ZoneCard zone="registry" style={s.midCol}>
-                {(showPwsEnrollment || showAlphaEnrollment) && (
-                  <>
-                  <CardHead
-                    icon="layers"
-                    title="Enrollment vs capacity"
-                    action={
-                      <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
-                        <Text style={s.link}>Baselines →</Text>
-                      </TouchableOpacity>
-                    }
-                  />
-
-                  {showPwsEnrollment && (
-                    <View style={s.enrollmentBlock}>
-                      <Text style={s.enrollmentSectionTitle}>
-                        PWS · {metrics?.pws_total_active ?? 0}/{metrics?.pws_total_baseline ?? 0}
-                      </Text>
-                      <View style={s.enrollmentTable}>
-                        {pwsEnrollmentVisible.map((row) => (
-                          <View key={row.key} style={s.enrollmentTableRow}>
-                            <Text style={s.enrollmentCat} numberOfLines={1}>{row.label}</Text>
-                            <Text style={s.enrollmentCount}>
-                              {row.active}/{row.baseline || "—"}
-                              {row.baseline > 0 && row.gap > 0 ? ` · ${row.gap}` : ""}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  )}
-
-                  {showAlphaEnrollment && (
-                    <View style={[s.enrollmentBlock, showPwsEnrollment && { marginTop: 6 }]}>
-                      <Text style={s.enrollmentSectionTitle}>ALPHA · category × sport</Text>
-                      {isWide ? (
-                        <View style={s.duesTable}>
-                          <View style={[s.duesTableRow, s.duesTableHead]}>
-                            <Text style={[s.duesCell, s.duesCellCat, s.duesHeadTxt]}>Category</Text>
-                            <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Cricket</Text>
-                            <Text style={[s.duesCell, s.duesCellNum, s.duesHeadTxt]}>Football</Text>
-                          </View>
-                          {alphaEnrollmentRows.map((row, idx) => (
-                            <View key={row.key} style={[s.duesTableRow, idx < alphaEnrollmentRows.length - 1 && s.duesTableRowBorder]}>
-                              <Text style={[s.duesCell, s.duesCellCat, s.duesCatTxt]} numberOfLines={1}>{row.category}</Text>
-                              {(["cricket", "football"] as const).map((sport) => {
-                                const cell = row.sports?.[sport];
-                                return (
-                                  <Text key={sport} style={[s.duesCell, s.duesCellNum, s.enrollmentCellTxt]}>
-                                    {cell ? `${cell.active}/${cell.baseline || "—"}` : "—"}
-                                  </Text>
-                                );
-                              })}
-                            </View>
-                          ))}
-                        </View>
-                      ) : (
-                        <View style={s.enrollmentTable}>
-                          {alphaEnrollmentRows.map((row) => (
-                            <View key={row.key} style={s.enrollmentTableRow}>
-                              <Text style={s.enrollmentCat} numberOfLines={1}>{row.category}</Text>
-                              <Text style={s.enrollmentCount}>
-                                {(["cricket", "football"] as const)
-                                  .map((sport) => {
-                                    const cell = row.sports?.[sport];
-                                    if (!cell) return null;
-                                    return `${sport.slice(0, 1).toUpperCase()}${sport.slice(1, 3)} ${cell.active}/${cell.baseline || "—"}`;
-                                  })
-                                  .filter(Boolean)
-                                  .join(" · ")}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  )}
-                  </>
-                )}
-
-                {!showPwsEnrollment && !showAlphaEnrollment && (
-                  <CardHead icon="database" title="System registry" />
-                )}
-
-                <Pressable
-                  testID="tile-people"
-                  style={({ hovered }: any) => [
-                    s.headcountStrip,
-                    !(showPwsEnrollment || showAlphaEnrollment) && { marginTop: 0 },
-                    hovered && { opacity: 0.92 },
-                  ]}
-                  onPress={() => router.push("/directory")}
-                >
-                  <Feather name="users" size={14} color={ZONE.registry.accent} />
-                  <Text style={s.headcountStripTxt}>
-                    <Text style={s.headcountStripNum}>{data?.active_people ?? 0}</Text> active registry
+          <View style={s.stack}>
+            <View style={[s.finBanner, isWide && s.finBannerWide]} testID="finance-summary">
+              <FinanceColumn
+                title="PWS"
+                accent={colors.primary}
+                bucket={finance?.pws || emptyBucket()}
+                emphasize={effectiveEntity !== "alpha"}
+              />
+              <FinanceColumn
+                title="ALPHA"
+                accent={colors.accent}
+                bucket={finance?.alpha || emptyBucket()}
+                emphasize={effectiveEntity !== "pws"}
+              />
+              <View style={[s.finCol, s.finCombined, effectiveEntity === "both" && s.finColHot]} testID="finance-col-Combined">
+                <Text style={s.finOrg}>Combined</Text>
+                <Text style={s.finCollected}>{inr(finance?.combined.collected || 0)}</Text>
+                <Text style={s.finMeta}>total revenue collected</Text>
+                <View style={s.recoveryBox}>
+                  <Text style={s.recoveryLbl}>Recovery rate</Text>
+                  <Text style={[s.recoveryVal, { color: recoveryTone(finance?.combined.recoveryPct || 0).fg }]}>
+                    {finance?.combined.recoveryPct || 0}%
                   </Text>
-                  <Feather name="chevron-right" size={14} color={ZONE.registry.accent} />
-                </Pressable>
-              </ZoneCard>
-
-              <ZoneCard zone="people" style={s.midCol}>
-                <CardHead icon="users" title="Real-Time Attendance" />
-
-                <View style={s.attList}>
-                  {attendanceRows.map((row) => {
-                    const active = row.stats.present + row.stats.late;
-                    const width = pct(row.stats.marked, row.roster);
-                    return (
-                      <View key={row.id} style={[s.attRow, row.pending && s.attRowWarn]}>
-                        <View style={s.attRowMain}>
-                          <View style={s.attRowLeft}>
-                            <Feather name={row.icon} size={12} color={row.tint} />
-                            <Text style={s.attLabel}>{row.label}</Text>
-                          </View>
-                          <Text style={s.attRatio}>
-                            <Text style={{ color: row.tint, fontWeight: "800" }}>{active}</Text>/{row.roster}
-                          </Text>
-                        </View>
-                        <View style={s.progressTrackThin}>
-                          <View style={[s.progressFillThin, { width: `${width}%`, backgroundColor: row.tint }]} />
-                        </View>
-                        <Text style={s.attMeta} numberOfLines={1}>
-                          {row.stats.present}P · {row.stats.absent}A · {row.stats.late}L · {row.stats.leave}Lv
-                          {row.pending ? " · pending" : ""}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                  {attendanceRows.length === 0 && (
-                    <Text style={s.emptyHint}>No attendance data for this filter.</Text>
-                  )}
                 </View>
-              </ZoneCard>
+                <View style={[s.progressTrack, { backgroundColor: recoveryTone(finance?.combined.recoveryPct || 0).track }]}>
+                  <View
+                    style={[
+                      s.progressFill,
+                      {
+                        width: `${finance?.combined.recoveryPct || 0}%`,
+                        backgroundColor: recoveryTone(finance?.combined.recoveryPct || 0).fill,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={s.finToday}>Outstanding {inr(finance?.combined.dues || 0)}</Text>
+              </View>
             </View>
 
-            {/* Row 3 — Tasks & Approvals */}
-            <View style={[s.workflowRow, isWide && s.workflowRowWide]}>
-              <ZoneCard zone="workflow" style={s.workflowCol}>
+            <View style={[s.midRow, isWide && s.midRowWide]}>
+              <Card style={s.midCol}>
+                <CardHead icon="activity" title="Real-time attendance" />
+                <View style={[s.attHero, isWide && s.attHeroWide]}>
+                  <RadialGauge percent={attendancePct} label="Checked in" />
+                  <View style={s.campusList}>
+                    {campusRows.length === 0 ? (
+                      <Text style={s.emptyHint}>No campus check-ins yet today.</Text>
+                    ) : (
+                      campusRows.map((row) => {
+                        const pct = row.roster ? Math.round((row.checkins / row.roster) * 100) : 0;
+                        const alpha = (row.organization || "").toUpperCase() === "ALPHA";
+                        return (
+                          <View key={row.campus} style={s.campusRow} testID={`campus-att-${row.campus}`}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={s.campusName}>{row.campus}</Text>
+                              <Text style={s.campusMeta}>
+                                {row.checkins} live check-ins · roster {row.roster}
+                              </Text>
+                            </View>
+                            <View style={[s.campusPct, { backgroundColor: alpha ? colors.accentSoft : colors.primarySofter }]}>
+                              <Text style={[s.campusPctTxt, { color: alpha ? colors.accent : colors.primary }]}>{pct}%</Text>
+                            </View>
+                          </View>
+                        );
+                      })
+                    )}
+                  </View>
+                </View>
+              </Card>
+
+              <Card style={s.midCol}>
                 <CardHead
-                  icon="check-square"
-                  title={`Open tasks (${openTaskCount})`}
+                  icon="clock"
+                  title="Pending approvals"
                   action={
-                    <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}>
-                      <Text style={s.link}>All →</Text>
+                    <TouchableOpacity onPress={() => router.push("/admin/approvals")}>
+                      <Text style={s.link}>Queue →</Text>
                     </TouchableOpacity>
                   }
                 />
-                {openTasks.length === 0 ? (
-                  <Text style={s.emptyHintCompact}>No open tasks.</Text>
+                <View style={s.tabs}>
+                  {([
+                    ["waivers", "Fee Waivers", approvalCounts.waivers],
+                    ["onboardings", "New Onboardings", approvalCounts.onboardings],
+                    ["expenses", "Expense Requests", approvalCounts.expenses],
+                  ] as const).map(([key, label, count]) => (
+                    <TouchableOpacity
+                      key={key}
+                      testID={`approval-tab-${key}`}
+                      onPress={() => setApprovalTab(key)}
+                      style={[s.tab, approvalTab === key && s.tabActive]}
+                    >
+                      <Text style={[s.tabTxt, approvalTab === key && s.tabTxtActive]}>{label}</Text>
+                      <View style={[s.countPill, approvalTab === key && s.countPillActive]}>
+                        <Text style={[s.countTxt, approvalTab === key && s.countTxtActive]}>{count}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {approvalTab === "expenses" ? (
+                  expenseRows.length === 0 ? (
+                    <CaughtUp />
+                  ) : (
+                    expenseRows.slice(0, 6).map((row) => (
+                      <View key={row.id} style={s.queueCard} testID={`expense-card-${row.id}`}>
+                        <Text style={s.queueTitle} numberOfLines={1}>
+                          {row.sub_category || row.expense_head_name || "Expense"}
+                        </Text>
+                        <Text style={s.queueMeta}>
+                          {row.entity_id?.toUpperCase()} · {formatInr(row.amount)} · {row.created_by_name}
+                        </Text>
+                        <QueueActions
+                          id={row.id}
+                          busy={busyId === row.id}
+                          onApprove={() => decideExpense(row.id, "approve")}
+                          onReject={() => decideExpense(row.id, "reject")}
+                        />
+                      </View>
+                    ))
+                  )
+                ) : shownApprovals.length === 0 ? (
+                  <CaughtUp />
                 ) : (
-                  openTasks.slice(0, isWide ? 2 : 3).map((task, idx) => {
-                    const pr = priorityStyle(task.priority);
-                    return (
-                      <TouchableOpacity
-                        key={task.id}
-                        testID={`task-row-${task.id}`}
-                        style={[s.taskRowCompact, idx > 0 && s.taskRowBorder]}
-                        onPress={() => router.push(`/task/${task.id}` as any)}
-                      >
+                  shownApprovals.slice(0, 6).map((req) => (
+                    <View key={req.id} style={s.queueCard} testID={`approval-card-${req.id}`}>
+                      <Text style={s.queueTitle} numberOfLines={1}>{req.targetUserName}</Text>
+                      <Text style={s.queueMeta} numberOfLines={2}>
+                        {req.entity} · {financialSummary(req).slice(0, 2).join(" · ") || req.requestedBy}
+                      </Text>
+                      <QueueActions
+                        id={req.id}
+                        busy={busyId === req.id}
+                        onApprove={() => decideApproval(req, "approve")}
+                        onReject={() => decideApproval(req, "reject")}
+                      />
+                    </View>
+                  ))
+                )}
+              </Card>
+            </View>
+
+            <Card>
+              <CardHead
+                icon="check-square"
+                title="Task tracker"
+                action={
+                  <TouchableOpacity onPress={() => router.push("/(tabs)/tasks")}>
+                    <Text style={s.link}>All →</Text>
+                  </TouchableOpacity>
+                }
+              />
+              <View style={s.tabs}>
+                {([
+                  ["overdue", "Overdue", taskBuckets.overdue.length],
+                  ["today", "Due Today", taskBuckets.today.length],
+                  ["progress", "In Progress", taskBuckets.progress.length],
+                ] as const).map(([key, label, count]) => (
+                  <TouchableOpacity
+                    key={key}
+                    testID={`task-tab-${key}`}
+                    onPress={() => setTaskTab(key)}
+                    style={[s.tab, taskTab === key && s.tabActive, key === "overdue" && count > 0 && taskTab !== key && s.tabWarn]}
+                  >
+                    <Text style={[s.tabTxt, taskTab === key && s.tabTxtActive]}>{label}</Text>
+                    <View style={[s.countPill, taskTab === key && s.countPillActive, key === "overdue" && count > 0 && s.countPillWarn]}>
+                      <Text style={[s.countTxt, taskTab === key && s.countTxtActive]}>{count}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {shownTasks.length === 0 ? (
+                <Text style={s.emptyHint}>No tasks in this bucket.</Text>
+              ) : (
+                shownTasks.slice(0, 8).map((task) => {
+                  const overdue = isTaskOverdue(task);
+                  const campus = (task.entity_id || "both").toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      key={task.id}
+                      testID={`task-row-${task.id}`}
+                      style={s.taskRow}
+                      onPress={() => router.push(`/task/${task.id}` as any)}
+                    >
+                      <View style={{ flex: 1 }}>
                         <Text style={s.taskTitle} numberOfLines={1}>{task.title}</Text>
                         <View style={s.taskMeta}>
-                          <View style={[s.priorityPill, { backgroundColor: pr.bg }]}>
-                            <Text style={[s.priorityTxt, { color: pr.fg }]}>{pr.label}</Text>
+                          <Text style={s.taskAssignee}>{task.assignee_name || "Unassigned"}</Text>
+                          <View style={[s.campusTag, campus === "ALPHA" ? s.tagAlpha : s.tagPws]}>
+                            <Text style={[s.campusTagTxt, campus === "ALPHA" ? s.tagAlphaTxt : s.tagPwsTxt]}>{campus}</Text>
                           </View>
-                          <Text style={s.taskDue}>{formatDueLabel(task.due_date)}</Text>
                         </View>
-                      </TouchableOpacity>
-                    );
-                  })
-                )}
-              </ZoneCard>
+                      </View>
+                      <Text style={[s.taskDue, overdue && s.taskDueOverdue]}>{formatDueLabel(taskDueDate(task))}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </Card>
 
-              <ZoneCard zone="workflow" style={s.workflowCol}>
-                <CardHead icon="clock" title={`Pending approvals (${pendingApprovals})`} />
-                {pendingApprovals === 0 ? (
-                  <View style={s.caughtUpCompact}>
-                    <Feather name="check-circle" size={16} color={colors.success} />
-                    <Text style={s.caughtUpCompactTxt}>All caught up — no approvals pending</Text>
-                  </View>
-                ) : (
-                  <TouchableOpacity style={s.approvalCtaCompact} onPress={() => router.push("/admin/approvals")}>
-                    <Text style={s.approvalCtaTxt}>{pendingApprovals} need review</Text>
-                    <Feather name="arrow-right" size={14} color={colors.primary} />
+            <Card>
+              <CardHead
+                icon="layers"
+                title="Enrollment vs capacity"
+                action={
+                  <TouchableOpacity onPress={() => router.push("/admin/academy-structure")}>
+                    <Text style={s.link}>Baselines →</Text>
                   </TouchableOpacity>
-                )}
-              </ZoneCard>
-            </View>
+                }
+              />
+              {alerts.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.alertRow}>
+                  {alerts.map((row) => (
+                    <View key={row.key} style={[s.alertCard, (row.utilization_pct || 0) >= 100 && s.alertCardHot]} testID={`capacity-alert-${row.key}`}>
+                      <Text style={s.alertPct}>{row.utilization_pct}%</Text>
+                      <Text style={s.alertCampus} numberOfLines={1}>{row.campus}</Text>
+                      <Text style={s.alertSport} numberOfLines={2}>{row.sport} · {row.enrolled}/{row.capacity}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              <EnrollmentCapacityChart rows={chartRows} />
+              <Pressable
+                testID="tile-people"
+                style={({ hovered }: any) => [s.headcountStrip, hovered && { opacity: 0.92 }]}
+                onPress={() => router.push("/directory")}
+              >
+                <Feather name="users" size={14} color="#059669" />
+                <Text style={s.headcountStripTxt}>
+                  <Text style={s.headcountStripNum}>{data?.active_people ?? 0}</Text> active registry
+                </Text>
+                <Feather name="chevron-right" size={14} color="#059669" />
+              </Pressable>
+            </Card>
           </View>
         )}
       </ScrollView>
@@ -646,28 +569,64 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
   );
 }
 
+function emptyBucket(): FinanceBucket {
+  return { collected: 0, dues: 0, collectedToday: 0, txnToday: 0, recoveryPct: 0 };
+}
+
+function CaughtUp() {
+  return (
+    <View style={s.caughtUp}>
+      <Feather name="check-circle" size={16} color="#059669" />
+      <Text style={s.caughtUpTxt}>All caught up</Text>
+    </View>
+  );
+}
+
+function QueueActions({
+  id,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  id: string;
+  busy: boolean;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <View style={s.queueActions}>
+      <TouchableOpacity style={[s.btnApprove, busy && s.btnDisabled]} disabled={busy} onPress={onApprove} testID={`btn-approve-${id}`}>
+        <Text style={s.btnApproveTxt}>Approve</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[s.btnReject, busy && s.btnDisabled]} disabled={busy} onPress={onReject} testID={`btn-reject-${id}`}>
+        <Text style={s.btnRejectTxt}>Reject</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   scrollViewport: { flex: 1 },
   scroll: { padding: 16, paddingBottom: 100 },
-  scrollWide: { paddingVertical: 10, paddingBottom: 12, flexGrow: 1 },
-  header: { marginBottom: 12, gap: 10 },
+  scrollWide: { paddingVertical: 12, paddingBottom: 24, flexGrow: 1 },
+  header: { marginBottom: 14, gap: 10 },
   headerWide: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingBottom: 10,
-    marginBottom: 8,
+    paddingBottom: 12,
+    marginBottom: 14,
   },
   overline: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8, color: colors.hint, textTransform: "uppercase" },
   h1: { fontSize: 22, fontWeight: "800", color: colors.ink, marginTop: 2 },
-  h1Wide: { fontSize: 20, marginTop: 0 },
+  h1Wide: { fontSize: 22, marginTop: 0 },
   sub: { fontSize: 12, color: colors.muted2, marginTop: 2 },
   headerActions: { gap: 8 },
   headerActionsWide: { flexDirection: "row", alignItems: "center", gap: 10 },
-  segment: { flexDirection: "row", backgroundColor: "#CBD5E1", borderRadius: radii.md, padding: 3, ...shadow.sm },
+  segment: { flexDirection: "row", backgroundColor: "#E2E8F0", borderRadius: radii.md, padding: 3, ...shadow.sm },
   segmentBtn: { paddingHorizontal: 12, paddingVertical: Platform.OS === "web" ? 6 : 5, borderRadius: 6, minHeight: 32, justifyContent: "center" },
   segmentBtnActive: { backgroundColor: colors.surface, ...shadow.sm },
   segmentTxt: { fontSize: 12, fontWeight: "600", color: colors.muted },
@@ -693,157 +652,154 @@ const s = StyleSheet.create({
     alignSelf: "flex-start",
   },
   quickBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  bento: { gap: 10 },
-  bentoWide: { gap: 8, flex: 1 },
-  zoneCard: {
-    borderRadius: radii.md,
+  stack: { gap: 14 },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderLeftWidth: 3,
-    padding: 10,
-    ...shadow.sm,
+    borderColor: colors.border,
+    padding: 14,
+    ...shadow.md,
   },
-  financeZoneWide: { flexShrink: 0 },
-  financeTop: { gap: 8 },
-  financeTopWide: { flexDirection: "row", gap: 8, alignItems: "stretch" },
-  financeHero: {
-    backgroundColor: "rgba(255,255,255,0.65)",
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: "rgba(191,219,254,0.8)",
-    padding: 10,
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+  cardHeadRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  cardTitle: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5, color: colors.muted2, textTransform: "uppercase" },
+  link: { fontSize: 11, fontWeight: "700", color: colors.primary },
+  finBanner: { gap: 10 },
+  finBannerWide: { flexDirection: "row", alignItems: "stretch" },
+  finCol: {
     flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopWidth: 4,
+    padding: 14,
+    ...shadow.md,
   },
-  financeHeroTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginBottom: 6 },
-  financeMetrics: { gap: 6 },
-  financeMetricsWide: { flex: 1.4, flexDirection: "row", gap: 6 },
-  microLabel: { fontSize: 9, fontWeight: "700", color: colors.hint, textTransform: "uppercase", letterSpacing: 0.4 },
-  heroValue: { fontSize: 18, fontWeight: "800", color: colors.ink, marginTop: 2 },
-  heroMuted: { fontSize: 11, fontWeight: "500", color: colors.muted2 },
-  targetLbl: { fontSize: 10, fontWeight: "700", color: colors.hint, alignSelf: "flex-start" },
-  progressTrack: { height: 6, borderRadius: 99, backgroundColor: "rgba(148,163,184,0.35)", overflow: "hidden" },
-  progressFill: { height: 6, borderRadius: 99, backgroundColor: colors.success },
-  progressCaption: { marginTop: 4, fontSize: 10, fontWeight: "600", color: colors.success, textAlign: "right" },
-  miniCard: { flex: 1, minWidth: 100, borderRadius: radii.md, borderWidth: 1, borderColor: colors.borderSoft, padding: 8 },
-  miniCardGreen: { backgroundColor: "#ECFDF5" },
-  miniCardInset: { backgroundColor: "rgba(255,255,255,0.7)" },
-  miniValueGreen: { fontSize: 16, fontWeight: "800", color: "#047857", marginTop: 2 },
-  miniHint: { fontSize: 10, color: colors.muted2, marginTop: 2 },
-  dueRowCompact: {
+  finColHot: { opacity: 1 },
+  finColDim: { opacity: 0.72 },
+  finCombined: { borderTopColor: "#0F172A", backgroundColor: "#F8FAFC" },
+  finOrg: { fontSize: 11, fontWeight: "800", letterSpacing: 0.6, textTransform: "uppercase", color: colors.ink },
+  finCollected: { fontSize: 22, fontWeight: "800", color: "#047857", marginTop: 6 },
+  finMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
+  finDueRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 10, marginBottom: 8 },
+  finDueLbl: { fontSize: 12, fontWeight: "600", color: "#B45309" },
+  finDueVal: { fontSize: 13, fontWeight: "800", color: "#B45309" },
+  progressTrack: { height: 8, borderRadius: 99, overflow: "hidden" },
+  progressFill: { height: 8, borderRadius: 99 },
+  progressCaption: { marginTop: 6, fontSize: 11, fontWeight: "700", textAlign: "right" },
+  finToday: { marginTop: 6, fontSize: 10, color: colors.hint, fontWeight: "600" },
+  recoveryBox: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10, marginBottom: 8 },
+  recoveryLbl: { fontSize: 12, fontWeight: "600", color: colors.muted },
+  recoveryVal: { fontSize: 22, fontWeight: "800" },
+  midRow: { gap: 10 },
+  midRowWide: { flexDirection: "row", alignItems: "stretch" },
+  midCol: { flex: 1 },
+  attHero: { gap: 12, alignItems: "center" },
+  attHeroWide: { flexDirection: "row", alignItems: "flex-start" },
+  campusList: { flex: 1, width: "100%", gap: 8 },
+  campusRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 4,
-    paddingBottom: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
-  },
-  dueRowLast: { borderBottomWidth: 0, paddingBottom: 0 },
-  dueLblRow: { flexDirection: "row", alignItems: "center", gap: 3 },
-  dueLbl: { fontSize: 10, color: colors.muted2 },
-  dueVal: { fontSize: 11, fontWeight: "700", color: colors.ink2 },
-  dueValGreen: { color: "#047857" },
-  dueValWarn: { color: "#D97706" },
-  dueValBold: { fontWeight: "800" },
-  duesTable: {
-    marginTop: 8,
-    borderRadius: radii.sm,
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    backgroundColor: "rgba(255,255,255,0.55)",
-    overflow: "hidden",
+    backgroundColor: colors.surface2,
   },
-  duesTableHead: { backgroundColor: "rgba(241,245,249,0.9)" },
-  duesTableRow: { flexDirection: "row", alignItems: "center", paddingVertical: 4, paddingHorizontal: 8 },
-  duesTableRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
-  duesCell: { fontSize: 10 },
-  duesCellCat: { flex: 1.2, paddingRight: 6 },
-  duesCellNum: { flex: 0.8, textAlign: "right" },
-  duesHeadTxt: { fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.3 },
-  duesCatTxt: { fontWeight: "700", color: colors.ink2 },
-  duesNumTxt: { fontWeight: "700", color: colors.ink },
-  duesNumMuted: { fontWeight: "600", color: colors.muted2 },
-  duesGapTxt: { fontWeight: "800", color: "#D97706" },
-  midRow: { gap: 8 },
-  midRowWide: { flexDirection: "row", alignItems: "stretch", flex: 1, minHeight: 0 },
-  midCol: { flex: 1 },
-  midColFull: { flex: 1 },
-  enrollmentBlock: { gap: 4 },
-  enrollmentSectionTitle: { fontSize: 9, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.4 },
-  enrollmentTable: { gap: 2 },
-  enrollmentTableRow: {
+  campusName: { fontSize: 13, fontWeight: "800", color: colors.ink2 },
+  campusMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
+  campusPct: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.pill },
+  campusPctTxt: { fontSize: 12, fontWeight: "800" },
+  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
+  tab: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 3,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(148,163,184,0.2)",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  enrollmentCellTxt: { fontWeight: "700", color: colors.ink2 },
-  enrollmentCat: { flex: 1, fontSize: 11, fontWeight: "700", color: colors.ink2 },
-  enrollmentCount: { fontSize: 10, fontWeight: "600", color: colors.muted, textAlign: "right" },
+  tabActive: { backgroundColor: colors.primarySofter, borderColor: "#BFDBFE" },
+  tabWarn: { borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
+  tabTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },
+  tabTxtActive: { color: colors.primary },
+  countPill: { minWidth: 18, paddingHorizontal: 5, borderRadius: radii.pill, backgroundColor: "#E2E8F0" },
+  countPillActive: { backgroundColor: colors.primary },
+  countPillWarn: { backgroundColor: "#FECACA" },
+  countTxt: { fontSize: 10, fontWeight: "800", color: colors.muted, textAlign: "center" },
+  countTxtActive: { color: "#fff" },
+  queueCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    padding: 10,
+    marginBottom: 8,
+    backgroundColor: colors.surface2,
+  },
+  queueTitle: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
+  queueMeta: { fontSize: 11, color: colors.muted2, marginTop: 3, marginBottom: 8 },
+  queueActions: { flexDirection: "row", gap: 8 },
+  btnApprove: { backgroundColor: "#059669", paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.sm },
+  btnApproveTxt: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  btnReject: { backgroundColor: "#FEF2F2", paddingHorizontal: 12, paddingVertical: 7, borderRadius: radii.sm, borderWidth: 1, borderColor: "#FECACA" },
+  btnRejectTxt: { color: "#B91C1C", fontWeight: "800", fontSize: 12 },
+  btnDisabled: { opacity: 0.5 },
+  caughtUp: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 },
+  caughtUpTxt: { fontSize: 13, fontWeight: "600", color: colors.ink2 },
+  taskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
+  taskTitle: { fontSize: 13, fontWeight: "700", color: colors.ink2 },
+  taskMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+  taskAssignee: { fontSize: 11, color: colors.muted2, fontWeight: "600" },
+  campusTag: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill },
+  tagPws: { backgroundColor: colors.primarySofter },
+  tagAlpha: { backgroundColor: colors.accentSoft },
+  campusTagTxt: { fontSize: 9, fontWeight: "800", letterSpacing: 0.3 },
+  tagPwsTxt: { color: colors.primary },
+  tagAlphaTxt: { color: "#0369A1" },
+  taskDue: { fontSize: 11, fontWeight: "700", color: colors.muted2 },
+  taskDueOverdue: { color: "#B91C1C" },
+  alertRow: { gap: 8, marginBottom: 12 },
+  alertCard: {
+    width: 140,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    backgroundColor: "#FFFBEB",
+    padding: 10,
+  },
+  alertCardHot: { borderColor: "#FECACA", backgroundColor: "#FEF2F2" },
+  alertPct: { fontSize: 18, fontWeight: "800", color: "#B45309" },
+  alertCampus: { fontSize: 12, fontWeight: "700", color: colors.ink2, marginTop: 2 },
+  alertSport: { fontSize: 10, color: colors.muted, marginTop: 2 },
   headcountStrip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginTop: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: "#BBF7D0",
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: "#ECFDF5",
   },
-  headcountStripTxt: { flex: 1, fontSize: 11, fontWeight: "600", color: colors.ink2 },
-  headcountStripNum: { fontWeight: "800", color: "#16A34A", fontSize: 13 },
-  attList: { gap: 4 },
-  attRow: {
-    borderWidth: 1,
-    borderColor: "rgba(233,213,255,0.8)",
-    borderRadius: radii.sm,
-    paddingVertical: 5,
-    paddingHorizontal: 8,
-    gap: 3,
-    backgroundColor: "rgba(255,255,255,0.5)",
-  },
-  attRowWarn: { borderColor: "#FDE68A", backgroundColor: "#FFFBEB" },
-  attRowMain: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  attRowLeft: { flexDirection: "row", alignItems: "center", gap: 5 },
-  attLabel: { fontSize: 11, fontWeight: "700", color: colors.ink2 },
-  attRatio: { fontSize: 11, fontWeight: "600", color: colors.muted2 },
-  progressTrackThin: { height: 4, borderRadius: 99, backgroundColor: "rgba(148,163,184,0.3)", overflow: "hidden" },
-  progressFillThin: { height: 4, borderRadius: 99 },
-  attMeta: { fontSize: 9, color: colors.muted2 },
-  workflowRow: { gap: 8 },
-  workflowRowWide: { flexDirection: "row", flexShrink: 0 },
-  workflowCol: { flex: 1 },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 0 },
-  cardHeadRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  cardTitle: { fontSize: 10, fontWeight: "800", letterSpacing: 0.5, color: colors.muted2, textTransform: "uppercase" },
-  link: { fontSize: 11, fontWeight: "700", color: colors.primary },
-  taskRowCompact: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 5, gap: 8 },
-  taskRowBorder: { borderTopWidth: 1, borderTopColor: colors.borderSoft },
-  taskTitle: { flex: 1, fontSize: 12, fontWeight: "600", color: colors.ink2 },
-  taskMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  priorityPill: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: radii.pill },
-  priorityTxt: { fontSize: 9, fontWeight: "800" },
-  taskDue: { fontSize: 10, color: colors.hint },
-  caughtUpCompact: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
-  caughtUpCompactTxt: { fontSize: 11, fontWeight: "600", color: colors.ink2, flex: 1 },
-  approvalCtaCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.65)",
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: "#FDE68A",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  approvalCtaTxt: { fontSize: 12, fontWeight: "700", color: colors.primary },
-  emptyHint: { fontSize: 11, color: colors.hint, paddingVertical: 4 },
-  emptyHintCompact: { fontSize: 11, color: colors.hint, paddingVertical: 2 },
+  headcountStripTxt: { flex: 1, fontSize: 12, fontWeight: "600", color: colors.ink2 },
+  headcountStripNum: { fontWeight: "800", color: "#059669", fontSize: 14 },
+  emptyHint: { fontSize: 12, color: colors.hint, paddingVertical: 8 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.35)", justifyContent: "flex-start", alignItems: "flex-end", padding: 24, paddingTop: 80 },
   quickMenu: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, minWidth: 220, padding: 8, ...shadow.md },
   quickMenuTitle: { fontSize: 11, fontWeight: "800", color: colors.hint, textTransform: "uppercase", paddingHorizontal: 10, paddingVertical: 8 },
