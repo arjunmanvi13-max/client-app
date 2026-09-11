@@ -12,15 +12,23 @@ import { isCoachUser, resolveCoachDataScope } from "../../../src/coachAccess";
 import { UserRole } from "../../../src/rbac";
 import {
   CATALOG_BY_CODE,
+  LOGIN_TIER_CATALOG,
+  designationsForEntity,
   entityScopeLabel,
   filterUsersByType,
   isApprovedLoginUserType,
+  isLoginTierKind,
+  isPwsAdminDesignation,
   legacyRoleForUserType,
   resolveRouteParam,
+  type EntityScope,
   type LoginUserType,
   type PwsAdminDesignation,
-  isPwsAdminDesignation,
+  type StaffDesignation,
 } from "../../../src/userClassification";
+import { LoginTierUserFormFields } from "../../../src/LoginTierUserFormFields";
+import { ModulePermissionMatrix } from "../../../src/ModulePermissionMatrix";
+import { presetForDesignation, emptyModuleAccess, type ModuleAccessLevel } from "../../../src/designationAccess";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
 import { getManageListMeta, resolveManageId, resolveManageKind } from "../../../src/manageKinds";
 import {
@@ -178,8 +186,10 @@ export default function ManageEdit() {
   const navigation = useNavigation();
   const isNew = id === "new";
   const userTypeKind = isApprovedLoginUserType(kindParam) ? (kindParam as LoginUserType) : null;
+  const loginTierKind = isLoginTierKind(kindParam) ? kindParam : null;
+  const loginTierMeta = loginTierKind ? LOGIN_TIER_CATALOG.find((c) => c.code === loginTierKind) : null;
   const rosterMeta = getManageListMeta(kindParam);
-  const isLoginUserKind = !!userTypeKind;
+  const isLoginUserKind = !!userTypeKind || !!loginTierKind;
   const isLegacyUserKind = rosterMeta?.isUser === true;
   const isRosterPersonKind = rosterMeta?.isUser === false;
   const typeCatalog = userTypeKind ? CATALOG_BY_CODE[userTypeKind] : null;
@@ -188,20 +198,21 @@ export default function ManageEdit() {
   const isCoachUserForm = isCoachKind && isUserKind;
   const isTeacherKind = kindParam === "teacher";
   const isTeacherUserForm = isTeacherKind && isLegacyUserKind;
-  const isManageUsersLoginForm = isLoginUserKind && !isCoachUserForm;
-  const isStructuredUserForm = isCoachUserForm || isTeacherUserForm || isManageUsersLoginForm;
+  const isManageUsersLoginForm = isLoginUserKind && !isCoachUserForm && !loginTierKind;
+  const isLoginTierForm = !!loginTierKind && loginTierKind !== "super_admin";
+  const isStructuredUserForm = isCoachUserForm || isTeacherUserForm || isManageUsersLoginForm || isLoginTierForm;
   const isPwsAdminKind = userTypeKind === UserRole.PWS_ADMIN;
   const isPwsAdminUserForm = isManageUsersLoginForm && isPwsAdminKind;
   const isPlayerKind = kindParam === "player";
   const isStaffKind = kindParam === "staff";
   const isStudentKind = kindParam === "student";
-  const displayTitle = typeCatalog?.displayName || rosterMeta?.label || kindParam || "User";
+  const displayTitle = loginTierMeta?.displayName || typeCatalog?.displayName || rosterMeta?.label || kindParam || "User";
   const canConfirmLoginUserStatusChange = isLoginUserKind || isCoachUserForm;
 
   useEffect(() => {
     if (kindRaw === undefined) return;
-    if (!userTypeKind && !rosterMeta) router.replace("/manage");
-  }, [kindRaw, userTypeKind, rosterMeta, router]);
+    if (!userTypeKind && !loginTierKind && !rosterMeta) router.replace("/manage");
+  }, [kindRaw, userTypeKind, loginTierKind, rosterMeta, router]);
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
     || userHasPermission(user, Permission.MANAGE_ACCESS);
@@ -347,6 +358,11 @@ export default function ManageEdit() {
 
   // Coach centre/sport assignment (admin -> coach)
   const [designation, setDesignation] = useState<PwsAdminDesignation>("PRINCIPAL");
+  const [staffDesignation, setStaffDesignation] = useState<StaffDesignation>("PRINCIPAL");
+  const [loginEntity, setLoginEntity] = useState<EntityScope>("PWS");
+  const [moduleAccess, setModuleAccess] = useState<Record<string, ModuleAccessLevel>>(emptyModuleAccess());
+  const [permMatrixOpen, setPermMatrixOpen] = useState(false);
+  const [permPresetLocked, setPermPresetLocked] = useState(false);
   const [assignedCentres, setAssignedCentres] = useState<string[]>([]);
   const [assignedSports, setAssignedSports] = useState<string[]>(isNew && isCoachKind ? ["Cricket"] : []);
   const [loadedUserType, setLoadedUserType] = useState<string | null>(null);
@@ -409,6 +425,16 @@ export default function ManageEdit() {
   }, [coachSportLocked, coachCreatingPlayer, coachScope.assignedSport, coachScope.assignedCentres]);
 
   useEffect(() => {
+    if (!isLoginTierForm) return;
+    const allowed = designationsForEntity(loginEntity);
+    if (!allowed.includes(staffDesignation)) {
+      setStaffDesignation(allowed[0]);
+      return;
+    }
+    if (!permPresetLocked) setModuleAccess(presetForDesignation(staffDesignation));
+  }, [isLoginTierForm, loginEntity, staffDesignation, permPresetLocked]);
+
+  useEffect(() => {
     if (canLinkParents) {
       api.get("/users", { params: { role: "parent" } }).then((r) => setParentUsers(r.data || [])).catch(() => {});
     }
@@ -457,7 +483,9 @@ export default function ManageEdit() {
         if (isUserKind) {
           let u: any = null;
           try {
-            const params = userTypeKind
+            const params = loginTierKind
+              ? { login_tier: loginTierMeta?.tier, include_deactivated: true }
+              : userTypeKind
               ? { user_type: userTypeKind, include_deactivated: true }
               : { role: kindParam, include_deactivated: true };
             const { data: list } = await api.get("/users", { params });
@@ -512,6 +540,15 @@ export default function ManageEdit() {
             setLoadedUserType(u.user_type || kindParam || null);
             setLoadedDesignation(u.designation || null);
             if (isPwsAdminDesignation(u.designation)) setDesignation(u.designation);
+            if (u.designation) setStaffDesignation(u.designation as StaffDesignation);
+            if (u.organization === "ALPHA" || u.organization === "BOTH" || u.entity_scope === "ALPHA" || u.entity_scope === "BOTH") {
+              setLoginEntity((u.entity_scope || u.organization) as EntityScope);
+            } else {
+              setLoginEntity("PWS");
+            }
+            if (u.module_access) setModuleAccess({ ...emptyModuleAccess(), ...u.module_access });
+            else if (u.designation) setModuleAccess(presetForDesignation(u.designation));
+            setPermPresetLocked(true);
             if (isTeacherUserForm) {
               setMobile(u.mobile || u.phone || "");
               setAddress(u.address || "");
@@ -947,6 +984,43 @@ export default function ManageEdit() {
         setTeacherSections(sections);
         setTeacherSubjects(subjects);
         teacherAcademic = { grades, sections, subjects };
+      }
+
+      if (isLoginTierForm) {
+        if (isNew) {
+          const body: any = {
+            email: email.trim().toLowerCase(),
+            password,
+            name,
+            login_tier: loginTierMeta?.tier,
+            entity_scope: loginEntity,
+            designation: staffDesignation,
+            organization: loginEntity,
+            phone: phone || null,
+            module_access: moduleAccess,
+          };
+          if (staffDesignation === "COACH") {
+            body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : ["Cricket"];
+            body.assigned_sport = assignedSports[0] || "Cricket";
+          }
+          await api.post("/users", body);
+          router.replace(`/manage/${kindParam}`);
+          return;
+        }
+        const body: any = {
+          name,
+          phone: phone || null,
+          login_tier: loginTierMeta?.tier,
+          entity_scope: loginEntity,
+          designation: staffDesignation,
+          organization: loginEntity,
+          module_access: moduleAccess,
+        };
+        if (password) body.password = password;
+        if (canManageUsersRosters && email.trim()) body.email = email.trim().toLowerCase();
+        await api.patch(`/users/${id}`, body);
+        router.replace(`/manage/${kindParam}`);
+        return;
       }
 
       if (isLoginUserKind && userTypeKind) {
@@ -1407,7 +1481,7 @@ export default function ManageEdit() {
             />
           )}
 
-          {isManageUsersLoginForm && (
+          {(isManageUsersLoginForm || isLoginTierForm) && (
             <FormPageHeader
               breadcrumb="SYSTEM & SETTINGS · MANAGE USERS & ROSTERS"
               title={isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
@@ -1604,6 +1678,28 @@ export default function ManageEdit() {
             />
           )}
 
+          {isLoginTierForm && (
+            <LoginTierUserFormFields
+              readOnly={readOnly}
+              isNew={isNew}
+              displayTitle={displayTitle}
+              name={name}
+              setName={setName}
+              email={email}
+              setEmail={setEmail}
+              password={password}
+              setPassword={setPassword}
+              phone={phone}
+              setPhone={setPhone}
+              entity={loginEntity}
+              setEntity={(v) => { setPermPresetLocked(false); setLoginEntity(v); }}
+              designation={staffDesignation}
+              setDesignation={(v) => { setPermPresetLocked(false); setStaffDesignation(v); }}
+              moduleAccess={moduleAccess}
+              onOpenPermissions={() => setPermMatrixOpen(true)}
+            />
+          )}
+
           {isPwsAdminUserForm && (
             <PwsAdminUserFormFields
               readOnly={readOnly}
@@ -1649,7 +1745,7 @@ export default function ManageEdit() {
             />
           )}
 
-          {!isStudentKind && !isPlayerKind && !isCoachUserForm && !isTeacherUserForm && !isPwsAdminUserForm && (
+          {!isStudentKind && !isPlayerKind && !isCoachUserForm && !isTeacherUserForm && !isPwsAdminUserForm && !isLoginTierForm && (
             <>
               <Text style={s.label}>Name *</Text>
               <TextInput testID="field-name" value={name} onChangeText={setName} placeholder="Full name" placeholderTextColor="#94A3B8" style={s.input} />
@@ -1764,7 +1860,7 @@ export default function ManageEdit() {
             />
           )}
 
-          {isLoginUserKind && !isCoachUserForm && !isPwsAdminUserForm && (
+          {isLoginUserKind && !isCoachUserForm && !isPwsAdminUserForm && !isLoginTierForm && (
             <>
               <Text style={s.label}>User Type</Text>
               <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#F1F5F9", borderColor: "#E2E8F0" }]} testID="field-user-type">
@@ -1807,7 +1903,7 @@ export default function ManageEdit() {
             </>
           )}
 
-          {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && !isPwsAdminUserForm && (
+          {(isLoginUserKind || (isLegacyUserKind && !isTeacherUserForm)) && !isCoachUserForm && !isPwsAdminUserForm && !isLoginTierForm && (
             <>
               <Text style={s.label}>Email * (@prarambhika.com)</Text>
               <TextInput testID="field-email" value={email} onChangeText={setEmail} editable={isNew || canManageUsersRosters} autoCapitalize="none" keyboardType="email-address" placeholder="name@prarambhika.com" placeholderTextColor="#94A3B8" style={[s.input, !isNew && !canManageUsersRosters && { backgroundColor: "#F1F5F9", color: "#94A3B8" }]} />
@@ -2137,6 +2233,21 @@ export default function ManageEdit() {
         </View>
         )}
       </KeyboardAvoidingView>
+
+      <ModulePermissionMatrix
+        visible={permMatrixOpen}
+        title={`${displayTitle} module access`}
+        access={moduleAccess}
+        onChange={(moduleId, level) => {
+          setPermPresetLocked(true);
+          setModuleAccess((prev) => ({ ...prev, [moduleId]: level }));
+        }}
+        onClose={() => setPermMatrixOpen(false)}
+        onResetPreset={() => {
+          setPermPresetLocked(false);
+          setModuleAccess(presetForDesignation(staffDesignation));
+        }}
+      />
 
       <UnsavedChangesModal
         visible={unsavedModalVisible}

@@ -2,7 +2,7 @@
  * Category permissions UI expectations.
  * Run: npm run test:category-perms
  */
-import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE } from "./userClassification";
+import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, LOGIN_TIER_CATALOG } from "./userClassification";
 import { UserRole } from "./rbac";
 import {
   allLeafIds,
@@ -19,6 +19,8 @@ function assert(condition: boolean, message: string) {
 
 function run() {
   assert(APPROVED_LOGIN_USER_TYPES.length === 7, "Seven approved login user types");
+  assert(LOGIN_TIER_CATALOG.length === 3, "Three login-tier headings");
+  assert(LOGIN_TIER_CATALOG.map((t) => t.displayName).join(",") === "Super Admin,Admin,Staff", "Hub headings");
 
   const labels = APPROVED_LOGIN_USER_TYPES.map((t) => CATALOG_BY_CODE[t].displayName);
   assert(labels.includes("Super Admin"), "Includes Super Admin");

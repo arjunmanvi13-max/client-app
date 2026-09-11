@@ -7,11 +7,14 @@ import { api, useAuth, userHasPermission } from "../../../src/auth";
 import { BusinessEntity, Permission, UserRole } from "../../../src/rbac";
 import {
   CATALOG_BY_CODE,
+  LOGIN_TIER_CATALOG,
   designationLabel,
   entityScopeLabel,
   filterUsersByType,
   isApprovedLoginUserType,
+  isLoginTierKind,
   resolveRouteParam,
+  type LoginTierKind,
   type LoginUserType,
 } from "../../../src/userClassification";
 import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
@@ -180,6 +183,134 @@ function LoginUserManageList({ kind }: { kind: LoginUserType }) {
   );
 }
 
+/** Super Admin / Admin / Staff hub lists. */
+function LoginTierManageList({ kind }: { kind: LoginTierKind }) {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const catalog = LOGIN_TIER_CATALOG.find((c) => c.code === kind)!;
+  const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
+  const canShowAdd = kind !== "super_admin" && canManageUsersRosters;
+
+  const load = useCallback(async () => {
+    if (authLoading || !canManageUsersRosters) return;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { data } = await api.get("/users", { params: { login_tier: catalog.tier, include_deactivated: true } });
+      let rows = Array.isArray(data) ? data : [];
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        rows = rows.filter((u: any) =>
+          (u.name || "").toLowerCase().includes(q)
+          || (u.email || "").toLowerCase().includes(q)
+          || (u.mobile || "").includes(q)
+          || designationLabel(u.designation).toLowerCase().includes(q),
+        );
+      }
+      setItems(rows);
+    } catch (e: any) {
+      setItems([]);
+      setLoadError(e?.response?.data?.detail || "Failed to load accounts");
+    } finally { setLoading(false); }
+  }, [authLoading, catalog.tier, canManageUsersRosters, search]);
+
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color={catalog.tint} style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={s.safe} edges={["top"]}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} testID="list-back">
+          <Feather name="chevron-left" size={22} color="#0F172A" />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={s.h1}>{catalog.displayName}</Text>
+          <Text style={s.sub}>{items.length} account{items.length !== 1 ? "s" : ""}</Text>
+        </View>
+        {canShowAdd && (
+          <TouchableOpacity
+            testID={`add-${kind}`}
+            style={[s.addBtn, { backgroundColor: catalog.tint }]}
+            onPress={() => router.push(`/manage/${kind}/new`)}
+          >
+            <Feather name="plus" size={18} color="#fff" />
+            <Text style={s.addText}>Add</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={s.searchRow}>
+        <Feather name="search" size={16} color="#94A3B8" />
+        <TextInput
+          testID="users-search"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search name, email, or designation…"
+          placeholderTextColor="#94A3B8"
+          style={s.searchInput}
+          onSubmitEditing={load}
+        />
+      </View>
+
+      <ScrollView contentContainerStyle={s.scroll}>
+        {loadError ? (
+          <View style={s.empty}>
+            <Feather name="alert-circle" size={36} color="#EF4444" />
+            <Text style={s.emptyText}>{loadError}</Text>
+          </View>
+        ) : loading ? <ActivityIndicator color={catalog.tint} style={{ marginTop: 24 }} /> :
+         items.length === 0 ? (
+           <View style={s.empty}>
+             <Feather name="users" size={36} color="#94A3B8" />
+             <Text style={s.emptyText}>
+               {search.trim() ? `No matches for "${search.trim()}".` : `No ${catalog.displayName.toLowerCase()} accounts yet.`}
+             </Text>
+           </View>
+         ) : items.map((it) => {
+          const isDeact = it.status === "deactivated";
+          return (
+          <TouchableOpacity
+            key={it.id}
+            testID={`row-${it.id}`}
+            style={[s.row, isDeact && s.rowDeact]}
+            onPress={() => router.push(`/manage/${kind}/${it.id}`)}
+          >
+            <View style={[s.avatar, { backgroundColor: isDeact ? "#94A3B8" : catalog.tint }]}>
+              <Text style={s.avatarTxt}>
+                {(it.name || "?").split(" ").filter(Boolean).map((n: string) => n[0]).slice(0, 2).join("") || "?"}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <Text style={s.name}>{it.name}</Text>
+                {isDeact && <View style={s.deactPill}><Text style={s.deactPillTxt}>Inactive</Text></View>}
+              </View>
+              <Text style={s.metaTxt}>
+                {it.email || it.mobile || ""}
+                {it.designation ? ` · ${designationLabel(it.designation)}` : ""}
+                {it.organization ? ` · ${it.organization}` : ""}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
 export default function ManageList() {
   const { kind: kindRaw } = useLocalSearchParams<{ kind: string | string[] }>();
   const pathname = usePathname() || "";
@@ -192,6 +323,10 @@ export default function ManageList() {
         <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
+  }
+
+  if (isLoginTierKind(kindParam)) {
+    return <LoginTierManageList kind={kindParam} />;
   }
 
   if (isApprovedLoginUserType(kindParam)) {

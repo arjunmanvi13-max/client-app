@@ -11,7 +11,11 @@ import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
 function matchManageLoginUsers(pathname: string): boolean {
   if (pathname === "/manage") return true;
   const seg = pathname.match(/^\/manage\/([^/?]+)/)?.[1];
-  return !!seg && (APPROVED_LOGIN_USER_TYPES as string[]).includes(seg);
+  return !!seg && (
+    (APPROVED_LOGIN_USER_TYPES as string[]).includes(seg)
+    || seg === "login_admin"
+    || seg === "login_staff"
+  );
 }
 
 export type FeatherIcon = keyof typeof import("@expo/vector-icons").Feather.glyphMap;

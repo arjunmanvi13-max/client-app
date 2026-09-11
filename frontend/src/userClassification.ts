@@ -231,3 +231,87 @@ export function userDisplayLabel(user: {
   }
   return `${user.name || ""}${typeLabel ? ` — ${typeLabel}` : ""}`.trim();
 }
+
+export type LoginTier = "super_admin" | "admin" | "staff";
+export type LoginTierKind = "super_admin" | "login_admin" | "login_staff";
+export type EntityScope = "PWS" | "ALPHA" | "BOTH";
+
+export type StaffDesignation =
+  | PwsAdminDesignation
+  | "PWS_OFFICE_STAFF"
+  | "PWS_ACCOUNTS"
+  | "HOD"
+  | "TEACHER"
+  | "WARDEN"
+  | "COACH"
+  | "ALPHA_ACCOUNTS"
+  | "ALPHA_OFFICE_STAFF";
+
+export const PWS_DESIGNATIONS: StaffDesignation[] = [
+  "PRINCIPAL", "VICE_PRINCIPAL", "ACADEMIC_HEAD", "EVENT_COORDINATOR",
+  "PWS_OFFICE_STAFF", "PWS_ACCOUNTS", "HOD", "TEACHER",
+];
+export const ALPHA_DESIGNATIONS: StaffDesignation[] = [
+  "WARDEN", "COACH", "ALPHA_ACCOUNTS", "ALPHA_OFFICE_STAFF",
+];
+
+export const DESIGNATION_LABELS: Record<StaffDesignation, string> = {
+  PRINCIPAL: "Principal",
+  VICE_PRINCIPAL: "Vice Principal",
+  ACADEMIC_HEAD: "Academic Head",
+  EVENT_COORDINATOR: "Event Co-ordinator",
+  PWS_OFFICE_STAFF: "PWS Office Staff",
+  PWS_ACCOUNTS: "PWS Accounts",
+  HOD: "HOD",
+  TEACHER: "Teacher",
+  WARDEN: "Warden",
+  COACH: "Coaches",
+  ALPHA_ACCOUNTS: "ALPHA Accounts",
+  ALPHA_OFFICE_STAFF: "ALPHA Office Staff",
+};
+
+export type LoginTierCatalogItem = {
+  code: LoginTierKind;
+  tier: LoginTier;
+  displayName: string;
+  manageDescription: string;
+  icon: string;
+  tint: string;
+};
+
+export const LOGIN_TIER_CATALOG: LoginTierCatalogItem[] = [
+  {
+    code: "super_admin",
+    tier: "super_admin",
+    displayName: "Super Admin",
+    manageDescription: "Platform owner — all modules across PWS and ALPHA",
+    icon: "shield",
+    tint: "#0F172A",
+  },
+  {
+    code: "login_admin",
+    tier: "admin",
+    displayName: "Admin",
+    manageDescription: "Assign entity, designation, and module access",
+    icon: "briefcase",
+    tint: "#1B3B6F",
+  },
+  {
+    code: "login_staff",
+    tier: "staff",
+    displayName: "Staff",
+    manageDescription: "Assign entity, designation, and module access",
+    icon: "users",
+    tint: "#00A8E8",
+  },
+];
+
+export function isLoginTierKind(kind: string): kind is LoginTierKind {
+  return kind === "super_admin" || kind === "login_admin" || kind === "login_staff";
+}
+
+export function designationsForEntity(entity: EntityScope): StaffDesignation[] {
+  if (entity === "PWS") return [...PWS_DESIGNATIONS];
+  if (entity === "ALPHA") return [...ALPHA_DESIGNATIONS];
+  return [...PWS_DESIGNATIONS, ...ALPHA_DESIGNATIONS];
+}

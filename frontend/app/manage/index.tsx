@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useAuth, userHasPermission } from "../../src/auth";
 import { Permission } from "../../src/rbac";
-import { USER_TYPE_CATALOG } from "../../src/userClassification";
+import { LOGIN_TIER_CATALOG } from "../../src/userClassification";
 
 export default function ManageHub() {
   const router = useRouter();
@@ -21,11 +21,8 @@ export default function ManageHub() {
   if (!user) return null;
 
   const canManageUsersRosters = userHasPermission(user, Permission.MANAGE_USERS_ROSTERS);
-  const canAccessHub = canManageUsersRosters;
 
-  const visibleTypes = USER_TYPE_CATALOG.filter(() => canManageUsersRosters);
-
-  if (!canAccessHub) {
+  if (!canManageUsersRosters) {
     return (
       <SafeAreaView style={s.safe} edges={["top"]}>
         <View style={s.header}>
@@ -41,7 +38,7 @@ export default function ManageHub() {
           <Feather name="shield-off" size={36} color="#94A3B8" />
           <Text style={s.emptyTitle}>Access restricted</Text>
           <Text style={s.emptyText}>
-            Manage Users &amp; Rosters requires the Manage Users &amp; Rosters permission. To add teachers, use Directory → Teachers.
+            Manage Users &amp; Rosters requires the Manage Users &amp; Rosters permission.
           </Text>
         </View>
       </SafeAreaView>
@@ -56,14 +53,12 @@ export default function ManageHub() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.h1}>Manage Users & Rosters</Text>
-          <Text style={s.sub}>
-            {canManageUsersRosters ? "Approved login user types only" : "Access restricted"}
-          </Text>
+          <Text style={s.sub}>Super Admin, Admin, and Staff login accounts</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll}>
-        {visibleTypes.map((item) => (
+        {LOGIN_TIER_CATALOG.map((item) => (
           <TouchableOpacity
             key={item.code}
             testID={`manage-${item.code}`}
@@ -76,20 +71,17 @@ export default function ManageHub() {
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>{item.displayName}</Text>
               <Text style={s.cardDesc}>{item.manageDescription}</Text>
-              <Text style={s.scopeTag}>{item.entityScope === "BOTH" ? "PWS & ALPHA" : item.entityScope}</Text>
             </View>
             <Feather name="chevron-right" size={20} color="#94A3B8" />
           </TouchableOpacity>
         ))}
 
-        {canManageUsersRosters && (
-          <View style={s.note}>
-            <Feather name="info" size={14} color="#1E40AF" />
-            <Text style={s.noteText}>
-              Students, players, staff, and parents are roster/contact records — not login user types. Manage them from People in the sidebar.
-            </Text>
-          </View>
-        )}
+        <View style={s.note}>
+          <Feather name="info" size={14} color="#1E40AF" />
+          <Text style={s.noteText}>
+            Students, players, and non-login staff remain roster records under Directory. Admin and Staff logins get an entity, designation, and module access matrix.
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -106,7 +98,6 @@ const s = StyleSheet.create({
   iconBox: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   cardDesc: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  scopeTag: { fontSize: 10, fontWeight: "700", color: "#475569", marginTop: 6, textTransform: "uppercase" },
   empty: { padding: 40, alignItems: "center", gap: 8, flex: 1, justifyContent: "center" },
   emptyTitle: { fontSize: 16, fontWeight: "700", color: "#0F172A", marginTop: 6 },
   emptyText: { color: "#64748B", textAlign: "center", fontSize: 13, lineHeight: 18, paddingHorizontal: 24 },
