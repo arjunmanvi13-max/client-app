@@ -23,6 +23,8 @@ type FormMultiSelectProps = {
   required?: boolean;
   disabled?: boolean;
   testID?: string;
+  compact?: boolean;
+  enableSelectAll?: boolean;
   /** Notifies parent when the menu opens/closes so wrappers can raise stacking order. */
   onOpenChange?: (open: boolean) => void;
 };
@@ -41,6 +43,8 @@ export function FormMultiSelect({
   required,
   disabled,
   testID,
+  compact,
+  enableSelectAll,
   onOpenChange,
 }: FormMultiSelectProps) {
   const [open, setOpen] = useState(false);
@@ -93,7 +97,7 @@ export function FormMultiSelect({
 
   return (
     <View style={[s.field, open && s.fieldOpen]}>
-      <Text style={s.label}>
+      <Text style={[s.label, compact && s.labelCompact]}>
         {label}
         {required ? " *" : ""}
       </Text>
@@ -155,6 +159,23 @@ export function FormMultiSelect({
               )}
             </View>
             <ScrollView style={s.menuScroll} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {enableSelectAll && options.length > 0 && (
+                <Pressable
+                  testID={testID ? `${testID}-select-all` : undefined}
+                  onPress={() => {
+                    const all = options.map((o) => o.value);
+                    const selectedAll = all.length > 0 && all.every((v) => values.includes(v));
+                    onChange(selectedAll ? [] : all);
+                  }}
+                  style={s.menuItem}
+                >
+                  <Text style={[s.menuItemText, { fontWeight: "800" }]}>
+                    {options.length > 0 && options.every((o) => values.includes(o.value))
+                      ? "Clear all"
+                      : "Select all"}
+                  </Text>
+                </Pressable>
+              )}
               {filtered.length === 0 ? (
                 <Text style={s.empty}>No matches</Text>
               ) : (
@@ -191,6 +212,7 @@ const s = StyleSheet.create({
   field: { flex: 1, minWidth: 0 },
   fieldOpen: { zIndex: MENU_Z, elevation: MENU_Z },
   label: { fontSize: 13, fontWeight: "700", color: colors.muted, marginBottom: 8 },
+  labelCompact: { fontSize: 11, marginBottom: 6 },
   controlWrap: { position: "relative" },
   controlWrapOpen: { zIndex: MENU_Z, elevation: MENU_Z },
   trigger: {

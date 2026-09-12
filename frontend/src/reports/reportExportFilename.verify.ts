@@ -28,4 +28,9 @@ assert.equal(
   "Students_2026-09-06_Grade-Class-IX_Status-active.xlsx",
 );
 
+assert.equal(
+  reportExportFilename("fee-setup", { entity: "pws", status: "active" }, "csv", asOf),
+  "Fee-Setup_2026-09-06_Status-active.csv",
+);
+
 console.log("reportExportFilename.verify.ts OK");

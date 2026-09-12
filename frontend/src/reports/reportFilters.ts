@@ -12,6 +12,7 @@ export type ReportId =
   | "attendance-summary"
   | "attendance-detail"
   | "fee-collection"
+  | "fee-setup"
   | "outstanding-invoices"
   | "payment-receipts"
   | "marks-summary"
@@ -34,6 +35,7 @@ export type AdvancedFilterState = {
   designation: string;
   employmentType: string;
   shift: string;
+  personIds: string[];
 };
 
 export const DEFAULT_ADVANCED_FILTERS: AdvancedFilterState = {
@@ -50,6 +52,7 @@ export const DEFAULT_ADVANCED_FILTERS: AdvancedFilterState = {
   designation: "All",
   employmentType: "All",
   shift: "All",
+  personIds: [],
 };
 
 export type ReportFilterKey =
@@ -68,7 +71,8 @@ export type ReportFilterKey =
   | "designation"
   | "employmentType"
   | "shift"
-  | "customPeriod";
+  | "customPeriod"
+  | "feeSetupStatus";
 
 const PWS_ONLY_REPORTS = new Set<ReportId>(["students", "marks-summary", "report-card-status"]);
 
@@ -146,6 +150,12 @@ const PERSON_STATUS_OPTIONS: FormSelectOption[] = [
   ALL_OPTION("All statuses"),
   { value: "active", label: "Active" },
   { value: "deactivated", label: "Deactivated" },
+];
+
+const FEE_SETUP_STATUS_OPTIONS: FormSelectOption[] = [
+  ALL_OPTION("All"),
+  { value: "active", label: "Active" },
+  { value: "deactivated", label: "Inactive" },
 ];
 
 const DEPARTMENT_OPTIONS: FormSelectOption[] = [
@@ -292,6 +302,12 @@ const FILTER_FIELDS: Record<ReportFilterKey, Omit<ReportFilterField, "key">> = {
     options: [],
     testID: "custom-period",
   },
+  feeSetupStatus: {
+    label: "Status",
+    stateKey: "status",
+    options: FEE_SETUP_STATUS_OPTIONS,
+    testID: "fee-setup-status",
+  },
 };
 
 /** Strict report → filter mapping with entity-aware sections. */
@@ -328,6 +344,11 @@ export function resolveReportFilterKeys(reportId: ReportId, entity: EntityScope)
     case "outstanding-invoices":
     case "payment-receipts":
       return ["invoiceStatus", "paymentMethod"];
+    case "fee-setup": {
+      const keys: ReportFilterKey[] = ["feeSetupStatus"];
+      if (entity === "ALPHA") keys.unshift("centre");
+      return keys;
+    }
     default:
       return [];
   }
@@ -367,9 +388,10 @@ export function countActiveAdvancedFilters(
   for (const field of fields) {
     const value = filters[field.stateKey];
     if (field.key === "feeCollectionType" && value !== "monthly_collection") n++;
-    else if (value !== "All") n++;
+    else if (value !== "All" && field.stateKey !== "personIds") n++;
   }
-  if (periodKind === "custom" && (customFrom || customTo)) n++;
+  if (filters.personIds.length) n++;
+  if (reportId !== "fee-setup" && periodKind === "custom" && (customFrom || customTo)) n++;
   return n;
 }
 
@@ -384,7 +406,7 @@ export function activeFilterChips(
 ): { key: string; label: string; resetKey: keyof AdvancedFilterState | "period"; resetValue?: string }[] {
   const chips: { key: string; label: string; resetKey: keyof AdvancedFilterState | "period"; resetValue?: string }[] = [];
 
-  if (periodKind !== "this_month") {
+  if (periodKind !== "this_month" && reportId !== "fee-setup") {
     const periodText = periodKind === "custom"
       ? `Period: ${customFrom || "…"} – ${customTo || "…"}`
       : `Period: ${periodLabel(periodKind)}`;
@@ -407,7 +429,18 @@ export function activeFilterChips(
       resetKey: field.stateKey,
     });
   }
+  if (reportId === "fee-setup" && filters.personIds.length > 0) {
+    chips.push({
+      key: "personIds",
+      label: `${filters.personIds.length} people`,
+      resetKey: "personIds",
+    });
+  }
   return chips;
+}
+
+export function isFeeSetupReport(reportId: ReportId) {
+  return reportId === "fee-setup";
 }
 
 export function isPwsOnlyReportBlocked(reportId: ReportId, entity: EntityScope): boolean {

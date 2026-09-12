@@ -13,17 +13,21 @@ import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenSt
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
 import { classGroupPrefix, resolveSectionMatch } from "../src/academicStructure";
+import { FormSelect } from "../src/components/forms/FormSelect";
+import { FormMultiSelect } from "../src/components/forms/FormMultiSelect";
 import {
   type AdvancedFilterState,
+  type EntityScope,
   type ReportId,
   DEFAULT_ADVANCED_FILTERS,
   countActiveAdvancedFilters,
   activeFilterChips,
   isPwsOnlyReportBlocked,
+  isFeeSetupReport,
   resolveReportFilterFields,
 } from "../src/reports/reportFilters";
 import { reportExportFilename } from "../src/reports/reportExportFilename";
-import ReportAdvancedFiltersPanel from "../src/reports/ReportAdvancedFiltersPanel";
+import { FeeSetupReportView } from "../src/reports/FeeSetupReportView";
 
 type RunState = "idle" | "loading" | "ready" | "outdated" | "error";
 type PeriodKind = "this_month" | "last_month" | "ytd" | "this_quarter" | "this_year" | "custom";
@@ -35,6 +39,7 @@ const MVP_REPORTS = [
   { id: "attendance-summary", title: "Attendance Summary", category: "Attendance", icon: "bar-chart-2" },
   { id: "attendance-detail", title: "Attendance Detail", category: "Attendance", icon: "check-square" },
   { id: "fee-collection", title: "Fee Collection", category: "Finance", icon: "dollar-sign" },
+  { id: "fee-setup", title: "Fee Setup", category: "Finance", icon: "credit-card" },
   { id: "outstanding-invoices", title: "Outstanding Invoices", category: "Finance", icon: "alert-circle" },
   { id: "payment-receipts", title: "Payment Receipts", category: "Finance", icon: "file-text" },
   { id: "marks-summary", title: "Marks Summary", category: "Academic", icon: "book-open" },
@@ -121,6 +126,138 @@ function reportMeta(id: string) {
   return MVP_REPORTS.find((r) => r.id === id);
 }
 
+function ReportsFilterPanel({
+  reportId,
+  entity,
+  filters,
+  onFilterChange,
+  periodKind,
+  customFrom,
+  customTo,
+  setCustomFrom,
+  setCustomTo,
+  embedded,
+  onClose,
+}: {
+  reportId: ReportId;
+  entity: EntityScope;
+  filters: AdvancedFilterState;
+  onFilterChange: <K extends keyof AdvancedFilterState>(key: K, value: AdvancedFilterState[K]) => void;
+  periodKind: string;
+  customFrom: string;
+  customTo: string;
+  setCustomFrom: (v: string) => void;
+  setCustomTo: (v: string) => void;
+  embedded?: boolean;
+  onClose?: () => void;
+}) {
+  const { isMobile } = useBreakpoint();
+  const fields = useMemo(
+    () => resolveReportFilterFields(reportId, entity, filters),
+    [reportId, entity, filters],
+  );
+  const sectionTitle = useMemo(() => {
+    if (reportId === "fee-collection") return "Fee collection";
+    if (reportId === "staff") return "Staff";
+    if (reportId === "players") return "Players";
+    if (reportId === "students" || reportId === "marks-summary" || reportId === "report-card-status") return "Academic";
+    if (reportId === "attendance-summary" || reportId === "attendance-detail") return "Attendance";
+    if (reportId === "outstanding-invoices" || reportId === "payment-receipts") return "Finance";
+    return "Filters";
+  }, [reportId]);
+  const showCustomPeriod = periodKind === "custom" && !embedded;
+  const gridWide = !isMobile;
+
+  if (fields.length === 0 && !showCustomPeriod) {
+    return (
+      <View style={[s.advPanel, embedded && s.advPanelEmbedded]}>
+        {!embedded && (
+          <View style={s.advPanelHead}>
+            <Text style={s.advPanelTitle}>Advanced filters</Text>
+            {onClose ? (
+              <TouchableOpacity onPress={onClose} hitSlop={8}>
+                <Feather name="x" size={18} color={colors.muted2} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
+        <Text style={s.emptyHint}>No additional filters for this report.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[s.advPanel, embedded && s.advPanelEmbedded]}>
+      {!embedded && (
+        <View style={s.advPanelHead}>
+          <Text style={s.advPanelTitle}>Advanced filters</Text>
+          {onClose ? (
+            <TouchableOpacity onPress={onClose} hitSlop={8}>
+              <Feather name="x" size={18} color={colors.muted2} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+      {fields.length > 0 && (
+        <View style={s.filterSection}>
+          <Text style={s.filterGroupTitle}>{sectionTitle}</Text>
+          <View style={[s.filterGrid, gridWide && s.filterGridWide]}>
+            {fields.map((field) => {
+              const disabled = field.key === "sectionLetter" && filters.pwsClass === "All";
+              const value = filters[field.stateKey];
+              return (
+                <View key={field.key} style={[s.filterCell, gridWide && s.filterCellHalf]}>
+                  <FormSelect
+                    label={field.label}
+                    compact
+                    value={value}
+                    options={field.options}
+                    onChange={(v) => onFilterChange(field.stateKey, v as AdvancedFilterState[typeof field.stateKey])}
+                    disabled={disabled}
+                    testID={field.testID}
+                  />
+                  {field.hint && filters.feeCollectionType === "historical_due" && periodKind !== "custom" ? (
+                    <Text style={s.filterHint}>{field.hint}</Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
+      {showCustomPeriod && (
+        <View style={[s.filterSection, fields.length === 0 && s.filterSectionFirst]}>
+          <Text style={s.filterGroupTitle}>Custom period</Text>
+          <View style={[s.filterGrid, gridWide && s.filterGridWide]}>
+            <View style={[s.filterCell, gridWide && s.filterCellHalf]}>
+              <Text style={s.inlineLabel}>From</Text>
+              <TextInput
+                testID="date-from"
+                placeholder={`From ${DATE_PLACEHOLDER}`}
+                value={customFrom}
+                onChangeText={setCustomFrom}
+                style={s.dateInput}
+                placeholderTextColor={colors.hint}
+              />
+            </View>
+            <View style={[s.filterCell, gridWide && s.filterCellHalf]}>
+              <Text style={s.inlineLabel}>To</Text>
+              <TextInput
+                testID="date-to"
+                placeholder={`To ${DATE_PLACEHOLDER}`}
+                value={customTo}
+                onChangeText={setCustomTo}
+                style={s.dateInput}
+                placeholderTextColor={colors.hint}
+              />
+            </View>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function ReportsScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -141,6 +278,7 @@ export default function ReportsScreen() {
 
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(DEFAULT_ADVANCED_FILTERS);
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
+  const [peopleOptions, setPeopleOptions] = useState<{ value: string; label: string }[]>([]);
 
   const [reportPickerOpen, setReportPickerOpen] = useState(false);
   const [entityPickerOpen, setEntityPickerOpen] = useState(false);
@@ -172,10 +310,15 @@ export default function ReportsScreen() {
   }), [mvpReportId, institution, periodKind, customFrom, customTo, range.from, range.to, advancedFilters]);
 
   const entityOptions = useMemo(() => {
+    if (isFeeSetupReport(mvpReportId)) {
+      if (isSportsAdmin) return ["ALPHA"] as const;
+      if (canPickEntity) return ["PWS", "ALPHA"] as const;
+      return ["PWS"] as const;
+    }
     if (isSportsAdmin) return ["ALPHA"] as const;
     if (canPickEntity) return ["BOTH", "PWS", "ALPHA"] as const;
     return ["PWS"] as const;
-  }, [isSportsAdmin, canPickEntity]);
+  }, [isSportsAdmin, canPickEntity, mvpReportId]);
 
   const entityDropdownOptions = useMemo(
     () => entityOptions.map((v) => ({ value: v, label: entityLabel(v) })),
@@ -213,6 +356,12 @@ export default function ReportsScreen() {
     );
     const f = advancedFilters;
     const p: Record<string, string> = { entity: entityParam(institution) };
+    if (isFeeSetupReport(mvpReportId)) {
+      if (f.centre !== "All") p.centre = f.centre;
+      if (f.status !== "All") p.status = f.status;
+      if (f.personIds.length) p.person_ids = f.personIds.join(",");
+      return p;
+    }
     if (range.from) p.date_from = range.from;
     if (range.to) p.date_to = range.to;
     if (activeKeys.has("centre") && f.centre !== "All") p.centre = f.centre;
@@ -239,7 +388,7 @@ export default function ReportsScreen() {
   }, [institution, range, advancedFilters, sections, mvpReportId]);
 
   const runReport = useCallback(async () => {
-    if (customRangeIncomplete) {
+    if (!isFeeSetupReport(mvpReportId) && customRangeIncomplete) {
       setFiltersOpen(true);
       Alert.alert("Date range required", `Open Filters and enter From and To dates (${DATE_PLACEHOLDER}).`);
       return;
@@ -264,6 +413,12 @@ export default function ReportsScreen() {
       setLoading(false);
     }
   }, [mvpReportId, buildMvpParams, customRangeIncomplete, filterSnapshotKey]);
+
+  useEffect(() => {
+    if (!canAccess || !isFeeSetupReport(mvpReportId)) return;
+    const timer = setTimeout(() => { runReport(); }, 280);
+    return () => clearTimeout(timer);
+  }, [canAccess, mvpReportId, institution, advancedFilters.centre, advancedFilters.status, advancedFilters.personIds]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -292,7 +447,30 @@ export default function ReportsScreen() {
   }, [institution, mvpReportId]);
 
   useEffect(() => {
-    if (mvpReportId === "fee-collection") setFiltersOpen(true);
+    if (isFeeSetupReport(mvpReportId) && institution === "BOTH") {
+      setInstitution(isSportsAdmin ? "ALPHA" : "PWS");
+    }
+  }, [institution, mvpReportId, isSportsAdmin]);
+
+  useEffect(() => {
+    if (!canAccess || !isFeeSetupReport(mvpReportId)) {
+      setPeopleOptions([]);
+      return;
+    }
+    const params: Record<string, string> = { entity: entityParam(institution === "BOTH" ? "PWS" : institution) };
+    if (advancedFilters.centre !== "All") params.centre = advancedFilters.centre;
+    if (advancedFilters.status !== "All") params.status = advancedFilters.status;
+    api.get("/reports/fee-setup/people", { params }).then((r) => {
+      const rows = Array.isArray(r.data) ? r.data : [];
+      setPeopleOptions(rows.map((p: any) => ({
+        value: p.id,
+        label: p.unique_id ? `${p.name} · ${p.unique_id}` : p.name,
+      })));
+    }).catch(() => setPeopleOptions([]));
+  }, [canAccess, mvpReportId, institution, advancedFilters.centre, advancedFilters.status]);
+
+  useEffect(() => {
+    if (mvpReportId === "fee-collection" || isFeeSetupReport(mvpReportId)) setFiltersOpen(true);
   }, [mvpReportId]);
 
   useEffect(() => {
@@ -326,6 +504,11 @@ export default function ReportsScreen() {
       setCustomTo("");
       return;
     }
+    if (chip.resetKey === "personIds") {
+      setAdvancedFilters((prev) => ({ ...prev, personIds: [] }));
+      if (runState === "ready") setRunState("outdated");
+      return;
+    }
     onFilterChange(chip.resetKey, (chip.resetValue || "All") as AdvancedFilterState[typeof chip.resetKey]);
   };
 
@@ -335,7 +518,7 @@ export default function ReportsScreen() {
     return MVP_REPORTS.filter((r) => r.title.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
   }, [reportSearch]);
 
-  const doExport = async (format: "xlsx" | "pdf") => {
+  const doExport = async (format: "xlsx" | "pdf" | "csv") => {
     if (!canExport || !exportParams) return;
     try {
       if (Platform.OS !== "web") {
@@ -346,7 +529,7 @@ export default function ReportsScreen() {
         params: { format, ...exportParams },
         responseType: "blob",
       });
-      const ext = format === "pdf" ? "pdf" : "xlsx";
+      const ext = format === "pdf" ? "pdf" : format === "csv" ? "csv" : "xlsx";
       const filename = reportExportFilename(mvpReportId, exportParams, ext);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(r.data);
@@ -421,20 +604,21 @@ export default function ReportsScreen() {
             )}
             <Text style={s.overline}>ANALYTICS · REPORTS</Text>
             <Text style={s.h1}>Reports & Exports</Text>
-            <Text style={s.helper}>Choose a report, set the period, then export.</Text>
+            <Text style={s.helper}>Choose a report, set filters, then export.</Text>
           </View>
 
           <View style={s.headerActions}>
             {!isMobile && (
               <View style={s.exportRow}>
                 <ExportBtn testID="reports-export-xlsx" label="Excel" icon="download" onPress={() => doExport("xlsx")} disabled={!canExport} variant="muted" />
+                <ExportBtn testID="reports-export-csv" label="CSV" icon="file-text" onPress={() => doExport("csv")} disabled={!canExport} variant="muted" />
                 <ExportBtn testID="reports-export-pdf" label="PDF" icon="file" onPress={() => doExport("pdf")} disabled={!canExport} variant="dark" />
                 <ExportBtn testID="reports-print" label="Print" icon="printer" onPress={doPrint} disabled={!canExport} variant="muted" />
               </View>
             )}
             <TouchableOpacity
               testID="run-report"
-              style={[s.runBtn, (loading || customRangeIncomplete) && s.runBtnDisabled]}
+              style={[s.runBtn, (loading || (!isFeeSetupReport(mvpReportId) && customRangeIncomplete)) && s.runBtnDisabled]}
               onPress={runReport}
               disabled={loading}
             >
@@ -482,6 +666,7 @@ export default function ReportsScreen() {
             </TouchableOpacity>
           </SetupField>
 
+          {!isFeeSetupReport(mvpReportId) && (
           <SetupField label="Period" flex={1}>
             <TouchableOpacity testID="period-picker" style={s.selectBtn} onPress={() => setPeriodPickerOpen(true)}>
               <Feather name="calendar" size={15} color={colors.primary} />
@@ -489,6 +674,7 @@ export default function ReportsScreen() {
               <Feather name="chevron-down" size={16} color={colors.muted2} />
             </TouchableOpacity>
           </SetupField>
+          )}
 
           <SetupField label=" " flex={0.8}>
             <TouchableOpacity testID="more-filters" style={s.filtersBtn} onPress={() => setFiltersOpen((o) => !o)}>
@@ -498,7 +684,7 @@ export default function ReportsScreen() {
           </SetupField>
           </View>
 
-          {periodKind === "custom" && (
+          {periodKind === "custom" && !isFeeSetupReport(mvpReportId) && (
             <View style={s.inlineDateRow}>
               <TextInput testID="date-from-inline" placeholder={`From ${DATE_PLACEHOLDER}`} value={customFrom} onChangeText={setCustomFrom} style={s.dateInput} placeholderTextColor={colors.hint} />
               <TextInput testID="date-to-inline" placeholder={`To ${DATE_PLACEHOLDER}`} value={customTo} onChangeText={setCustomTo} style={s.dateInput} placeholderTextColor={colors.hint} />
@@ -508,18 +694,38 @@ export default function ReportsScreen() {
 
         {/* Advanced filters — desktop inline panel */}
         {filtersOpen && !isMobile && (
-          <ReportAdvancedFiltersPanel
-            reportId={mvpReportId}
-            entity={institution}
-            filters={advancedFilters}
-            onFilterChange={onFilterChange}
-            periodKind={periodKind}
-            customFrom={customFrom}
-            customTo={customTo}
-            setCustomFrom={setCustomFrom}
-            setCustomTo={setCustomTo}
-            onClose={() => setFiltersOpen(false)}
-          />
+          <View>
+            <ReportsFilterPanel
+              reportId={mvpReportId}
+              entity={institution}
+              filters={advancedFilters}
+              onFilterChange={onFilterChange}
+              periodKind={periodKind}
+              customFrom={customFrom}
+              customTo={customTo}
+              setCustomFrom={setCustomFrom}
+              setCustomTo={setCustomTo}
+              onClose={() => setFiltersOpen(false)}
+            />
+            {isFeeSetupReport(mvpReportId) && (
+              <View style={{ marginTop: -8, marginBottom: spacing.md }}>
+                <FormMultiSelect
+                  label={institution === "PWS" ? "Students" : "Players"}
+                  compact
+                  enableSelectAll
+                  testID="fee-setup-people"
+                  values={advancedFilters.personIds}
+                  options={peopleOptions}
+                  placeholder="Select all"
+                  searchPlaceholder="Search names…"
+                  onChange={(ids) => {
+                    setAdvancedFilters((prev) => ({ ...prev, personIds: ids }));
+                    if (runState === "ready") setRunState("outdated");
+                  }}
+                />
+              </View>
+            )}
+          </View>
         )}
 
         {/* Active filter chips */}
@@ -580,7 +786,7 @@ export default function ReportsScreen() {
             ) : runState === "error" ? (
               <ErrorState message={error} onRetry={runReport} compact />
             ) : (
-              <MvpReportView data={data} />
+              <MvpReportView data={data} reportId={mvpReportId} />
             )}
           </View>
         )}
@@ -666,7 +872,7 @@ export default function ReportsScreen() {
         title="Advanced filters"
         sheet
       >
-        <ReportAdvancedFiltersPanel
+        <ReportsFilterPanel
           reportId={mvpReportId}
           entity={institution}
           filters={advancedFilters}
@@ -678,6 +884,22 @@ export default function ReportsScreen() {
           setCustomTo={setCustomTo}
           embedded
         />
+        {isFeeSetupReport(mvpReportId) && (
+          <FormMultiSelect
+            label={institution === "PWS" ? "Students" : "Players"}
+            compact
+            enableSelectAll
+            testID="fee-setup-people-mobile"
+            values={advancedFilters.personIds}
+            options={peopleOptions}
+            placeholder="Select all"
+            searchPlaceholder="Search names…"
+            onChange={(ids) => {
+              setAdvancedFilters((prev) => ({ ...prev, personIds: ids }));
+              if (runState === "ready") setRunState("outdated");
+            }}
+          />
+        )}
       </PickerModal>
 
       {/* Mobile export menu */}
@@ -685,6 +907,10 @@ export default function ReportsScreen() {
         <TouchableOpacity style={s.pickerRow} onPress={() => doExport("xlsx")} disabled={!canExport}>
           <Feather name="download" size={16} color={colors.primary} />
           <Text style={s.pickerRowTxt}>Download Excel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.pickerRow} onPress={() => doExport("csv")} disabled={!canExport}>
+          <Feather name="file-text" size={16} color={colors.primary} />
+          <Text style={s.pickerRowTxt}>Download CSV</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.pickerRow} onPress={() => doExport("pdf")} disabled={!canExport}>
           <Feather name="file" size={16} color={colors.primary} />
@@ -769,8 +995,9 @@ function PickerModal({ visible, onClose, title, children, sheet }: {
   );
 }
 
-function MvpReportView({ data }: { data: any }) {
+function MvpReportView({ data, reportId }: { data: any; reportId?: ReportId }) {
   if (!data) return <EmptyState icon="bar-chart-2" title="No report loaded" message="Select a report and period to preview results here." />;
+  if (reportId === "fee-setup") return <FeeSetupReportView data={data} />;
   const cols: string[] = data.columns || [];
   const rows: any[] = data.rows || [];
   const keys: string[] = data.row_keys || (rows[0] ? Object.keys(rows[0]) : []);
@@ -924,6 +1151,14 @@ const s = StyleSheet.create({
   advPanelEmbedded: { borderWidth: 0, marginBottom: 0, padding: 0, shadowOpacity: 0 },
   advPanelHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm },
   advPanelTitle: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
+  filterSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
+  filterSectionFirst: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
+  filterGrid: { gap: spacing.md },
+  filterGridWide: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" },
+  filterCell: { width: "100%" },
+  filterCellHalf: { flex: 1, minWidth: 220, maxWidth: "50%" as any },
+  inlineLabel: { fontSize: 11, fontWeight: "700", color: "#64748B", marginBottom: 6 },
+  emptyHint: { fontSize: 13, color: colors.muted2, lineHeight: 18 },
   filterGroup: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
   filterGroupFirst: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
   filterGroupTitle: { fontSize: 11, fontWeight: "800", color: colors.primary, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: spacing.sm },

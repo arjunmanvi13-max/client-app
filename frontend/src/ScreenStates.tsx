@@ -150,7 +150,7 @@ export function FormLabel({ children, label, required }: { children?: string; la
 function columnKind(label: string, index: number): "name" | "first" | "money" | "status" | "center" {
   const c = (label || "").toLowerCase();
   if (c === "status") return "status";
-  if (/amount|total|paid|balance|collected/.test(c)) return "money";
+  if (/amount|total|paid|balance|collected|fee|payable|discount/.test(c)) return "money";
   if (index === 0) return "first";
   if (index === 1 || c === "name") return "name";
   return "center";

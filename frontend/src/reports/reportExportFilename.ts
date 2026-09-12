@@ -7,6 +7,7 @@ export const REPORT_FILE_LABELS: Record<string, string> = {
   "attendance-summary": "Attendance-Summary",
   "attendance-detail": "Attendance-Detail",
   "fee-collection": "Fee-Collection",
+  "fee-setup": "Fee-Setup",
   "outstanding-invoices": "Outstanding-Invoices",
   "payment-receipts": "Payment-Receipts",
   "marks-summary": "Marks-Summary",
@@ -36,14 +37,14 @@ function token(value: string): string {
 export function reportExportFilename(
   reportId: string,
   params: Record<string, string> | null | undefined,
-  ext: "pdf" | "xlsx",
+  ext: "pdf" | "xlsx" | "csv",
   asOf = new Date(),
 ): string {
   const kind = REPORT_FILE_LABELS[reportId] || token(reportId) || "Report";
   const day = `${asOf.getFullYear()}-${String(asOf.getMonth() + 1).padStart(2, "0")}-${String(asOf.getDate()).padStart(2, "0")}`;
   const bits = [kind, day];
   const skipDates = new Set([
-    "students", "players", "staff", "outstanding-invoices", "marks-summary", "report-card-status",
+    "students", "players", "staff", "outstanding-invoices", "marks-summary", "report-card-status", "fee-setup",
   ]);
   for (const { key, label } of FILTER_FILE_PARTS) {
     if (skipDates.has(reportId) && (key === "date_from" || key === "date_to")) continue;
