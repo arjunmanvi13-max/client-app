@@ -2,7 +2,7 @@ import type { FormSelectOption } from "../components/forms/FormSelect";
 import {
   PWS_CLASS_OPTIONS,
   SECTION_LETTERS,
-} from "../StudentRosterFormFields";
+} from "../academicStructure";
 import { PWS_STUDENT_TYPES } from "../pwsFeeStructure";
 
 export type ReportId =

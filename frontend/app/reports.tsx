@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Platform, Alert, Modal, Pressable, useWindowDimensions,
+  ActivityIndicator, Platform, Alert, Modal, Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -12,10 +12,7 @@ import { useBreakpoint } from "../src/useBreakpoint";
 import { DataTable, EmptyState, LoadingState, ErrorState } from "../src/ScreenStates";
 import { formatDate, formatDateTime, formatMonth, DATE_PLACEHOLDER, parseToISO } from "../src/dateFormat";
 import { colors, radii, spacing } from "../src/theme";
-import {
-  classGroupPrefix,
-  resolveSectionMatch,
-} from "../src/StudentRosterFormFields";
+import { classGroupPrefix, resolveSectionMatch } from "../src/academicStructure";
 import {
   type AdvancedFilterState,
   type ReportId,
@@ -26,6 +23,7 @@ import {
   resolveReportFilterFields,
 } from "../src/reports/reportFilters";
 import { reportExportFilename } from "../src/reports/reportExportFilename";
+import ReportAdvancedFiltersPanel from "../src/reports/ReportAdvancedFiltersPanel";
 
 type RunState = "idle" | "loading" | "ready" | "outdated" | "error";
 type PeriodKind = "this_month" | "last_month" | "ytd" | "this_quarter" | "this_year" | "custom";
@@ -63,6 +61,14 @@ const PERIOD_OPTIONS: { key: PeriodKind; label: string }[] = [
   { key: "this_year", label: "This year" },
   { key: "custom", label: "Custom range" },
 ];
+
+const REPORT_PRINT_CSS = `@media print {
+  @page { size: landscape; margin: 12mm; }
+  body * { visibility: hidden; }
+  #report-print-area, #report-print-area * { visibility: visible; }
+  #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 8px; background: #fff; }
+  .no-print { display: none !important; }
+}`;
 
 function inr(n: number) { return `₹${(n || 0).toLocaleString("en-IN")}`; }
 function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -118,8 +124,7 @@ function reportMeta(id: string) {
 export default function ReportsScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { isDesktop, isMobile, horizontalPadding, contentMaxWidth } = useBreakpoint();
-  const { width } = useWindowDimensions();
+  const { isDesktop, isMobile, horizontalPadding, contentMaxWidth, width } = useBreakpoint();
   const printRef = useRef<View>(null);
 
   const canAccess = userHasPermission(user, Permission.RUN_PWS_REPORTS, BusinessEntity.PWS)
@@ -261,6 +266,15 @@ export default function ReportsScreen() {
   }, [mvpReportId, buildMvpParams, customRangeIncomplete, filterSnapshotKey]);
 
   useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const el = document.createElement("style");
+    el.setAttribute("data-reports-print", "true");
+    el.textContent = REPORT_PRINT_CSS;
+    document.head.appendChild(el);
+    return () => { el.remove(); };
+  }, []);
+
+  useEffect(() => {
     if (!canAccess) return;
     api.get("/academic/sections").then((r) => setSections(r.data || [])).catch(() => {});
   }, [canAccess]);
@@ -387,18 +401,6 @@ export default function ReportsScreen() {
 
   return (
     <SafeAreaView style={s.wrap} testID="reports-screen">
-      {Platform.OS === "web" && (
-        <style>{`
-          @media print {
-            @page { size: landscape; margin: 12mm; }
-            body * { visibility: hidden; }
-            #report-print-area, #report-print-area * { visibility: visible; }
-            #report-print-area { position: absolute; left: 0; top: 0; width: 100%; padding: 8px; background: #fff; }
-            .no-print { display: none !important; }
-          }
-        `}</style>
-      )}
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -749,8 +751,9 @@ function ExportBtn({ label, icon, onPress, disabled, variant, testID }: {
 function PickerModal({ visible, onClose, title, children, sheet }: {
   visible: boolean; onClose: () => void; title: string; children: React.ReactNode; sheet?: boolean;
 }) {
+  if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={s.modalOverlay} onPress={onClose}>
         <Pressable style={[s.modalCard, sheet && s.modalSheet]} onPress={(e) => e.stopPropagation?.()}>
           <View style={s.modalHead}>

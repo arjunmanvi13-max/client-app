@@ -26,7 +26,7 @@ type ReportAdvancedFiltersPanelProps = {
   onClose?: () => void;
 };
 
-export function ReportAdvancedFiltersPanel({
+export default function ReportAdvancedFiltersPanel({
   reportId,
   entity,
   filters,

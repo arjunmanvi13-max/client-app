@@ -15,9 +15,9 @@ import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect
 import { FormSectionCard } from "./components/forms/FormSectionCard";
 import { FormTextField } from "./components/forms/FormTextField";
 import { FormDateField } from "./components/forms/FormDateField";
-import { CLASS_PREFIX, matchAcademicSection, parseSectionLetter, sectionLabelCandidates } from "./academicStructure";
+import { parseSectionLetter, resolveSectionMatch } from "./academicStructure";
 
-export { CLASS_PREFIX } from "./academicStructure";
+export { CLASS_PREFIX, classGroupPrefix, resolveSectionMatch } from "./academicStructure";
 export {
   SECTION_LETTERS,
   PWS_CLASS_OPTIONS,
@@ -29,21 +29,6 @@ const SECTION_FILTER = ["All", ...SECTION_LETTERS] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
 
 const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
-
-export function classGroupPrefix(pwsClass: string): string {
-  return CLASS_PREFIX[pwsClass] || pwsClass;
-}
-
-export function resolveSectionMatch(
-  pwsClass: string,
-  letter: string,
-  sections: { id: string; label: string; grade_id?: string }[],
-): { id: string | null; label: string } {
-  const matched = matchAcademicSection(pwsClass, letter, sections);
-  if (matched) return { id: matched.id, label: matched.label };
-  const [fallback = `${CLASS_PREFIX[pwsClass] || pwsClass}-${letter}`] = sectionLabelCandidates(pwsClass, letter);
-  return { id: null, label: fallback };
-}
 
 export type StudentRosterFormFieldsProps = {
   readOnly: boolean;

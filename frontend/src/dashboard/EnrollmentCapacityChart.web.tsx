@@ -1,10 +1,10 @@
+import { useState } from "react";
 import { Text, View, StyleSheet } from "react-native";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -14,7 +14,10 @@ import type { CapacityBar } from "./EnrollmentCapacityChart";
 
 type Props = { rows: CapacityBar[] };
 
+const CHART_HEIGHT = 280;
+
 export function EnrollmentCapacityChart({ rows }: Props) {
+  const [width, setWidth] = useState(0);
   const data = rows
     .filter((row) => row.enrolled > 0 || row.capacity > 0)
     .map((row) => ({
@@ -32,9 +35,16 @@ export function EnrollmentCapacityChart({ rows }: Props) {
   }
 
   return (
-    <View style={s.wrap} testID="enrollment-capacity-chart">
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
+    <View
+      style={s.wrap}
+      testID="enrollment-capacity-chart"
+      onLayout={(e) => {
+        const next = Math.round(e.nativeEvent.layout.width);
+        if (next > 0) setWidth((prev) => (prev === next ? prev : next));
+      }}
+    >
+      {width > 0 ? (
+        <BarChart width={width} height={CHART_HEIGHT} data={data} margin={{ top: 8, right: 8, left: 0, bottom: 48 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748B" }} interval={0} angle={-28} textAnchor="end" height={60} />
           <YAxis tick={{ fontSize: 11, fill: "#64748B" }} allowDecimals={false} />
@@ -45,12 +55,12 @@ export function EnrollmentCapacityChart({ rows }: Props) {
           <Bar dataKey="enrolled" name="Current enrollments" fill="#059669" radius={[6, 6, 0, 0]} />
           <Bar dataKey="capacity" name="Maximum capacity" fill={colors.primary} radius={[6, 6, 0, 0]} />
         </BarChart>
-      </ResponsiveContainer>
+      ) : null}
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  wrap: { width: "100%", height: 280 },
+  wrap: { width: "100%", height: CHART_HEIGHT, overflow: "hidden" },
   empty: { fontSize: 12, color: colors.hint, paddingVertical: 12 },
 });

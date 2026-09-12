@@ -193,6 +193,21 @@ export function matchAcademicSection(
   }) || null;
 }
 
+export function classGroupPrefix(pwsClass: string): string {
+  return CLASS_PREFIX[pwsClass] || pwsClass;
+}
+
+export function resolveSectionMatch(
+  pwsClass: string,
+  letter: string,
+  sections: AcademicSectionRef[],
+): { id: string | null; label: string } {
+  const matched = matchAcademicSection(pwsClass, letter, sections);
+  if (matched) return { id: matched.id, label: matched.label };
+  const [fallback = `${CLASS_PREFIX[pwsClass] || pwsClass}-${letter}`] = sectionLabelCandidates(pwsClass, letter);
+  return { id: null, label: fallback };
+}
+
 export function matchAcademicSubject(
   subjectName: string,
   subjects: AcademicSubjectRef[],
