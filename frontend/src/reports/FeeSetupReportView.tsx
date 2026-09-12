@@ -5,14 +5,20 @@ import { DataTable, EmptyState } from "../ScreenStates";
 import { colors, radii, spacing } from "../theme";
 
 const PAGE_SIZE = 25;
-const MONEY_KEYS = new Set(["base_fee", "registration_fee", "discounts", "net_payable"]);
+const DEFAULT_MONEY = new Set(["discounts", "net_payable"]);
 
 function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
 }
 
-function cell(key: string, value: any) {
-  if (MONEY_KEYS.has(key)) return inr(Number(value) || 0);
+function moneyKeys(data: any): Set<string> {
+  const fromApi = data?.summary?.money_keys;
+  if (Array.isArray(fromApi) && fromApi.length) return new Set(fromApi.map(String));
+  return DEFAULT_MONEY;
+}
+
+function cell(key: string, value: any, money: Set<string>) {
+  if (money.has(key)) return inr(Number(value) || 0);
   return value != null && value !== "" ? String(value) : "—";
 }
 
@@ -23,6 +29,8 @@ export function FeeSetupReportView({ data }: Props) {
   const keys: string[] = data?.row_keys || [];
   const rows: any[] = data?.rows || [];
   const summary = data?.summary || {};
+  const money = moneyKeys(data);
+  const componentTotals: Record<string, number> = summary.component_totals || {};
   const [sortKey, setSortKey] = useState<string>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
@@ -45,13 +53,13 @@ export function FeeSetupReportView({ data }: Props) {
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = sorted.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
-  const tableRows = pageRows.map((r) => keys.map((k) => cell(k, r[k])));
+  const tableRows = pageRows.map((r) => keys.map((k) => cell(k, r[k], money)));
   const footer = keys.map((k) => {
     if (k === "name") return "TOTAL";
-    if (k === "base_fee") return inr(summary.total_base_fee || 0);
-    if (k === "registration_fee") return inr(summary.total_registration || 0);
     if (k === "discounts") return inr(summary.total_discounts || 0);
     if (k === "net_payable") return inr(summary.total_net_payable || 0);
+    if (k in componentTotals) return inr(componentTotals[k] || 0);
+    if (money.has(k)) return inr(Number(summary[`total_${k}`] || 0));
     return "";
   });
 
@@ -70,15 +78,24 @@ export function FeeSetupReportView({ data }: Props) {
     return <EmptyState icon="filter" title="No matching rows" message="Try another entity, campus, or status." />;
   }
 
+  const componentLabels = keys
+    .map((k, i) => ({ key: k, label: cols[i] }))
+    .filter(({ key }) => key in componentTotals);
+
   return (
     <View style={{ gap: spacing.md }} testID="fee-setup-report">
       <View style={s.kpiRow}>
         <Kpi label="People" value={String(summary.total_rows || rows.length)} />
-        <Kpi label="Base fees" value={inr(summary.total_base_fee || 0)} />
-        <Kpi label="Registration" value={inr(summary.total_registration || 0)} />
         <Kpi label="Discounts" value={inr(summary.total_discounts || 0)} />
         <Kpi label="Net payable" value={inr(summary.total_net_payable || 0)} />
       </View>
+      {componentLabels.length > 0 && (
+        <View style={s.kpiRow}>
+          {componentLabels.map(({ key, label }) => (
+            <Kpi key={key} label={label} value={inr(componentTotals[key] || 0)} />
+          ))}
+        </View>
+      )}
       <View style={s.sortBar}>
         {cols.map((c, i) => (
           <TouchableOpacity key={c} onPress={() => onSort(i)} style={s.sortChip}>
