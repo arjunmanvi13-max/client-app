@@ -29,6 +29,9 @@ export type CollectionKpis = {
   amount_due_today: number;
   overdue_count: number;
   collected_this_month: number;
+  collected_today?: number;
+  recovery_rate_pct?: number;
+  total_pending?: number;
 };
 
 export type CollectionSummary = {

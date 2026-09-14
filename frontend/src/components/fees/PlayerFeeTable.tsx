@@ -1,6 +1,6 @@
 import { View, Text, Pressable, TouchableOpacity, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import { colors, radii } from "../../theme";
+import { colors, radii, shadow } from "../../theme";
 import { feeBadgeStyle, inr, playerInitials, playerMeta } from "./feesUi";
 import type { CollectionPlayer, Institution } from "../../feesCollectionTypes";
 
@@ -21,7 +21,7 @@ export function PlayerFeeTable({
       <View style={[s.tr, s.thead]}>
         {selectMode && <View style={s.colCheck} />}
         <Text style={[s.th, s.colPlayer]}>Player</Text>
-        <Text style={[s.th, s.colMeta]}>{institution === "PWS" ? "Class / Type" : "Centre / Sport"}</Text>
+        <Text style={[s.th, s.colMeta]}>{institution === "PWS" ? "Class / Type" : "Campus / Type"}</Text>
         <Text style={[s.th, s.colStatus]}>Status</Text>
         <Text style={[s.th, s.colAmt, s.right]}>Amount Due</Text>
         <View style={s.colAction} />
@@ -58,8 +58,8 @@ export function PlayerFeeTable({
             </View>
             <Text style={[s.td, s.colAmt, s.amt, s.right]}>{inr(p.amount_due)}</Text>
             <View style={s.colAction}>
-              <TouchableOpacity style={s.collectBtn} onPress={() => onCollect(p)} testID={`collect-${p.id}`}>
-                <Text style={s.collectTxt}>Collect</Text>
+              <TouchableOpacity style={[s.collectBtn, institution === "ALPHA" && s.collectBtnAlpha]} onPress={() => onCollect(p)} testID={`collect-${p.id}`}>
+                <Text style={s.collectTxt}>Collect Fee</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -85,17 +85,18 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "#E2E8F0",
     overflow: "hidden",
+    ...shadow.sm,
   },
   tr: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, gap: 8 },
   thead: {
     backgroundColor: colors.surface2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
-  tbody: { paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
+  tbody: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.borderSoft },
   striped: { backgroundColor: "#FAFBFC" },
   th: { fontSize: 10, fontWeight: "800", color: colors.hint, letterSpacing: 0.6, textTransform: "uppercase" },
   td: { fontSize: 13, color: colors.ink },
@@ -104,7 +105,7 @@ const s = StyleSheet.create({
   colMeta: { flex: 1.6, minWidth: 100 },
   colStatus: { flex: 1, minWidth: 88 },
   colAmt: { flex: 1, minWidth: 90 },
-  colAction: { width: 76, alignItems: "flex-end" },
+  colAction: { width: 108, alignItems: "flex-end" },
   right: { textAlign: "right" },
   playerCell: { flexDirection: "row", alignItems: "center", gap: 8 },
   avatar: {
@@ -119,10 +120,11 @@ const s = StyleSheet.create({
   amt: { fontWeight: "800", fontSize: 14 },
   collectBtn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.sm,
   },
+  collectBtnAlpha: { backgroundColor: colors.accent },
   collectTxt: { color: "#fff", fontSize: 11, fontWeight: "800" },
   checkbox: {
     width: 18, height: 18, borderRadius: 4, borderWidth: 1.5,

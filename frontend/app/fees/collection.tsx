@@ -1,5 +1,5 @@
 /**
- * Collect Fees — compact register layout with table-first desktop view.
+ * Collect Fees — ALPHA/PWS register with metrics banner and sticky filters.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -26,7 +26,8 @@ import { inr } from "../../src/components/fees/feesUi";
 import type {
   CollectionSummary, FeeSort, FeeStatusFilter, Institution, PaymentReceipt,
 } from "../../src/feesCollectionTypes";
-import { applyCollectionFilters } from "../../src/feesCollectionFilters";
+import { ALPHA_PLAYER_TYPES, applyCollectionFilters } from "../../src/feesCollectionFilters";
+import { formatMonth } from "../../src/dateFormat";
 
 export default function FeesCollection() {
   const { user } = useAuth();
@@ -40,6 +41,7 @@ export default function FeesCollection() {
   const canSwitchInstitution = entityScope.canSwitch;
   const [centre, setCentre] = useState<string | null>(null);
   const [sport, setSport] = useState<string | null>(null);
+  const [playerTypes, setPlayerTypes] = useState<string[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<FeeStatusFilter>("all");
@@ -84,6 +86,9 @@ export default function FeesCollection() {
       if (institution === "ALPHA") {
         if (centre) params.centre = centre;
         if (sport) params.sport = sport;
+        if (playerTypes.length > 0 && playerTypes.length < ALPHA_PLAYER_TYPES.length) {
+          params.player_type = playerTypes.join(",");
+        }
       } else if (centre) {
         params.group = centre;
       }
@@ -95,7 +100,7 @@ export default function FeesCollection() {
     } finally {
       setLoading(false);
     }
-  }, [institution, centre, sport, search]);
+  }, [institution, centre, sport, search, playerTypes]);
 
   useEffect(() => { loadSections(); }, [loadSections]);
   useEffect(() => {
@@ -106,13 +111,19 @@ export default function FeesCollection() {
   useEffect(() => {
     setCentre(null);
     setSport(null);
+    setPlayerTypes([]);
     setStatusFilter("all");
   }, [institution]);
 
   const sourcePlayers = summary?.players || [];
   const players = useMemo(
-    () => applyCollectionFilters(sourcePlayers, statusFilter, sort),
-    [sourcePlayers, statusFilter, sort],
+    () => applyCollectionFilters(
+      sourcePlayers,
+      statusFilter,
+      sort,
+      institution === "ALPHA" ? playerTypes : [],
+    ),
+    [sourcePlayers, statusFilter, sort, institution, playerTypes],
   );
   const totalPlayers = summary?.kpis.total_players || sourcePlayers.length;
   const totalDue = useMemo(
@@ -158,12 +169,12 @@ export default function FeesCollection() {
               <Feather name="chevron-left" size={18} color={colors.muted} />
             </TouchableOpacity>
             <View style={s.headerMain}>
-              <Text style={s.overline}>FEES COLLECTION</Text>
+              <Text style={s.overline}>FINANCE · {institution}</Text>
               <View style={s.titleRow}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={s.h1}>{title}</Text>
                   <Text style={s.sub}>
-                    Search a {institution === "PWS" ? "student" : "player"}, select months, and record payment.
+                    Filter the register, then record payment with a full fee-head breakdown.
                   </Text>
                 </View>
               </View>
@@ -192,7 +203,20 @@ export default function FeesCollection() {
             onCentre={setCentre}
             sport={sport}
             onSport={setSport}
+            playerTypes={playerTypes}
+            onPlayerTypes={setPlayerTypes}
             sections={sections}
+            periodLabel={summary?.current_month ? formatMonth(summary.current_month) : "This month"}
+            onClearAll={() => {
+              setCentre(null);
+              setSport(null);
+              setPlayerTypes([]);
+              setStatusFilter("all");
+              setSearchInput("");
+              setSearch("");
+              setSort("amount_due");
+            }}
+            sticky
           />
 
           {loading && !summary ? (
@@ -317,13 +341,7 @@ const s = StyleSheet.create({
   },
   selectToggleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   selectToggleTxt: { fontSize: 11, fontWeight: "700", color: colors.muted },
-  mobileList: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: "hidden",
-  },
+  mobileList: { gap: 8 },
   emptyBox: {
     alignItems: "center",
     paddingVertical: 36,

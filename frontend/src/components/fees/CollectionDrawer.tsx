@@ -10,9 +10,10 @@ import { Permission } from "../../rbac";
 import { colors } from "../../theme";
 import { formatDate, formatMonth, DATE_PLACEHOLDER, toISODate, parseToISO } from "../../dateFormat";
 import type { CollectionPlayer, Institution, PaymentMode, PaymentReceipt, PlayerDues } from "../../feesCollectionTypes";
+import { collectionPaymentBreakdown, feeHeadLabel, inr as formatInr, learnerContextLine } from "./feesUi";
 
 function inr(n: number) {
-  return `₹${(n || 0).toLocaleString("en-IN")}`;
+  return formatInr(n);
 }
 
 function initials(name: string) {
@@ -74,6 +75,11 @@ export function CollectionDrawer({
     return dues.unpaid.filter((f) => selectedFeeIds.has(f.id)).reduce((a, f) => a + (f.amount_due || 0), 0);
   }, [dues, selectedFeeIds]);
 
+  const breakdown = useMemo(() => {
+    if (!dues) return null;
+    return collectionPaymentBreakdown(dues.unpaid.filter((f) => selectedFeeIds.has(f.id)));
+  }, [dues, selectedFeeIds]);
+
   const toggleFee = (id: string) => {
     setSelectedFeeIds((prev) => {
       const next = new Set(prev);
@@ -128,6 +134,7 @@ export function CollectionDrawer({
             <View style={s.drawerAvatar}><Text style={s.drawerAvatarTxt}>{initials(player.name)}</Text></View>
             <View style={{ flex: 1 }}>
               <Text style={s.drawerName}>{player.name}</Text>
+              <Text style={s.drawerMeta}>{learnerContextLine(player, institution)}</Text>
               <Text style={s.drawerMeta}>{player.mobile || "—"}</Text>
             </View>
             <Pressable onPress={onClose} testID="drawer-close" hitSlop={12}>
@@ -175,7 +182,7 @@ export function CollectionDrawer({
                         {checked && <Feather name="check" size={12} color="#fff" />}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.feeType}>{f.fee_type} · {formatMonth(f.period_month)}</Text>
+                        <Text style={s.feeType}>{feeHeadLabel(f.fee_type, institution)} · {formatMonth(f.period_month)}</Text>
                         <Text style={s.feeMeta}>Due {formatDate(f.due_date)}</Text>
                         {(f.discount_applied || 0) > 0 && (
                           <Text style={s.discountNote}>Includes ₹{f.discount_applied} discount</Text>
@@ -190,9 +197,18 @@ export function CollectionDrawer({
 
             {dues && dues.unpaid.length > 0 && (
               <>
-                <View style={s.totalBar}>
-                  <Text style={s.totalLabel}>Selected total</Text>
-                  <Text style={s.totalAmt}>{inr(totalSelected)}</Text>
+                <View style={s.totalBar} testID="drawer-breakdown">
+                  <Text style={s.breakdownTitle}>Payment breakdown</Text>
+                  <View style={s.breakRow}><Text style={s.breakLbl}>Base fee</Text><Text style={s.breakVal}>{inr(breakdown?.baseFee || 0)}</Text></View>
+                  <View style={s.breakRow}><Text style={s.breakLbl}>Registration fee</Text><Text style={s.breakVal}>{inr(breakdown?.registration || 0)}</Text></View>
+                  {(breakdown?.other || 0) > 0 && (
+                    <View style={s.breakRow}><Text style={s.breakLbl}>Other heads</Text><Text style={s.breakVal}>{inr(breakdown?.other || 0)}</Text></View>
+                  )}
+                  <View style={s.breakRow}><Text style={s.breakLbl}>Discounts</Text><Text style={[s.breakVal, { color: "#047857" }]}>-{inr(breakdown?.discounts || 0)}</Text></View>
+                  <View style={[s.breakRow, s.breakNet]}>
+                    <Text style={s.totalLabel}>Final net amount</Text>
+                    <Text style={s.totalAmt}>{inr(totalSelected)}</Text>
+                  </View>
                 </View>
 
                 <Text style={s.sectionLabel}>Payment mode</Text>
@@ -261,7 +277,7 @@ export function CollectionDrawer({
                 {submitting ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={s.saveTxt}>Save & Generate Receipt · {inr(totalSelected)}</Text>
+                  <Text style={s.saveTxt}>Record Payment · {inr(totalSelected)}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -320,9 +336,13 @@ const s = StyleSheet.create({
   discountNote: { fontSize: 10, color: "#0F766E", marginTop: 2, fontWeight: "600" },
   feeAmt: { fontSize: 14, fontWeight: "800", color: colors.ink },
   totalBar: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    padding: 12, backgroundColor: colors.primarySofter, borderRadius: 10, marginVertical: 12,
+    padding: 12, backgroundColor: colors.primarySofter, borderRadius: 10, marginVertical: 12, gap: 6,
   },
+  breakdownTitle: { fontSize: 11, fontWeight: "800", color: colors.muted, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 },
+  breakRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  breakLbl: { fontSize: 12, color: colors.muted, fontWeight: "600" },
+  breakVal: { fontSize: 13, color: colors.ink, fontWeight: "700" },
+  breakNet: { marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.primarySoft },
   totalLabel: { fontSize: 12, fontWeight: "700", color: colors.muted },
   totalAmt: { fontSize: 20, fontWeight: "800", color: colors.primary },
   modeRow: { flexDirection: "row", gap: 8, marginBottom: 8 },

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { applyCollectionFilters, filterPlayersByStatus, sortCollectionPlayers } from "./feesCollectionFilters";
+import { applyCollectionFilters, filterPlayersByPlayerTypes, filterPlayersByStatus, sortCollectionPlayers } from "./feesCollectionFilters";
 import type { CollectionPlayer } from "./feesCollectionTypes";
 
 const sample: CollectionPlayer[] = [
@@ -12,6 +12,7 @@ const sample: CollectionPlayer[] = [
     fee_status: "overdue",
     badge: "Overdue 10d",
     has_current_month_due: true,
+    player_type: "Daily",
   },
   {
     id: "2",
@@ -22,6 +23,7 @@ const sample: CollectionPlayer[] = [
     fee_status: "overdue",
     badge: "Overdue 106d",
     has_current_month_due: true,
+    player_type: "Hostel",
   },
   {
     id: "3",
@@ -58,5 +60,18 @@ assert.deepEqual(
 
 const filtered = applyCollectionFilters(sample, "overdue", "name");
 assert.deepEqual(filtered.map((p) => p.name), ["Aarav kumar", "Dhairy kumar"]);
+
+assert.deepEqual(
+  filterPlayersByPlayerTypes(sample, ["Daily"]).map((p) => p.id),
+  ["1"],
+);
+assert.deepEqual(
+  filterPlayersByPlayerTypes(sample, ["Hostel Only"]).map((p) => p.id),
+  ["2"],
+);
+assert.deepEqual(
+  applyCollectionFilters(sample, "overdue", "name", ["Daily"]).map((p) => p.id),
+  ["1"],
+);
 
 console.log("feesCollectionFilters.verify.ts OK");

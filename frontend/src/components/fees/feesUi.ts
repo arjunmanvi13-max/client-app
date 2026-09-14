@@ -35,6 +35,31 @@ export function feeHeadLabel(feeType: string, institution: Institution): string 
   return /fee$/i.test(key) ? key : `${key} Fee`;
 }
 
+export function collectionPaymentBreakdown(
+  fees: { fee_type?: string; amount?: number; amount_due?: number; discount_applied?: number }[],
+) {
+  let registration = 0;
+  let baseFee = 0;
+  let other = 0;
+  let discounts = 0;
+  let net = 0;
+  for (const fee of fees) {
+    const due = Number(fee.amount_due) || 0;
+    const gross = Number(fee.amount) || due;
+    const disc = Number(fee.discount_applied) || Math.max(0, gross - due);
+    const type = (fee.fee_type || "").toLowerCase();
+    if (type.includes("registration")) registration += gross;
+    else if (type.includes("monthly") || type.includes("tuition") || type.includes("hostel") || type.includes("coaching")) {
+      baseFee += gross;
+    } else {
+      other += gross;
+    }
+    discounts += disc;
+    net += due;
+  }
+  return { registration, baseFee, other, discounts, net };
+}
+
 export function learnerContextLine(
   player: {
     centre?: string;
@@ -107,8 +132,9 @@ export function playerInitials(name: string) {
 }
 
 export function feeBadgeStyle(status: CollectionPlayer["fee_status"]) {
-  if (status === "paid" || status === "paid_ahead") return { bg: "#DCFCE7", fg: "#16A34A" };
-  if (status === "overdue") return { bg: "#FEE2E2", fg: "#DC2626" };
+  if (status === "paid" || status === "paid_ahead") return { bg: "#D1FAE5", fg: "#047857" };
+  if (status === "overdue") return { bg: "#FEE2E2", fg: "#EF4444" };
+  if (status === "due") return { bg: "#F1F5F9", fg: "#475569" };
   return { bg: "#FEF3C7", fg: "#D97706" };
 }
 
