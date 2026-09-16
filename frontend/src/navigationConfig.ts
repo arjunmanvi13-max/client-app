@@ -266,6 +266,18 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
             || ["alpha_admin", "alpha_accounts"].includes(userType);
         },
       },
+      {
+        id: "enquiry",
+        label: "Enquiry",
+        icon: "phone",
+        href: "/operations/enquiry",
+        match: matchPrefix(["/operations/enquiry"]),
+        isVisible: (ctx) => {
+          if (isSuperAdminUser(ctx.user)) return true;
+          const role = (ctx.user.role || "").toLowerCase();
+          return ["admin", "alpha_admin", "alpha_accounts", "pws_admin", "pws_accounts", "principal", "vice_principal", "staff"].includes(role);
+        },
+      },
     ],
   },
   {

@@ -6,7 +6,8 @@ export type ApprovalCategory =
   | "fee_concession"
   | "fee_override_admission"
   | "refund"
-  | "ground_booking_discount";
+  | "ground_booking_discount"
+  | "enquiry_close";
 
 export type ApprovalUserRole =
   | "Principal"
@@ -61,6 +62,7 @@ export const APPROVAL_CATEGORY_FILTERS: Array<{ key: "all" | ApprovalCategory; l
   { key: "fee_override_admission", label: "Fee overrides" },
   { key: "refund", label: "Refunds" },
   { key: "ground_booking_discount", label: "Ground discounts" },
+  { key: "enquiry_close", label: "Enquiry close" },
 ];
 
 const LEGACY_TYPE_TO_CATEGORY: Record<string, ApprovalCategory> = {
@@ -72,6 +74,7 @@ const LEGACY_TYPE_TO_CATEGORY: Record<string, ApprovalCategory> = {
   fee_override_admission: "fee_override_admission",
   refund: "refund",
   ground_booking_discount: "ground_booking_discount",
+  enquiry_close: "enquiry_close",
 };
 
 export const CATEGORY_LABELS: Record<ApprovalCategory, string> = {
@@ -81,6 +84,7 @@ export const CATEGORY_LABELS: Record<ApprovalCategory, string> = {
   fee_override_admission: "Fee override",
   refund: "Refund",
   ground_booking_discount: "Ground booking discount",
+  enquiry_close: "Enquiry close",
 };
 
 function inferCategory(raw: any): ApprovalCategory {

@@ -210,6 +210,7 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
       : []),
     { label: "Collect fees", icon: "credit-card" as const, href: "/fees/collection" },
     { label: "Ground booking", icon: "map" as const, href: "/operations/ground-booking" },
+    { label: "Enquiry", icon: "phone" as const, href: "/operations/enquiry" },
     { label: "New task", icon: "plus-square" as const, href: "/task/new" },
     { label: "Reports", icon: "bar-chart-2" as const, href: "/reports" },
   ];
@@ -301,6 +302,10 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
             <TouchableOpacity testID="quick-ground-booking" style={s.groundBtn} onPress={() => router.push("/operations/ground-booking")}>
               <Feather name="map" size={15} color={colors.primary} />
               <Text style={s.groundBtnTxt}>Ground Booking</Text>
+            </TouchableOpacity>
+            <TouchableOpacity testID="quick-enquiry" style={s.groundBtn} onPress={() => router.push("/operations/enquiry")}>
+              <Feather name="phone" size={15} color={colors.primary} />
+              <Text style={s.groundBtnTxt}>Enquiry</Text>
             </TouchableOpacity>
             <TouchableOpacity testID="quick-action" style={s.quickBtn} onPress={() => setQuickOpen(true)}>
               <Feather name="plus" size={15} color="#fff" />

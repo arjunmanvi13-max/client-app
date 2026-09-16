@@ -43,6 +43,7 @@ function run() {
   const superGroups = filterNavigationGroups({ user: superAdmin });
   assert(superGroups.length === 6, "Super Admin should see all six groups");
   assert(allLeafIds(superGroups).includes("ground-booking"), "Super Admin sees Ground Booking");
+  assert(allLeafIds(superGroups).includes("enquiry"), "Super Admin sees Enquiry");
   const superPws = mockUser({ role: "super_admin", organization: "PWS", user_type: "super_admin" });
   assert(
     allLeafIds(filterNavigationGroups({ user: superPws })).includes("ground-booking"),
@@ -75,7 +76,7 @@ function run() {
   const operationsGroup = NAVIGATION_GROUPS.find((g) => g.id === "operations");
   assert(!!operationsGroup, "Operations group exists");
   assert(
-    operationsGroup?.children.map((c) => c.id).join(",") === "attendance-take,attendance-reports,hostel,ground-booking",
+    operationsGroup?.children.map((c) => c.id).join(",") === "attendance-take,attendance-reports,hostel,ground-booking,enquiry",
     "Operations items are flat without nested Attendance wrapper",
   );
   assert(!operationsGroup?.children.some((c) => c.children?.length), "Operations has no nested dropdown items");
@@ -96,12 +97,14 @@ function run() {
   const pwsLeaves = flattenLeafItems(filterNavigationGroups({ user: pwsAccounts }));
   assert(pwsLeaves.some((i) => i.id === "collect-fees"), "PWS Accounts sees Collect Fees");
   assert(pwsLeaves.some((i) => i.id === "invoice-engine"), "PWS Accounts sees PWS Invoice Engine");
+  assert(pwsLeaves.some((i) => i.id === "enquiry"), "PWS Accounts sees Enquiry");
   assert(!pwsLeaves.some((i) => i.id === "players"), "PWS Accounts should not see ALPHA Players roster");
 
   const alphaAccounts = mockUser({ role: "alpha_accounts", organization: "ALPHA" });
   const alphaLeaves = flattenLeafItems(filterNavigationGroups({ user: alphaAccounts }));
   assert(alphaLeaves.some((i) => i.id === "collect-fees"), "ALPHA Accounts sees Collect Fees");
   assert(alphaLeaves.some((i) => i.id === "ground-booking"), "ALPHA Accounts sees Ground Booking");
+  assert(alphaLeaves.some((i) => i.id === "enquiry"), "ALPHA Accounts sees Enquiry");
   assert(!alphaLeaves.some((i) => i.id === "invoice-engine"), "ALPHA Accounts should not see PWS Invoice Engine");
 
   const teacher = mockUser({ role: "teacher", organization: "PWS" });
@@ -109,6 +112,7 @@ function run() {
   assert(!teacherLeaves.some((i) => i.href?.startsWith("/fees")), "PWS Teacher should not see Financials");
   assert(!teacherLeaves.some((i) => i.id === "players"), "PWS Teacher should not see ALPHA Players");
   assert(!teacherLeaves.some((i) => i.id === "ground-booking"), "PWS Teacher should not see Ground Booking");
+  assert(!teacherLeaves.some((i) => i.id === "enquiry"), "PWS Teacher should not see Enquiry");
   assert(teacherLeaves.some((i) => i.id === "marks-entry"), "PWS Teacher should see Marks Entry");
 
   const coach = mockUser({ role: "coach", organization: "ALPHA" });
