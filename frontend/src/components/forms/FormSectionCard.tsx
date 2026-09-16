@@ -44,7 +44,8 @@ const s = StyleSheet.create({
     padding: 14,
     marginBottom: 0,
     borderRadius: radii.lg,
-    flex: 1,
+    flexGrow: 0,
+    flexShrink: 0,
     minWidth: 0,
     ...Platform.select({
       web: { boxShadow: "0 1px 6px rgba(15, 23, 42, 0.05)" } as object,

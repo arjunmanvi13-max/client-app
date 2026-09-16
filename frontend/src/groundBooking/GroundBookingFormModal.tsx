@@ -280,8 +280,9 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={s.backdrop} onPress={onClose}>
-        <Pressable style={s.sheet} onPress={(e) => e.stopPropagation()}>
+      <View style={s.backdrop}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
+        <View style={s.sheet} testID="ground-booking-form">
           <View style={s.sheetHead}>
             <View>
               <Text style={s.kicker}>ALPHA · OPERATIONS</Text>
@@ -292,7 +293,12 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={s.body} contentContainerStyle={s.bodyInner} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={s.body}
+            contentContainerStyle={s.bodyInner}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+          >
             {lastBooking ? (
               <View style={s.lastCard} testID="last-booking-summary">
                 <View style={s.lastBadge}>
@@ -309,11 +315,11 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               </View>
             ) : null}
 
-            <FormSectionCard title="Search existing customer" compact>
+            <FormSectionCard title="Search existing customer" compact style={s.section}>
               <FormTextField
-                label=""
+                label="Search"
                 compact
-                placeholder="Search by person name, organisation, or mobile"
+                placeholder="Person name, organisation, or mobile"
                 value={query}
                 onChangeText={setQuery}
                 testID="customer-search"
@@ -321,7 +327,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               {searching ? <Text style={s.hint}>Searching…</Text> : null}
               {hits.map((h, i) => (
                 <TouchableOpacity key={`${h.phone}-${i}`} style={s.hit} onPress={() => pickCustomer(h)} testID={`customer-hit-${i}`}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={s.hitName}>{h.name}</Text>
                     <Text style={s.hitMeta}>{[h.organization, h.phone].filter(Boolean).join(" · ")}</Text>
                     {h.lastBooking ? (
@@ -333,8 +339,8 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               ))}
             </FormSectionCard>
 
-            <FormSectionCard title="Contact details" compact>
-              <View style={s.grid2}>
+            <FormSectionCard title="Contact details" compact style={s.section}>
+              <View style={s.row}>
                 <View style={s.col}>
                   <FormTextField label="Name of the Person" required compact value={name} onChangeText={setName} testID="field-name" />
                 </View>
@@ -342,7 +348,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   <FormTextField label="Name of Club or Organization" compact value={org} onChangeText={setOrg} testID="field-org" />
                 </View>
               </View>
-              <View style={s.grid2}>
+              <View style={s.row}>
                 <View style={s.col}>
                   <FormTextField label="Contact Number" required compact keyboardType="phone-pad" value={phone} onChangeText={setPhone} testID="field-phone" />
                 </View>
@@ -352,7 +358,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               </View>
             </FormSectionCard>
 
-            <FormSectionCard title="Booking details" compact>
+            <FormSectionCard title="Booking details" compact style={s.section}>
               <View style={s.sportRow}>
                 {GROUND_SPORTS.map((opt) => {
                   const on = sport === opt;
@@ -363,7 +369,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   );
                 })}
               </View>
-              <View style={s.grid2}>
+              <View style={s.row}>
                 <View style={s.col}>
                   <FormDateField label="Start date" required compact value={startDisplay} onChangeText={setStartDisplay} />
                 </View>
@@ -401,7 +407,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                 <FormTextField label="Custom hours" compact keyboardType="decimal-pad" value={customHours} onChangeText={setCustomHours} />
               ) : null}
 
-              <View style={s.grid2}>
+              <View style={s.row}>
                 <View style={s.col}>
                   <FormTextField label="Number of People" required compact keyboardType="number-pad" value={people} onChangeText={(v) => {
                     setPeople(v);
@@ -422,7 +428,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               </View>
             </FormSectionCard>
 
-            <FormSectionCard title="Add-ons & costing" compact>
+            <FormSectionCard title="Add-ons & costing" compact style={s.section}>
               <FormTextField
                 label="Ground / Venue Base Rate"
                 compact
@@ -447,7 +453,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   if (v && !foodPeople) setFoodPeople(people || "1");
                 }} testID="addon-food" />
                 {foodOn ? (
-                  <View style={s.grid2}>
+                  <View style={s.row}>
                     <View style={s.col}>
                       <FormTextField label="Rate per plate" compact keyboardType="decimal-pad" value={foodRate} onChangeText={setFoodRate} />
                     </View>
@@ -465,7 +471,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   if (v && !transportPeople) setTransportPeople(people || "1");
                 }} testID="addon-transport" />
                 {transportOn ? (
-                  <View style={s.grid2}>
+                  <View style={s.row}>
                     <View style={s.col}>
                       <FormTextField label="Rate per person" compact keyboardType="decimal-pad" value={transportRate} onChangeText={setTransportRate} />
                     </View>
@@ -480,7 +486,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               <View style={s.addonCard}>
                 <Toggle label="Umpire / Referee needed" value={umpireOn} onChange={setUmpireOn} testID="addon-umpire" />
                 {umpireOn ? (
-                  <View style={s.grid2}>
+                  <View style={s.row}>
                     <View style={s.col}>
                       <FormTextField label="Rate per day" compact keyboardType="decimal-pad" value={umpireRate} onChangeText={setUmpireRate} />
                     </View>
@@ -496,7 +502,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                 <Toggle label="Ball needed" value={ballsOn} onChange={setBallsOn} testID="addon-balls" />
                 {ballsOn ? (
                   <>
-                    <View style={s.grid2}>
+                    <View style={s.row}>
                       <View style={s.col}>
                         <FormSelect label="Ball type" compact value={ballType} onChange={setBallType} options={BALL_TYPES.map((x) => ({ value: x, label: x }))} />
                       </View>
@@ -504,7 +510,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                         <FormSelect label="Colour" compact value={ballColor} onChange={setBallColor} options={BALL_COLORS.map((x) => ({ value: x, label: x }))} />
                       </View>
                     </View>
-                    <View style={s.grid2}>
+                    <View style={s.row}>
                       <View style={s.col}>
                         <FormTextField label="Quantity" compact keyboardType="number-pad" value={ballQty} onChangeText={setBallQty} />
                       </View>
@@ -539,20 +545,31 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.submitTxt}>{editing ? "Save Changes" : "Submit Booking"}</Text>}
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
 
 const s = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(15,23,42,0.45)", justifyContent: "center", padding: spacing.lg },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
   sheet: {
     backgroundColor: colors.bg,
     borderRadius: radii.xxl,
-    maxHeight: "94%",
+    width: "100%",
+    maxWidth: 880,
+    maxHeight: "90%",
     overflow: "hidden",
-    ...Platform.select({ web: { maxWidth: 920, width: "100%", alignSelf: "center", maxHeight: "90vh" } as object, default: {} }),
+    flexDirection: "column",
+    alignSelf: "center",
+    zIndex: 2,
+    ...Platform.select({ web: { maxHeight: "90vh" } as object, default: {} }),
   },
   sheetHead: {
     flexDirection: "row",
@@ -563,17 +580,23 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
+    flexShrink: 0,
   },
   kicker: { fontSize: 10, fontWeight: "800", color: colors.accent, letterSpacing: 1 },
   sheetTitle: { fontSize: 20, fontWeight: "800", color: colors.ink, marginTop: 2 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2 },
-  body: { flex: 1 },
-  bodyInner: { padding: spacing.lg, paddingBottom: spacing.xl },
+  body: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 0,
+    ...Platform.select({ web: { overflow: "auto" } as object, default: {} }),
+  },
+  bodyInner: { padding: spacing.lg, paddingBottom: spacing.xl, gap: 12, flexGrow: 0 },
+  section: { flex: 0, marginBottom: 0 },
   lastCard: {
     backgroundColor: "#E0F2FE",
     borderRadius: radii.lg,
     padding: spacing.md,
-    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: "#BAE6FD",
   },
@@ -581,8 +604,8 @@ const s = StyleSheet.create({
   lastBadgeTxt: { fontSize: 11, fontWeight: "800", color: "#0369A1", textTransform: "uppercase", letterSpacing: 0.6 },
   lastTitle: { fontSize: 14, fontWeight: "800", color: colors.ink },
   lastMeta: { fontSize: 12, color: colors.muted, marginTop: 4 },
-  grid2: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
-  col: { flexGrow: 1, flexBasis: 240, minWidth: 200 },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, width: "100%" },
+  col: { flexGrow: 1, flexShrink: 1, flexBasis: 260, minWidth: 220, maxWidth: "100%" },
   hint: { fontSize: 11, color: colors.muted2, marginTop: 4 },
   hit: {
     flexDirection: "row",
@@ -595,7 +618,7 @@ const s = StyleSheet.create({
   hitName: { fontSize: 13, fontWeight: "700", color: colors.ink },
   hitMeta: { fontSize: 11, color: colors.muted2, marginTop: 2 },
   hitLast: { fontSize: 11, color: "#0369A1", marginTop: 3, fontWeight: "600" },
-  sportRow: { flexDirection: "row", gap: 8, marginBottom: spacing.sm },
+  sportRow: { flexDirection: "row", gap: 8, marginBottom: spacing.sm, flexWrap: "wrap" },
   sportChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   sportChipOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   sportTxt: { fontSize: 13, fontWeight: "700", color: colors.muted },
@@ -604,7 +627,8 @@ const s = StyleSheet.create({
   slotRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   slotCard: {
     flexGrow: 1,
-    minWidth: 160,
+    flexBasis: 220,
+    minWidth: 180,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surface,
@@ -645,6 +669,7 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
+    flexShrink: 0,
   },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   totalLabel: { fontSize: 12, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.6 },
