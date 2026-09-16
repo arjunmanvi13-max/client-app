@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable, ActivityIndicator, Platform,
 } from "react-native";
@@ -6,9 +7,9 @@ import { Feather } from "@expo/vector-icons";
 import { FormTextField } from "../components/forms/FormTextField";
 import { FormSelect } from "../components/forms/FormSelect";
 import { FormDateField } from "../components/forms/FormDateField";
-import { FormSectionCard } from "../components/forms/FormSectionCard";
 import { formatDate, parseToISO, toISODate } from "../dateFormat";
 import { colors, radii, spacing } from "../theme";
+import { useBreakpoint } from "../useBreakpoint";
 import { formatInr } from "../expenses/expenseFormat";
 import { searchGroundCustomers } from "./api";
 import { computeLocalPricing, inclusiveDays, listGroundRate } from "./pricing";
@@ -60,6 +61,23 @@ function lastBookingCopy(last: LastBookingSummary) {
   return [last.sport, slot, last.eventType, dates].filter(Boolean).join(" · ");
 }
 
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <View style={s.sectionBody}>{children}</View>
+    </View>
+  );
+}
+
+function Fields({ stack, children }: { stack: boolean; children: ReactNode }) {
+  return <View style={[s.fields, stack && s.fieldsStack]}>{children}</View>;
+}
+
+function Field({ stack, children }: { stack?: boolean; children: ReactNode }) {
+  return <View style={[s.field, stack && s.fieldFull]}>{children}</View>;
+}
+
 export function GroundBookingFormModal({ visible, saving, defaultDate, booking, onClose, onSubmit }: Props) {
   const today = toISODate();
   const [query, setQuery] = useState("");
@@ -97,6 +115,11 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
   const skipRateSync = useRef(false);
   const slotDaysKey = useRef("");
   const editing = Boolean(booking);
+  const { width: winW, height: winH } = useBreakpoint();
+  const gutter = winW < 720 ? 12 : 24;
+  const sheetW = Math.min(840, Math.max(320, winW - gutter * 2));
+  const sheetH = Math.min(winH - gutter * 2, Math.round(winH * 0.92));
+  const stack = sheetW < 640;
 
   const startIso = parseToISO(startDisplay) || "";
   const endIso = parseToISO(endDisplay) || "";
@@ -282,11 +305,11 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-        <View style={s.sheet} testID="ground-booking-form">
+        <View style={[s.sheet, { width: sheetW, height: sheetH }]} testID="ground-booking-form">
           <View style={s.sheetHead}>
-            <View>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
               <Text style={s.kicker}>ALPHA · OPERATIONS</Text>
-              <Text style={s.sheetTitle}>{editing ? "Edit Tentative Booking" : "New Ground Booking"}</Text>
+              <Text style={s.sheetTitle} numberOfLines={1}>{editing ? "Edit Tentative Booking" : "New Ground Booking"}</Text>
             </View>
             <TouchableOpacity onPress={onClose} testID="close-booking-form" style={s.iconBtn}>
               <Feather name="x" size={18} color={colors.muted} />
@@ -315,7 +338,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               </View>
             ) : null}
 
-            <FormSectionCard title="Search existing customer" compact style={s.section}>
+            <Section title="Search existing customer">
               <FormTextField
                 label="Search"
                 compact
@@ -337,28 +360,26 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   <Feather name="chevron-right" size={16} color={colors.hint} />
                 </TouchableOpacity>
               ))}
-            </FormSectionCard>
+            </Section>
 
-            <FormSectionCard title="Contact details" compact style={s.section}>
-              <View style={s.row}>
-                <View style={s.col}>
+            <Section title="Contact details">
+              <Fields stack={stack}>
+                <Field stack={stack}>
                   <FormTextField label="Name of the Person" required compact value={name} onChangeText={setName} testID="field-name" />
-                </View>
-                <View style={s.col}>
+                </Field>
+                <Field stack={stack}>
                   <FormTextField label="Name of Club or Organization" compact value={org} onChangeText={setOrg} testID="field-org" />
-                </View>
-              </View>
-              <View style={s.row}>
-                <View style={s.col}>
+                </Field>
+                <Field stack={stack}>
                   <FormTextField label="Contact Number" required compact keyboardType="phone-pad" value={phone} onChangeText={setPhone} testID="field-phone" />
-                </View>
-                <View style={s.col}>
+                </Field>
+                <Field stack={stack}>
                   <FormTextField label="Address" required compact multiline value={address} onChangeText={setAddress} testID="field-address" />
-                </View>
-              </View>
-            </FormSectionCard>
+                </Field>
+              </Fields>
+            </Section>
 
-            <FormSectionCard title="Booking details" compact style={s.section}>
+            <Section title="Booking details">
               <View style={s.sportRow}>
                 {GROUND_SPORTS.map((opt) => {
                   const on = sport === opt;
@@ -369,18 +390,18 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   );
                 })}
               </View>
-              <View style={s.row}>
-                <View style={s.col}>
+              <Fields stack={stack}>
+                <Field stack={stack}>
                   <FormDateField label="Start date" required compact value={startDisplay} onChangeText={setStartDisplay} />
-                </View>
-                <View style={s.col}>
+                </Field>
+                <Field stack={stack}>
                   <FormDateField label="End date" required compact value={endDisplay} onChangeText={setEndDisplay} />
-                </View>
-              </View>
+                </Field>
+              </Fields>
               <Text style={s.hint}>{days} day{days === 1 ? "" : "s"} selected</Text>
 
               <Text style={s.fieldLbl}>Time slot</Text>
-              <View style={s.slotRow}>
+              <View style={[s.slotRow, stack && s.slotRowStack]}>
                 {(["half_day", "full_day"] as const).map((opt) => {
                   const on = slot === opt;
                   const rate = SLOT_RATES[opt] * days;
@@ -389,7 +410,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                       key={opt}
                       testID={`slot-${opt}`}
                       onPress={() => setSlot(opt)}
-                      style={[s.slotCard, on && s.slotCardOn]}
+                      style={[s.slotCard, stack && s.slotCardStack, on && s.slotCardOn]}
                     >
                       <Text style={[s.slotName, on && s.slotNameOn]}>{SLOT_LABELS[opt]}</Text>
                       <Text style={[s.slotRate, on && s.slotRateOn]}>{formatInr(SLOT_RATES[opt])}</Text>
@@ -407,15 +428,15 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                 <FormTextField label="Custom hours" compact keyboardType="decimal-pad" value={customHours} onChangeText={setCustomHours} />
               ) : null}
 
-              <View style={s.row}>
-                <View style={s.col}>
+              <Fields stack={stack}>
+                <Field stack={stack}>
                   <FormTextField label="Number of People" required compact keyboardType="number-pad" value={people} onChangeText={(v) => {
                     setPeople(v);
                     if (!foodOn) setFoodPeople(v);
                     if (!transportOn) setTransportPeople(v);
                   }} testID="field-people" />
-                </View>
-                <View style={s.col}>
+                </Field>
+                <Field stack={stack}>
                   <FormSelect
                     label="Event Type"
                     required
@@ -424,11 +445,11 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                     onChange={(v) => setEventType(v as EventType)}
                     options={EVENT_TYPES.map((x) => ({ value: x, label: x }))}
                   />
-                </View>
-              </View>
-            </FormSectionCard>
+                </Field>
+              </Fields>
+            </Section>
 
-            <FormSectionCard title="Add-ons & costing" compact style={s.section}>
+            <Section title="Add-ons & costing">
               <FormTextField
                 label="Ground / Venue Base Rate"
                 compact
@@ -453,14 +474,14 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   if (v && !foodPeople) setFoodPeople(people || "1");
                 }} testID="addon-food" />
                 {foodOn ? (
-                  <View style={s.row}>
-                    <View style={s.col}>
+                  <Fields stack={stack}>
+                    <Field stack={stack}>
                       <FormTextField label="Rate per plate" compact keyboardType="decimal-pad" value={foodRate} onChangeText={setFoodRate} />
-                    </View>
-                    <View style={s.col}>
+                    </Field>
+                    <Field stack={stack}>
                       <FormTextField label="Number of persons" compact keyboardType="number-pad" value={foodPeople} onChangeText={setFoodPeople} testID="food-people" />
-                    </View>
-                  </View>
+                    </Field>
+                  </Fields>
                 ) : null}
                 {foodOn ? <Text style={s.costLine}>Food total {formatInr(pricing.foodCost)}</Text> : null}
               </View>
@@ -471,14 +492,14 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   if (v && !transportPeople) setTransportPeople(people || "1");
                 }} testID="addon-transport" />
                 {transportOn ? (
-                  <View style={s.row}>
-                    <View style={s.col}>
+                  <Fields stack={stack}>
+                    <Field stack={stack}>
                       <FormTextField label="Rate per person" compact keyboardType="decimal-pad" value={transportRate} onChangeText={setTransportRate} />
-                    </View>
-                    <View style={s.col}>
+                    </Field>
+                    <Field stack={stack}>
                       <FormTextField label="Number of persons" compact keyboardType="number-pad" value={transportPeople} onChangeText={setTransportPeople} testID="transport-people" />
-                    </View>
-                  </View>
+                    </Field>
+                  </Fields>
                 ) : null}
                 {transportOn ? <Text style={s.costLine}>Transport total {formatInr(pricing.transportCost)}</Text> : null}
               </View>
@@ -486,14 +507,14 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
               <View style={s.addonCard}>
                 <Toggle label="Umpire / Referee needed" value={umpireOn} onChange={setUmpireOn} testID="addon-umpire" />
                 {umpireOn ? (
-                  <View style={s.row}>
-                    <View style={s.col}>
+                  <Fields stack={stack}>
+                    <Field stack={stack}>
                       <FormTextField label="Rate per day" compact keyboardType="decimal-pad" value={umpireRate} onChangeText={setUmpireRate} />
-                    </View>
-                    <View style={s.col}>
+                    </Field>
+                    <Field stack={stack}>
                       <FormTextField label="Number of persons" compact keyboardType="number-pad" value={umpirePeople} onChangeText={setUmpirePeople} testID="umpire-people" />
-                    </View>
-                  </View>
+                    </Field>
+                  </Fields>
                 ) : null}
                 {umpireOn ? <Text style={s.costLine}>Umpire total {formatInr(pricing.umpireCost)} ({days} day{days === 1 ? "" : "s"})</Text> : null}
               </View>
@@ -502,33 +523,33 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                 <Toggle label="Ball needed" value={ballsOn} onChange={setBallsOn} testID="addon-balls" />
                 {ballsOn ? (
                   <>
-                    <View style={s.row}>
-                      <View style={s.col}>
+                    <Fields stack={stack}>
+                      <Field stack={stack}>
                         <FormSelect label="Ball type" compact value={ballType} onChange={setBallType} options={BALL_TYPES.map((x) => ({ value: x, label: x }))} />
-                      </View>
-                      <View style={s.col}>
+                      </Field>
+                      <Field stack={stack}>
                         <FormSelect label="Colour" compact value={ballColor} onChange={setBallColor} options={BALL_COLORS.map((x) => ({ value: x, label: x }))} />
-                      </View>
-                    </View>
-                    <View style={s.row}>
-                      <View style={s.col}>
+                      </Field>
+                    </Fields>
+                    <Fields stack={stack}>
+                      <Field stack={stack}>
                         <FormTextField label="Quantity" compact keyboardType="number-pad" value={ballQty} onChangeText={setBallQty} />
-                      </View>
-                      <View style={s.col}>
+                      </Field>
+                      <Field stack={stack}>
                         <FormTextField label="Rate per ball" compact keyboardType="decimal-pad" value={ballRate} onChangeText={setBallRate} />
-                      </View>
-                    </View>
+                      </Field>
+                    </Fields>
                   </>
                 ) : null}
                 {ballsOn ? <Text style={s.costLine}>Balls total {formatInr(pricing.ballCost)}</Text> : null}
               </View>
-            </FormSectionCard>
+            </Section>
           </ScrollView>
 
           <View style={s.footer}>
             {error ? <Text style={s.error}>{error}</Text> : null}
             <View style={s.totalRow}>
-              <View>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
                 <Text style={s.totalLabel}>Total revenue</Text>
                 <Text style={s.totalHint}>
                   Ground {formatInr(pricing.groundRate)} + add-ons {formatInr(pricing.addOnTotal)}
@@ -551,62 +572,75 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
   );
 }
 
+const webBlock = Platform.select({
+  web: { display: "block", position: "relative", height: "auto", overflow: "visible" } as object,
+  default: {},
+});
+
 const s = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(15,23,42,0.45)",
     justifyContent: "center",
     alignItems: "center",
-    padding: spacing.lg,
+    padding: spacing.md,
   },
   sheet: {
     backgroundColor: colors.bg,
-    borderRadius: radii.xxl,
-    width: "100%",
-    maxWidth: 880,
-    maxHeight: "90%",
+    borderRadius: radii.xl,
     overflow: "hidden",
     flexDirection: "column",
-    alignSelf: "center",
     zIndex: 2,
-    ...Platform.select({ web: { maxHeight: "90vh" } as object, default: {} }),
   },
   sheetHead: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
-    flexShrink: 0,
   },
   kicker: { fontSize: 10, fontWeight: "800", color: colors.accent, letterSpacing: 1 },
   sheetTitle: { fontSize: 20, fontWeight: "800", color: colors.ink, marginTop: 2 },
   iconBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2 },
   body: {
-    flexGrow: 1,
-    flexShrink: 1,
+    flex: 1,
     minHeight: 0,
-    ...Platform.select({ web: { overflow: "auto" } as object, default: {} }),
+    ...Platform.select({ web: { overflowY: "auto", overflowX: "hidden" } as object, default: {} }),
   },
-  bodyInner: { padding: spacing.lg, paddingBottom: spacing.xl, gap: 12, flexGrow: 0 },
-  section: { flex: 0, marginBottom: 0 },
+  bodyInner: { padding: spacing.md, paddingBottom: spacing.lg },
+  section: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: 14,
+    marginBottom: 12,
+    width: "100%",
+    ...webBlock,
+  },
+  sectionTitle: { fontSize: 13, fontWeight: "800", color: colors.ink, marginBottom: 10 },
+  sectionBody: { width: "100%", ...webBlock },
+  fields: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6, width: "100%" },
+  fieldsStack: { flexDirection: "column", marginHorizontal: 0 },
+  field: { width: "50%", paddingHorizontal: 6, marginBottom: 10 },
+  fieldFull: { width: "100%", paddingHorizontal: 0 },
   lastCard: {
     backgroundColor: "#E0F2FE",
     borderRadius: radii.lg,
     padding: spacing.md,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#BAE6FD",
+    ...webBlock,
   },
   lastBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 },
   lastBadgeTxt: { fontSize: 11, fontWeight: "800", color: "#0369A1", textTransform: "uppercase", letterSpacing: 0.6 },
   lastTitle: { fontSize: 14, fontWeight: "800", color: colors.ink },
   lastMeta: { fontSize: 12, color: colors.muted, marginTop: 4 },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, width: "100%" },
-  col: { flexGrow: 1, flexShrink: 1, flexBasis: 260, minWidth: 220, maxWidth: "100%" },
-  hint: { fontSize: 11, color: colors.muted2, marginTop: 4 },
+  hint: { fontSize: 11, color: colors.muted2, marginBottom: 8 },
   hit: {
     flexDirection: "row",
     alignItems: "center",
@@ -624,17 +658,19 @@ const s = StyleSheet.create({
   sportTxt: { fontSize: 13, fontWeight: "700", color: colors.muted },
   sportTxtOn: { color: colors.primary },
   fieldLbl: { fontSize: 12, fontWeight: "700", color: colors.muted, marginTop: spacing.sm, marginBottom: 8 },
-  slotRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  slotRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: 4 },
+  slotRowStack: { flexDirection: "column" },
   slotCard: {
     flexGrow: 1,
-    flexBasis: 220,
-    minWidth: 180,
+    flexBasis: "48%",
+    minWidth: 160,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
     padding: spacing.md,
   },
+  slotCardStack: { width: "100%", flexBasis: "auto", minWidth: 0 },
   slotCardOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   slotName: { fontSize: 13, fontWeight: "800", color: colors.ink },
   slotNameOn: { color: colors.primary },
@@ -642,7 +678,7 @@ const s = StyleSheet.create({
   slotRateOn: { color: colors.accent },
   slotHint: { fontSize: 11, color: colors.muted2, marginTop: 4 },
   slotHintOn: { color: colors.primary },
-  customLink: { marginTop: 8, alignSelf: "flex-start" },
+  customLink: { marginTop: 8, marginBottom: 8, alignSelf: "flex-start" },
   customLinkOn: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: colors.primarySoft, borderRadius: radii.sm },
   customLinkTxt: { fontSize: 12, fontWeight: "700", color: colors.accent },
   addonCard: {
@@ -652,10 +688,11 @@ const s = StyleSheet.create({
     backgroundColor: colors.surface2,
     borderRadius: radii.lg,
     padding: spacing.md,
+    ...webBlock,
   },
-  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  toggleLabel: { fontSize: 13, fontWeight: "700", color: colors.ink },
-  toggleBtns: { flexDirection: "row", gap: 8 },
+  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  toggleLabel: { fontSize: 13, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  toggleBtns: { flexDirection: "row", gap: 8, flexShrink: 0 },
   toggleChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   toggleChipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   toggleTxt: { fontSize: 12, fontWeight: "700", color: colors.muted },
@@ -664,17 +701,16 @@ const s = StyleSheet.create({
   warn: { flexDirection: "row", gap: 8, backgroundColor: "#FEF3C7", borderRadius: radii.md, padding: spacing.sm, marginTop: 8 },
   warnTxt: { flex: 1, fontSize: 12, color: "#92400E", fontWeight: "600" },
   footer: {
-    padding: spacing.lg,
+    padding: spacing.md,
     backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
-    flexShrink: 0,
   },
   totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   totalLabel: { fontSize: 12, fontWeight: "800", color: colors.muted2, textTransform: "uppercase", letterSpacing: 0.6 },
   totalHint: { fontSize: 11, color: colors.muted2, marginTop: 2 },
-  totalValue: { fontSize: 24, fontWeight: "800", color: colors.ink },
+  totalValue: { fontSize: 22, fontWeight: "800", color: colors.ink },
   submit: { backgroundColor: colors.accent, borderRadius: radii.lg, paddingVertical: 14, alignItems: "center" },
   submitTxt: { color: "#fff", fontWeight: "800", fontSize: 15 },
   error: { color: colors.danger, fontSize: 12, fontWeight: "600" },
