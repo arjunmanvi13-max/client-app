@@ -15,7 +15,7 @@ import {
   type NavigationItem,
 } from "./navigationConfig";
 
-const STORAGE_KEY = "pws_alpha_nav_expand_v1";
+const STORAGE_KEY = "pws_alpha_nav_expand_v2";
 
 function loadSavedExpandState(): { groups: Record<string, boolean>; items: Record<string, boolean> } | null {
   if (Platform.OS !== "web" || typeof window === "undefined") return null;

@@ -141,6 +141,9 @@ export default function CommandCenter() {
         {!isSportsAdmin && (
           <DeptCard testID="dept-hostel" icon="home" tint="#7C3AED" title="Hostel" subtitle={`${data.departments.hostel.residents} residents · ${data.departments.hostel.pending_pass} pending passes`} onPress={() => router.push("/(tabs)/hostel")} />
         )}
+        {(isSuper || isSportsAdmin) && (
+          <DeptCard testID="dept-ground-booking" icon="map" tint="#0284C7" title="Ground Booking" subtitle="ALPHA cricket and football venue reservations" onPress={() => router.push("/operations/ground-booking")} />
+        )}
         <DeptCard testID="dept-staff" icon="user-check" tint="#BE185D" title={isSportsAdmin ? "ALPHA Staff Attendance" : "Staff Attendance"} subtitle={`${data.roster_counts.staff} staff${isSportsAdmin ? " · ALPHA" : " · PWS & ALPHA"}`} onPress={() => router.push("/staff-attendance")} />
         <DeptCard testID="dept-coach-att" icon="award" tint="#EA580C" title="Coach Attendance" subtitle={`${data.roster_counts.coaches} coaches · ALPHA`} onPress={() => router.push("/coach-attendance")} />
         {(userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA) || userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)) && (

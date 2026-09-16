@@ -209,6 +209,7 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
       ? [{ label: "Take attendance", icon: "user-check" as const, href: "/(tabs)/attendance" }]
       : []),
     { label: "Collect fees", icon: "credit-card" as const, href: "/fees/collection" },
+    { label: "Ground booking", icon: "map" as const, href: "/operations/ground-booking" },
     { label: "New task", icon: "plus-square" as const, href: "/task/new" },
     { label: "Reports", icon: "bar-chart-2" as const, href: "/reports" },
   ];
@@ -297,6 +298,10 @@ export default function SuperAdminDashboard({ lockedEntity }: DashboardProps = {
               </View>
             )}
 
+            <TouchableOpacity testID="quick-ground-booking" style={s.groundBtn} onPress={() => router.push("/operations/ground-booking")}>
+              <Feather name="map" size={15} color={colors.primary} />
+              <Text style={s.groundBtnTxt}>Ground Booking</Text>
+            </TouchableOpacity>
             <TouchableOpacity testID="quick-action" style={s.quickBtn} onPress={() => setQuickOpen(true)}>
               <Feather name="plus" size={15} color="#fff" />
               <Text style={s.quickBtnTxt}>Quick Action</Text>
@@ -652,6 +657,20 @@ const s = StyleSheet.create({
     alignSelf: "flex-start",
   },
   quickBtnTxt: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  groundBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.accentSoft,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "web" ? 8 : 7,
+    borderRadius: radii.md,
+    minHeight: 40,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.accent,
+  },
+  groundBtnTxt: { color: colors.primary, fontWeight: "800", fontSize: 12 },
   stack: { gap: 14 },
   card: {
     backgroundColor: colors.surface,

@@ -42,6 +42,12 @@ function run() {
   const superAdmin = mockUser({ role: "super_admin", organization: "BOTH" });
   const superGroups = filterNavigationGroups({ user: superAdmin });
   assert(superGroups.length === 6, "Super Admin should see all six groups");
+  assert(allLeafIds(superGroups).includes("ground-booking"), "Super Admin sees Ground Booking");
+  const superPws = mockUser({ role: "super_admin", organization: "PWS", user_type: "super_admin" });
+  assert(
+    allLeafIds(filterNavigationGroups({ user: superPws })).includes("ground-booking"),
+    "Super Admin sees Ground Booking even if organization is PWS",
+  );
 
   const systemGroup = superGroups.find((g) => g.id === "system");
   const accessControl = systemGroup?.children.find((c) => c.id === "access-control");
@@ -69,7 +75,7 @@ function run() {
   const operationsGroup = NAVIGATION_GROUPS.find((g) => g.id === "operations");
   assert(!!operationsGroup, "Operations group exists");
   assert(
-    operationsGroup?.children.map((c) => c.id).join(",") === "attendance-take,attendance-reports,hostel",
+    operationsGroup?.children.map((c) => c.id).join(",") === "attendance-take,attendance-reports,hostel,ground-booking",
     "Operations items are flat without nested Attendance wrapper",
   );
   assert(!operationsGroup?.children.some((c) => c.children?.length), "Operations has no nested dropdown items");
@@ -95,12 +101,14 @@ function run() {
   const alphaAccounts = mockUser({ role: "alpha_accounts", organization: "ALPHA" });
   const alphaLeaves = flattenLeafItems(filterNavigationGroups({ user: alphaAccounts }));
   assert(alphaLeaves.some((i) => i.id === "collect-fees"), "ALPHA Accounts sees Collect Fees");
+  assert(alphaLeaves.some((i) => i.id === "ground-booking"), "ALPHA Accounts sees Ground Booking");
   assert(!alphaLeaves.some((i) => i.id === "invoice-engine"), "ALPHA Accounts should not see PWS Invoice Engine");
 
   const teacher = mockUser({ role: "teacher", organization: "PWS" });
   const teacherLeaves = flattenLeafItems(filterNavigationGroups({ user: teacher }));
   assert(!teacherLeaves.some((i) => i.href?.startsWith("/fees")), "PWS Teacher should not see Financials");
   assert(!teacherLeaves.some((i) => i.id === "players"), "PWS Teacher should not see ALPHA Players");
+  assert(!teacherLeaves.some((i) => i.id === "ground-booking"), "PWS Teacher should not see Ground Booking");
   assert(teacherLeaves.some((i) => i.id === "marks-entry"), "PWS Teacher should see Marks Entry");
 
   const coach = mockUser({ role: "coach", organization: "ALPHA" });

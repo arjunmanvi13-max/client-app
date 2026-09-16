@@ -252,6 +252,20 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         match: (p) => p.startsWith("/(tabs)/hostel") || p === "/hostel",
         permissions: [Permission.MARK_HOSTEL_ATTENDANCE],
       },
+      {
+        id: "ground-booking",
+        label: "Ground Booking",
+        icon: "map",
+        href: "/operations/ground-booking",
+        match: matchPrefix(["/operations/ground-booking"]),
+        isVisible: (ctx) => {
+          if (isSuperAdminUser(ctx.user)) return true;
+          const role = (ctx.user.role || "").toLowerCase();
+          const userType = (ctx.user.user_type || "").toLowerCase();
+          return ["admin", "alpha_admin", "alpha_accounts"].includes(role)
+            || ["alpha_admin", "alpha_accounts"].includes(userType);
+        },
+      },
     ],
   },
   {
@@ -436,8 +450,11 @@ export function isNavigationItemAllowed(item: NavigationItem, ctx: NavigationCon
   }
   if (item.isVisible && !item.isVisible(ctx)) return false;
   if (item.excludeRoles?.includes(user.role)) return false;
-  if (item.pwsOnly && user.organization === "ALPHA") return false;
-  if (item.alphaOnly && user.organization === "PWS") return false;
+  if (!isSuperAdminUser(user)) {
+    const scope = String(user.entity_scope || user.organization || "").toUpperCase();
+    if (item.pwsOnly && scope === "ALPHA") return false;
+    if (item.alphaOnly && scope === "PWS") return false;
+  }
   if (item.permissions?.length) {
     return item.permissions.some((p) => hasPermission(user, p, item.permissionEntity));
   }
@@ -504,7 +521,7 @@ export function initialExpandedState(groups: NavigationGroup[], pathname: string
 
   groups.forEach((group) => {
     const groupActive = groupMatchesPath(group, pathname);
-    groupsOpen[group.id] = groupActive;
+    groupsOpen[group.id] = groupActive || group.id === "operations";
     const walk = (item: NavigationItem) => {
       const active = itemMatchesPath(item, pathname);
       if (item.children?.length) {
