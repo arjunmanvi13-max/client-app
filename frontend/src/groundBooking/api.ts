@@ -21,6 +21,11 @@ export async function searchGroundCustomers(q: string): Promise<GroundCustomer[]
   return Array.isArray(data) ? data : [];
 }
 
+export async function createGroundBooking(payload: BookingPayload): Promise<GroundBooking> {
+  const { data } = await api.post("/ground-bookings", payload);
+  return data;
+}
+
 export async function updateGroundBooking(id: string, payload: BookingPayload): Promise<GroundBooking> {
   const { data } = await api.put(`/ground-bookings/${id}`, payload);
   return data;
