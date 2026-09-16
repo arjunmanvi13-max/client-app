@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth, userHasPermission } from "./auth";
-import { BusinessEntity, Permission, UserRole, isSuperAdminUser, normalizeRole } from "./rbac";
+import { BusinessEntity, Permission, UserRole, canAccessEnquiry, isSuperAdminUser, normalizeRole } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
@@ -144,7 +144,9 @@ export default function CommandCenter() {
         {(isSuper || isSportsAdmin) && (
           <DeptCard testID="dept-ground-booking" icon="map" tint="#0284C7" title="Ground Booking" subtitle="ALPHA cricket and football venue reservations" onPress={() => router.push("/operations/ground-booking")} />
         )}
-        <DeptCard testID="dept-enquiry" icon="phone" tint="#0F766E" title="Enquiry" subtitle="PWS and ALPHA admission leads and follow-ups" onPress={() => router.push("/operations/enquiry")} />
+        {canAccessEnquiry(user) && (
+          <DeptCard testID="dept-enquiry" icon="phone" tint="#0F766E" title="Enquiry" subtitle="PWS and ALPHA admission leads and follow-ups" onPress={() => router.push("/operations/enquiry")} />
+        )}
         <DeptCard testID="dept-staff" icon="user-check" tint="#BE185D" title={isSportsAdmin ? "ALPHA Staff Attendance" : "Staff Attendance"} subtitle={`${data.roster_counts.staff} staff${isSportsAdmin ? " · ALPHA" : " · PWS & ALPHA"}`} onPress={() => router.push("/staff-attendance")} />
         <DeptCard testID="dept-coach-att" icon="award" tint="#EA580C" title="Coach Attendance" subtitle={`${data.roster_counts.coaches} coaches · ALPHA`} onPress={() => router.push("/coach-attendance")} />
         {(userHasPermission(user, Permission.COLLECT_ALPHA_FEES, BusinessEntity.ALPHA) || userHasPermission(user, Permission.COLLECT_PWS_FEES, BusinessEntity.PWS)) && (

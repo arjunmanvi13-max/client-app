@@ -100,12 +100,18 @@ function run() {
   assert(pwsLeaves.some((i) => i.id === "enquiry"), "PWS Accounts sees Enquiry");
   assert(!pwsLeaves.some((i) => i.id === "players"), "PWS Accounts should not see ALPHA Players roster");
 
+  const pwsAccountsByType = mockUser({ role: "staff", organization: "PWS", user_type: "pws_accounts" as any });
+  assert(allLeafIds(filterNavigationGroups({ user: pwsAccountsByType })).includes("enquiry"), "PWS Accounts user_type sees Enquiry");
+
   const alphaAccounts = mockUser({ role: "alpha_accounts", organization: "ALPHA" });
   const alphaLeaves = flattenLeafItems(filterNavigationGroups({ user: alphaAccounts }));
   assert(alphaLeaves.some((i) => i.id === "collect-fees"), "ALPHA Accounts sees Collect Fees");
   assert(alphaLeaves.some((i) => i.id === "ground-booking"), "ALPHA Accounts sees Ground Booking");
   assert(alphaLeaves.some((i) => i.id === "enquiry"), "ALPHA Accounts sees Enquiry");
   assert(!alphaLeaves.some((i) => i.id === "invoice-engine"), "ALPHA Accounts should not see PWS Invoice Engine");
+
+  const alphaAccountsByType = mockUser({ role: "staff", organization: "ALPHA", user_type: "alpha_accounts" as any });
+  assert(allLeafIds(filterNavigationGroups({ user: alphaAccountsByType })).includes("enquiry"), "ALPHA Accounts user_type sees Enquiry");
 
   const teacher = mockUser({ role: "teacher", organization: "PWS" });
   const teacherLeaves = flattenLeafItems(filterNavigationGroups({ user: teacher }));
@@ -173,23 +179,33 @@ function run() {
 
   const pwsAdmin = mockUser({ role: "pws_admin", organization: "PWS" });
   const pwsAdminLeaves = allLeafIds(filterNavigationGroups({ user: pwsAdmin }));
+  assert(pwsAdminLeaves.includes("enquiry"), "PWS Admin sees Enquiry");
   assert(!pwsAdminLeaves.includes("players"), "PWS Admin should not see Players without ALPHA scope");
   assert(!pwsAdminLeaves.includes("permissions"), "PWS Admin should not see Permissions nav item");
 
+  const pwsAdminByType = mockUser({ role: "staff", organization: "PWS", user_type: "pws_admin" as any });
+  assert(allLeafIds(filterNavigationGroups({ user: pwsAdminByType })).includes("enquiry"), "PWS Admin user_type sees Enquiry");
+
   const principal = mockUser({ role: "principal", organization: "PWS", permissions_rbac: { MANAGE_USERS_ROSTERS: true } as any });
   const principalLeaves = allLeafIds(filterNavigationGroups({ user: principal }));
+  assert(principalLeaves.includes("enquiry"), "Principal sees Enquiry");
   assert(!principalLeaves.includes("permissions"), "Principal should not see Permissions nav item");
   assert(principalLeaves.includes("manage-users"), "Principal with manage-users should still see Manage Users & Rosters");
 
   const alphaAdmin = mockUser({ role: "alpha_admin", organization: "ALPHA" });
   const alphaAdminLeaves = allLeafIds(filterNavigationGroups({ user: alphaAdmin }));
+  assert(alphaAdminLeaves.includes("enquiry"), "ALPHA Admin sees Enquiry");
   assert(!alphaAdminLeaves.includes("students"), "ALPHA Admin should not see Students");
   assert(!alphaAdminLeaves.includes("marks-entry"), "ALPHA Admin should not see PWS Marks Entry");
+
+  const alphaAdminByType = mockUser({ role: "staff", organization: "ALPHA", user_type: "alpha_admin" as any });
+  assert(allLeafIds(filterNavigationGroups({ user: alphaAdminByType })).includes("enquiry"), "ALPHA Admin user_type sees Enquiry");
 
   // Empty groups hidden
   const staffUser = mockUser({ role: "staff", organization: "PWS" });
   const staffGroups = filterNavigationGroups({ user: staffUser });
   staffGroups.forEach((g) => assert(g.children.length > 0, `Group ${g.id} must not be empty when visible`));
+  assert(!allLeafIds(staffGroups).includes("enquiry"), "Generic staff should not see Enquiry");
 
   console.log("navigationConfig.verify.ts: all checks passed");
 }

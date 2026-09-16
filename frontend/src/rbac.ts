@@ -134,6 +134,35 @@ export function isSuperAdminUser(user: RBACUser | null | undefined): boolean {
   return false;
 }
 
+const ENQUIRY_USER_TYPES = new Set([
+  UserRole.SUPER_ADMIN,
+  UserRole.PWS_ADMIN,
+  UserRole.ALPHA_ADMIN,
+  UserRole.PWS_ACCOUNTS,
+  UserRole.ALPHA_ACCOUNTS,
+]);
+
+const ENQUIRY_ROLES = new Set([
+  "super_admin",
+  "pws_admin",
+  "alpha_admin",
+  "admin",
+  "pws_accounts",
+  "alpha_accounts",
+  "principal",
+  "vice_principal",
+]);
+
+/** Super Admin, PWS/ALPHA Admin, and PWS/ALPHA Accounts — including user_type logins. */
+export function canAccessEnquiry(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  const userType = String((user as RBACUser & { user_type?: string }).user_type || "").toLowerCase();
+  if (ENQUIRY_USER_TYPES.has(userType as UserRole)) return true;
+  const role = String(user.role || user.role_canonical || "").toLowerCase();
+  return ENQUIRY_ROLES.has(role);
+}
+
 /** PWS Principal — excludes Vice Principal and other PWS Admin designations. */
 export function isPrincipalUser(user: RBACUser | null | undefined): boolean {
   if (!user) return false;
@@ -152,6 +181,21 @@ export function isAcademicHeadUser(user: RBACUser | null | undefined): boolean {
   if (!user) return false;
   if (isSuperAdminUser(user)) return true;
   return (user.designation || "").toUpperCase() === "ACADEMIC_HEAD";
+}
+
+/** Principal, Vice Principal, or Academic Head — staff/teacher attendance view. */
+export function isAcademicLeadershipUser(user: RBACUser | null | undefined): boolean {
+  if (!user || isSuperAdminUser(user)) return false;
+  const role = (user.role || "").toLowerCase();
+  if (role === "principal" || role === "vice_principal") return true;
+  const d = (user.designation || "").toUpperCase();
+  return d === "PRINCIPAL" || d === "VICE_PRINCIPAL" || d === "ACADEMIC_HEAD";
+}
+
+export function isWardenUser(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  const role = (user.role || "").toLowerCase();
+  return role === "warden" || normalizeRole(user.role) === UserRole.WARDEN;
 }
 
 export function isPwsTeacherUser(user: RBACUser | null | undefined): boolean {

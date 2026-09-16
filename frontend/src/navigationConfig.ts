@@ -5,7 +5,7 @@
 import type { User } from "./auth";
 import { canAccessTakeAttendance } from "./attendanceAccess";
 import { isCoachUser } from "./coachAccess";
-import { BusinessEntity, Permission, canAccessTimetable, hasPermission, isSuperAdminUser } from "./rbac";
+import { BusinessEntity, Permission, canAccessEnquiry, canAccessTimetable, hasPermission, isSuperAdminUser } from "./rbac";
 import { APPROVED_LOGIN_USER_TYPES } from "./userClassification";
 
 function matchManageLoginUsers(pathname: string): boolean {
@@ -272,11 +272,7 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         icon: "phone",
         href: "/operations/enquiry",
         match: matchPrefix(["/operations/enquiry"]),
-        isVisible: (ctx) => {
-          if (isSuperAdminUser(ctx.user)) return true;
-          const role = (ctx.user.role || "").toLowerCase();
-          return ["admin", "alpha_admin", "alpha_accounts", "pws_admin", "pws_accounts", "principal", "vice_principal", "staff"].includes(role);
-        },
+        isVisible: (ctx) => canAccessEnquiry(ctx.user),
       },
     ],
   },

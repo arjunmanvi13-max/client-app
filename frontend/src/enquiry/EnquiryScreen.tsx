@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../auth";
-import { isSuperAdminUser } from "../rbac";
+import { canAccessEnquiry } from "../rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
 import { colors, radii, spacing } from "../theme";
@@ -18,13 +18,6 @@ import {
 } from "./api";
 import { ENQUIRY_SOURCES, ENQUIRY_STATUSES, statusTone, type Enquiry, type EnquiryPayload, type EnquiryStaff } from "./types";
 
-function canAccess(user: { role?: string } | null | undefined) {
-  if (!user) return false;
-  if (isSuperAdminUser(user)) return true;
-  const role = (user.role || "").toLowerCase();
-  return ["admin", "alpha_admin", "alpha_accounts", "pws_admin", "pws_accounts", "principal", "vice_principal", "staff"].includes(role);
-}
-
 function waLink(phone: string) {
   const d = phone.replace(/\D/g, "");
   const n = d.length === 10 ? `91${d}` : d;
@@ -35,7 +28,7 @@ export function EnquiryScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const { isDesktop, horizontalPadding } = useBreakpoint();
-  const allowed = canAccess(user);
+  const allowed = canAccessEnquiry(user);
   const [rows, setRows] = useState<Enquiry[]>([]);
   const [staff, setStaff] = useState<EnquiryStaff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,8 +154,8 @@ export function EnquiryScreen() {
       <SafeAreaView style={s.safe} edges={["top"]}>
         <View style={s.denied}>
           <Feather name="lock" size={28} color={colors.muted2} />
-          <Text style={s.deniedTitle}>Enquiry is for the admissions team</Text>
-          <Text style={s.deniedTxt}>Office, Admin, Accounts, Principal, and Super Admin can record and track enquiries.</Text>
+          <Text style={s.deniedTitle}>Enquiry is for Admin and Accounts</Text>
+          <Text style={s.deniedTxt}>Super Admin, PWS Admin, ALPHA Admin, PWS Accounts, and ALPHA Accounts can record and track enquiries.</Text>
         </View>
       </SafeAreaView>
     );
