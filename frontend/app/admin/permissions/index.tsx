@@ -14,7 +14,8 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { api, useAuth } from "../../../src/auth";
 import { isSuperAdminUser } from "../../../src/rbac";
 import { getApiError } from "../../../src/ScreenStates";
-import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, isApprovedLoginUserType, resolveRouteParam, type LoginUserType } from "../../../src/userClassification";
+import { PERMISSION_SET_BY_CODE, PERMISSION_SET_CODES, type PermissionSetCode } from "../../../src/directoryWorkflow";
+import { resolveRouteParam } from "../../../src/userClassification";
 import {
   allLeafIds,
   applyGroupToggle,
@@ -28,13 +29,14 @@ import { colors, radii, shadow } from "../../../src/theme";
 import { useBreakpoint } from "../../../src/useBreakpoint";
 
 type CategorySummary = {
-  user_type: LoginUserType;
-  display_name: string;
+  code: PermissionSetCode;
+  name: string;
+  description?: string;
   entity_scope: string;
   locked: boolean;
   enabled_count: number;
   total_count: number;
-  active_user_count: number;
+  assigned_user_count: number;
 };
 
 type ModuleNode = {
@@ -46,14 +48,15 @@ type ModuleNode = {
 };
 
 type CategoryDetail = {
-  user_type: LoginUserType;
-  display_name: string;
+  code: PermissionSetCode;
+  name: string;
   entity_scope: string;
   locked: boolean;
   catalog: Array<{ id: string; label: string; modules: ModuleNode[] }>;
   modules: Record<string, boolean>;
   updated_at?: string | null;
   updated_by_name?: string | null;
+  assigned_user_count?: number;
 };
 
 function permissionsApiError(e: any, fallback: string): string {
@@ -70,7 +73,7 @@ export default function CategoryPermissionsScreen() {
   const { user, loading: authLoading } = useAuth();
   const { isWide, horizontalPadding } = useBreakpoint();
   const [categories, setCategories] = useState<CategorySummary[]>([]);
-  const [selected, setSelected] = useState<LoginUserType>(APPROVED_LOGIN_USER_TYPES[1]);
+  const [selected, setSelected] = useState<PermissionSetCode>("principal");
   const [detail, setDetail] = useState<CategoryDetail | null>(null);
   const [draft, setDraft] = useState<Record<string, boolean>>({});
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, boolean>>({});
@@ -83,29 +86,38 @@ export default function CategoryPermissionsScreen() {
   const loadCategories = useCallback(async () => {
     setError("");
     try {
-      const { data } = await api.get("/permissions/categories");
-      const fromApi: CategorySummary[] = data.categories || [];
-      // Ensure all seven canonical types appear even if API omits any
-      const merged: CategorySummary[] = APPROVED_LOGIN_USER_TYPES.map((userType) => {
-        const hit = fromApi.find((c) => c.user_type === userType);
-        const meta = CATALOG_BY_CODE[userType];
-        if (hit) return { ...hit, active_user_count: hit.active_user_count ?? 0 };
+      const { data } = await api.get("/permissions/sets");
+      const fromApi: CategorySummary[] = (data.sets || []).map((row: any) => ({
+        code: row.code,
+        name: row.name,
+        description: row.description,
+        entity_scope: row.entity_scope,
+        locked: row.locked,
+        enabled_count: row.enabled_count,
+        total_count: row.total_count,
+        assigned_user_count: row.assigned_user_count ?? 0,
+      }));
+      const merged: CategorySummary[] = PERMISSION_SET_CODES.map((code) => {
+        const hit = fromApi.find((c) => c.code === code);
+        const meta = PERMISSION_SET_BY_CODE[code];
+        if (hit) return hit;
         return {
-          user_type: userType,
-          display_name: meta.displayName,
-          entity_scope: meta.entityScope,
-          locked: userType === "super_admin",
+          code,
+          name: meta.name,
+          description: meta.description,
+          entity_scope: meta.scope,
+          locked: meta.locked,
           enabled_count: 0,
           total_count: 0,
-          active_user_count: 0,
+          assigned_user_count: 0,
         };
       });
       setCategories(merged);
-      if (!merged.find((c) => c.user_type === selected)) {
-        setSelected(merged.find((c) => !c.locked)?.user_type || merged[0].user_type);
+      if (!merged.find((c) => c.code === selected)) {
+        setSelected(merged.find((c) => !c.locked)?.code || merged[0].code);
       }
     } catch (e: any) {
-      setError(permissionsApiError(e, "Failed to load categories"));
+      setError(permissionsApiError(e, "Failed to load permission sets"));
     } finally {
       setLoading(false);
     }
@@ -113,19 +125,19 @@ export default function CategoryPermissionsScreen() {
 
   useEffect(() => {
     const raw = resolveRouteParam(categoryParam);
-    if (raw && isApprovedLoginUserType(raw)) setSelected(raw);
+    if (raw && (PERMISSION_SET_CODES as readonly string[]).includes(raw)) setSelected(raw as PermissionSetCode);
   }, [categoryParam]);
 
-  const loadDetail = useCallback(async (userType: LoginUserType) => {
+  const loadDetail = useCallback(async (code: PermissionSetCode) => {
     setLoadingDetail(true);
     setSaveMsg("");
     try {
-      const { data } = await api.get(`/permissions/categories/${userType}`);
+      const { data } = await api.get(`/permissions/sets/${code}`);
       setDetail(data);
       setDraft({ ...data.modules });
       setSavedSnapshot({ ...data.modules });
     } catch (e: any) {
-      setError(permissionsApiError(e, "Failed to load category"));
+      setError(permissionsApiError(e, "Failed to load permission set"));
       setDetail(null);
     } finally {
       setLoadingDetail(false);
@@ -188,7 +200,7 @@ export default function CategoryPermissionsScreen() {
     setSaving(true);
     setSaveMsg("");
     try {
-      const { data } = await api.put(`/permissions/categories/${detail.user_type}`, { modules: draft });
+      const { data } = await api.put(`/permissions/sets/${detail.code}`, { modules: draft });
       setDetail(data);
       setDraft({ ...data.modules });
       setSavedSnapshot({ ...data.modules });
@@ -240,8 +252,8 @@ export default function CategoryPermissionsScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.overline}>SUPER ADMIN · ACCESS CONTROL</Text>
-          <Text style={s.h1}>User Category Permissions</Text>
-          <Text style={s.sub}>Configure module access by login user type — not individual accounts.</Text>
+          <Text style={s.h1}>Permissions</Text>
+          <Text style={s.sub}>Reusable permission sets assigned from Directory. Super Admin is locked.</Text>
         </View>
       </View>
 
@@ -272,32 +284,32 @@ export default function CategoryPermissionsScreen() {
         <ActivityIndicator color="#0F766E" style={{ marginTop: 40 }} />
       ) : (
         <View style={[s.body, isWide && s.bodyWide, { paddingHorizontal: horizontalPadding, flex: 1 }]}>
-          {/* Category list — all seven login user types */}
+          {/* Permission sets */}
           <View style={isWide ? s.catColWide : undefined}>
-            <Text style={s.catColLabel}>User categories ({categories.length || 7})</Text>
+            <Text style={s.catColLabel}>Permission sets ({categories.length || 12})</Text>
             <ScrollView
               style={isWide ? s.catListWide : s.catListMobile}
               contentContainerStyle={s.catListContent}
               showsVerticalScrollIndicator
             >
             {categories.map((cat) => {
-              const meta = CATALOG_BY_CODE[cat.user_type];
-              const active = selected === cat.user_type;
+              const meta = PERMISSION_SET_BY_CODE[cat.code];
+              const active = selected === cat.code;
               const counts = active && selectedCounts
                 ? selectedCounts
                 : { enabled: cat.enabled_count, total: cat.total_count };
               return (
                 <TouchableOpacity
-                  key={cat.user_type}
-                  testID={`cat-${cat.user_type}`}
+                  key={cat.code}
+                  testID={`cat-${cat.code}`}
                   style={[s.catItem, active && s.catItemActive]}
-                  onPress={() => setSelected(cat.user_type)}
+                  onPress={() => setSelected(cat.code)}
                 >
                   <View style={[s.catIcon, { backgroundColor: (meta?.tint || colors.primary) + "22" }]}>
                     <Feather name={(meta?.icon as any) || "user"} size={16} color={meta?.tint || colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[s.catName, active && s.catNameActive]}>{cat.display_name}</Text>
+                    <Text style={[s.catName, active && s.catNameActive]}>{cat.name}</Text>
                     <View style={s.catMetaRow}>
                       <Text style={s.catMeta}>
                         {cat.entity_scope} · {counts.enabled}/{counts.total} modules
@@ -305,14 +317,14 @@ export default function CategoryPermissionsScreen() {
                       </Text>
                       <TouchableOpacity
                         style={s.userBadge}
-                        onPress={() => router.push(`/manage/${cat.user_type}`)}
-                        testID={`cat-users-${cat.user_type}`}
+                        onPress={() => router.push(cat.code === "teacher" ? "/manage/teacher" : cat.code === "student" ? "/manage/student" : cat.code === "player" ? "/manage/player" : "/manage/admin")}
+                        testID={`cat-users-${cat.code}`}
                         accessibilityRole="link"
-                        accessibilityLabel={`View ${cat.active_user_count} active ${cat.display_name} users`}
+                        accessibilityLabel={`View ${cat.assigned_user_count} assigned ${cat.name} users`}
                       >
                         <Feather name="users" size={10} color="#0F766E" />
                         <Text style={s.userBadgeTxt}>
-                          {cat.active_user_count} {cat.active_user_count === 1 ? "User" : "Users"}
+                          {cat.assigned_user_count} {cat.assigned_user_count === 1 ? "User" : "Users"}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -332,7 +344,7 @@ export default function CategoryPermissionsScreen() {
               <ScrollView contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
                 <View style={s.panelHead}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.panelTitle}>{detail.display_name}</Text>
+                    <Text style={s.panelTitle}>{detail.name}</Text>
                     <Text style={s.panelSub}>
                       {detail.entity_scope} scope
                       {detail.updated_at ? ` · Updated ${detail.updated_at.slice(0, 10)}` : ""}

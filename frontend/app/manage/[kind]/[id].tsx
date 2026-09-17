@@ -27,6 +27,7 @@ import {
   type StaffDesignation,
 } from "../../../src/userClassification";
 import { LoginTierUserFormFields } from "../../../src/LoginTierUserFormFields";
+import { permissionSetForDesignation } from "../../../src/directoryWorkflow";
 import { ModulePermissionMatrix } from "../../../src/ModulePermissionMatrix";
 import { presetForDesignation, emptyModuleAccess, type ModuleAccessLevel } from "../../../src/designationAccess";
 import { CategoryPermissionsPreview } from "../../../src/CategoryPermissionsPreview";
@@ -39,7 +40,7 @@ import {
   parseToISO,
   toISODate,
 } from "../../../src/dateFormat";
-import { StudentRosterFormFields, resolveSectionMatch } from "../../../src/StudentRosterFormFields";
+import { StudentRosterFormFields, resolveSectionMatch, parseSectionLetter } from "../../../src/StudentRosterFormFields";
 import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
 import { PwsAdminUserFormFields } from "../../../src/PwsAdminUserFormFields";
@@ -211,7 +212,7 @@ export default function ManageEdit() {
 
   useEffect(() => {
     if (kindRaw === undefined) return;
-    if (!userTypeKind && !loginTierKind && !rosterMeta) router.replace("/manage");
+    if (!userTypeKind && !loginTierKind && !rosterMeta) router.replace("/directory");
   }, [kindRaw, userTypeKind, loginTierKind, rosterMeta, router]);
 
   const isSuper = user?.role === "super_admin" || user?.user_type === "super_admin"
@@ -601,10 +602,10 @@ export default function ManageEdit() {
             setAssignedCoachId(p.assigned_coach_id || null);
             setCentre(p.centre || "");
             setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
-            if (p.player_type === "Boarding") {
+            if (p.player_type === "Boarding" || p.player_type === "Day Boarding") {
               setBoardingClass(p.pws_class || "");
-              const sectionMatch = (p.group || "").match(/-([A-F])$/i);
-              setBoardingSectionLetter(sectionMatch ? sectionMatch[1].toUpperCase() : "");
+              const fromSection = academicSections.find((s) => s.id === p.section_id);
+              setBoardingSectionLetter(parseSectionLetter(fromSection?.label || p.group || "") || "");
             } else {
               setBoardingClass("");
               setBoardingSectionLetter("");
@@ -638,6 +639,15 @@ export default function ManageEdit() {
       }).catch(() => setAcademicSections([]));
     }
   }, [isStudentKind, isPlayerKind]);
+
+  useEffect(() => {
+    if (!isPlayerKind) return;
+    if (playerType !== "Boarding" && playerType !== "Day Boarding") return;
+    if (boardingSectionLetter || !sectionId || !academicSections.length) return;
+    const sec = academicSections.find((s) => s.id === sectionId);
+    const letter = parseSectionLetter(sec?.label);
+    if (letter) setBoardingSectionLetter(letter);
+  }, [isPlayerKind, playerType, sectionId, academicSections, boardingSectionLetter]);
 
   useEffect(() => {
     if (!isTeacherUserForm) return;
@@ -912,8 +922,8 @@ export default function ManageEdit() {
         return;
       }
     }
-    if (isPlayerKind && playerType === "Boarding" && (!boardingClass.trim() || !boardingSectionLetter.trim())) {
-      Alert.alert("Class and Section are required for Boarding players");
+    if (isPlayerKind && (playerType === "Boarding" || playerType === "Day Boarding") && (!boardingClass.trim() || !boardingSectionLetter.trim())) {
+      Alert.alert("Class and Section are required for Boarding and Day Boarding players");
       return;
     }
     if (isPlayerKind && (!skillLevel || !slot || !centre || !playerType)) {
@@ -998,6 +1008,7 @@ export default function ManageEdit() {
             organization: loginEntity,
             phone: phone || null,
             module_access: moduleAccess,
+            permission_set: permissionSetForDesignation(staffDesignation) || undefined,
           };
           if (staffDesignation === "COACH") {
             body.assigned_sports = assignedSports[0] ? [assignedSports[0]] : ["Cricket"];
@@ -1015,6 +1026,7 @@ export default function ManageEdit() {
           designation: staffDesignation,
           organization: loginEntity,
           module_access: moduleAccess,
+          permission_set: permissionSetForDesignation(staffDesignation) || undefined,
         };
         if (password) body.password = password;
         if (canManageUsersRosters && email.trim()) body.email = email.trim().toLowerCase();
@@ -1144,9 +1156,10 @@ export default function ManageEdit() {
         }
       } else if (isPlayerKind) {
         const isHostelType = playerType === "Hostel Only" || playerType === "Boarding";
+        const sportsGroup = group || null;
         const body: any = {
           name, kind: "player", organization: "ALPHA",
-          sport: sport || null, group: group || null, is_resident: isHostelType,
+          sport: sport || null, group: sportsGroup, is_resident: isHostelType,
           guardian_name: guardianName || fatherName || null,
           father_name: guardianName || fatherName || null,
           guardian_phone: guardianPhone || null,
@@ -1168,18 +1181,18 @@ export default function ManageEdit() {
           body.monthly_fee_override = monthlyFeeOverride ? parseInt(monthlyFeeOverride, 10) : null;
           body.registration_fee_override = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : null;
         }
-        if (playerType === "Boarding") {
-          // Boarding players carry PWS student attributes (class/section) — synced with the PWS Student List roster.
+        if (playerType === "Boarding" || playerType === "Day Boarding") {
           body.pws_class = boardingClass;
-          body.pws_student_type = "Boarding";
-          const { id: boardingSectionId, label: boardingGroup } = resolveSectionMatch(
+          const { id: boardingSectionId } = resolveSectionMatch(
             boardingClass,
             boardingSectionLetter,
             academicSections,
           );
           if (boardingSectionId) body.section_id = boardingSectionId;
-          body.group = boardingGroup;
-          body.pws_fee_overrides = { Tuition: BOARDING_FLAT_MONTHLY_FEE };
+          if (playerType === "Boarding") {
+            body.pws_student_type = "Boarding";
+            body.pws_fee_overrides = { Tuition: BOARDING_FLAT_MONTHLY_FEE };
+          }
         }
         // assigned_coach_id removed — players are centre-based
         if (isNew) {
@@ -1471,7 +1484,7 @@ export default function ManageEdit() {
         >
           {isCoachUserForm && (
             <FormPageHeader
-              breadcrumb="SYSTEM & SETTINGS · ALPHA COACHES"
+              breadcrumb="DIRECTORY · ADMINS"
               title={isNew ? "New ALPHA Coach" : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
               onCancel={() => router.back()}
               onSave={canEdit ? save : undefined}
@@ -1483,7 +1496,7 @@ export default function ManageEdit() {
 
           {(isManageUsersLoginForm || isLoginTierForm) && (
             <FormPageHeader
-              breadcrumb="SYSTEM & SETTINGS · MANAGE USERS & ROSTERS"
+              breadcrumb="DIRECTORY · ADMINS"
               title={isNew ? `New ${displayTitle}` : readOnly ? `View ${displayTitle}` : `Edit ${displayTitle}`}
               onCancel={() => router.back()}
               onSave={canEdit ? save : undefined}
@@ -2187,7 +2200,7 @@ export default function ManageEdit() {
                   <Text style={s.parentSub}>Select a parent account:</Text>
                   <View style={{ gap: 6, marginTop: 6, maxHeight: 220 }}>
                     {parentUsers.filter((x) => !parentUserIds.includes(x.id)).length === 0 && (
-                      <Text style={s.parentEmpty}>No available parent accounts. Create one from Manage Users → Parents.</Text>
+                      <Text style={s.parentEmpty}>No available parent accounts.</Text>
                     )}
                     {parentUsers.filter((x) => !parentUserIds.includes(x.id)).map((pu) => (
                       <TouchableOpacity key={pu.id} testID={`pick-parent-${pu.id}`} disabled={linkingParent} onPress={() => linkParent(pu.id)} style={s.coachOpt}>

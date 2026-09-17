@@ -238,6 +238,8 @@ export type EntityScope = "PWS" | "ALPHA" | "BOTH";
 
 export type StaffDesignation =
   | PwsAdminDesignation
+  | "OPERATIONS_ADMIN"
+  | "ACCOUNTS"
   | "PWS_OFFICE_STAFF"
   | "PWS_ACCOUNTS"
   | "HOD"
@@ -249,10 +251,11 @@ export type StaffDesignation =
 
 export const PWS_DESIGNATIONS: StaffDesignation[] = [
   "PRINCIPAL", "VICE_PRINCIPAL", "ACADEMIC_HEAD", "EVENT_COORDINATOR",
+  "OPERATIONS_ADMIN", "ACCOUNTS",
   "PWS_OFFICE_STAFF", "PWS_ACCOUNTS", "HOD", "TEACHER",
 ];
 export const ALPHA_DESIGNATIONS: StaffDesignation[] = [
-  "WARDEN", "COACH", "ALPHA_ACCOUNTS", "ALPHA_OFFICE_STAFF",
+  "WARDEN", "COACH", "OPERATIONS_ADMIN", "ACCOUNTS", "ALPHA_ACCOUNTS", "ALPHA_OFFICE_STAFF",
 ];
 
 export const DESIGNATION_LABELS: Record<StaffDesignation, string> = {
@@ -260,12 +263,14 @@ export const DESIGNATION_LABELS: Record<StaffDesignation, string> = {
   VICE_PRINCIPAL: "Vice Principal",
   ACADEMIC_HEAD: "Academic Head",
   EVENT_COORDINATOR: "Event Co-ordinator",
+  OPERATIONS_ADMIN: "Operations Admin",
+  ACCOUNTS: "Accounts",
   PWS_OFFICE_STAFF: "PWS Office Staff",
   PWS_ACCOUNTS: "PWS Accounts",
   HOD: "HOD",
   TEACHER: "Teacher",
   WARDEN: "Warden",
-  COACH: "Coaches",
+  COACH: "Coach",
   ALPHA_ACCOUNTS: "ALPHA Accounts",
   ALPHA_OFFICE_STAFF: "ALPHA Office Staff",
 };

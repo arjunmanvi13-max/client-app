@@ -34,6 +34,8 @@ export const DESIGNATION_PRESETS: Record<string, Record<string, ModuleAccessLeve
   VICE_PRINCIPAL: { directory: "edit", fees: "view", attendance: "admin", schedules: "admin", tasks: "admin", reports: "admin", approvals: "edit", expenses: "view", academics: "admin" },
   ACADEMIC_HEAD: { directory: "edit", fees: "none", attendance: "edit", schedules: "admin", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "admin" },
   EVENT_COORDINATOR: { directory: "view", fees: "none", attendance: "view", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "edit", academics: "view" },
+  OPERATIONS_ADMIN: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view" },
+  ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none" },
   PWS_OFFICE_STAFF: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view" },
   PWS_ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none" },
   HOD: { directory: "view", fees: "none", attendance: "edit", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "edit" },
@@ -49,7 +51,13 @@ export function emptyModuleAccess(): Record<string, ModuleAccessLevel> {
 }
 
 export function presetForDesignation(designation?: string | null): Record<string, ModuleAccessLevel> {
-  const key = (designation || "").toUpperCase();
+  const aliases: Record<string, string> = {
+    PWS_OFFICE_STAFF: "OPERATIONS_ADMIN",
+    ALPHA_OFFICE_STAFF: "OPERATIONS_ADMIN",
+    PWS_ACCOUNTS: "ACCOUNTS",
+    ALPHA_ACCOUNTS: "ACCOUNTS",
+  };
+  const key = aliases[(designation || "").toUpperCase()] || (designation || "").toUpperCase();
   return { ...emptyModuleAccess(), ...(DESIGNATION_PRESETS[key] || {}) };
 }
 

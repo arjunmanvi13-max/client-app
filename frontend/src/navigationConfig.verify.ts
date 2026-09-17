@@ -54,7 +54,7 @@ function run() {
   const accessControl = systemGroup?.children.find((c) => c.id === "access-control");
   assert(!!accessControl, "System group includes Access Control submenu");
   assert(!!accessControl?.children?.some((c) => c.id === "permissions"), "Access Control includes Permissions");
-  assert(!!accessControl?.children?.some((c) => c.id === "manage-users"), "Access Control includes Manage Users & Rosters");
+  assert(!accessControl?.children?.some((c) => c.id === "manage-users"), "Manage Users & Rosters is removed from Access Control");
 
   const hrefs = flattenLeafItems(superGroups).map((i) => i.href).filter(Boolean) as string[];
   assert(new Set(hrefs).size === hrefs.length, "No duplicate hrefs in Super Admin nav tree");
@@ -68,7 +68,7 @@ function run() {
   const directoryGroup = NAVIGATION_GROUPS.find((g) => g.id === "directory");
   assert(!!directoryGroup, "Directory group exists");
   assert(
-    directoryGroup?.children.map((c) => c.id).join(",") === "directory-master,staff,coaches,teachers,students,players",
+    directoryGroup?.children.map((c) => c.id).join(",") === "directory-master,admins,teachers,students,players",
     "Directory items are flat without nested wrappers",
   );
   assert(!directoryGroup?.children.some((c) => c.children?.length), "Directory has no nested dropdown items");
@@ -135,9 +135,9 @@ function run() {
   assert(active.groups.academics === true, "Academics group expands for assessment detail");
   assert(active.items.assessments === true, "Assessments parent expands for active child");
 
-  const accessActive = initialExpandedState(superGroups, "/manage/pws_admin");
-  assert(accessActive.items["access-control"] === true, "Access Control expands for manage user list");
-  assert(accessActive.groups.system === true, "System group expands for manage user list");
+  const accessActive = initialExpandedState(superGroups, "/manage/admin");
+  assert(accessActive.groups.directory === true, "Directory expands for Admins list");
+  assert(accessActive.items["access-control"] !== true, "Admins list is not under Access Control");
 
   const pwsTeacherActive = initialExpandedState(superGroups, "/manage/teacher");
   assert(pwsTeacherActive.groups.directory === true, "Directory group expands for teacher roster");
@@ -179,7 +179,9 @@ function run() {
 
   const pwsAdmin = mockUser({ role: "pws_admin", organization: "PWS" });
   const pwsAdminLeaves = allLeafIds(filterNavigationGroups({ user: pwsAdmin }));
+  assert(pwsAdminLeaves.includes("admins"), "PWS Admin sees Directory Admins");
   assert(pwsAdminLeaves.includes("enquiry"), "PWS Admin sees Enquiry");
+  assert(!pwsAdminLeaves.includes("coaches"), "Coaches is not a Directory category");
   assert(!pwsAdminLeaves.includes("players"), "PWS Admin should not see Players without ALPHA scope");
   assert(!pwsAdminLeaves.includes("permissions"), "PWS Admin should not see Permissions nav item");
 
@@ -190,7 +192,8 @@ function run() {
   const principalLeaves = allLeafIds(filterNavigationGroups({ user: principal }));
   assert(principalLeaves.includes("enquiry"), "Principal sees Enquiry");
   assert(!principalLeaves.includes("permissions"), "Principal should not see Permissions nav item");
-  assert(principalLeaves.includes("manage-users"), "Principal with manage-users should still see Manage Users & Rosters");
+  assert(!principalLeaves.includes("manage-users"), "Manage Users & Rosters is removed from nav");
+  assert(principalLeaves.includes("admins") || principalLeaves.includes("directory-master"), "Principal still reaches Directory");
 
   const alphaAdmin = mockUser({ role: "alpha_admin", organization: "ALPHA" });
   const alphaAdminLeaves = allLeafIds(filterNavigationGroups({ user: alphaAdmin }));

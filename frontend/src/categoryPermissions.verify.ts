@@ -3,6 +3,7 @@
  * Run: npm run test:category-perms
  */
 import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, LOGIN_TIER_CATALOG } from "./userClassification";
+import { PERMISSION_SET_CATALOG, PERMISSION_SET_CODES, DIRECTORY_CATEGORIES, ADMIN_DESIGNATIONS } from "./directoryWorkflow";
 import { UserRole } from "./rbac";
 import {
   allLeafIds,
@@ -18,6 +19,13 @@ function assert(condition: boolean, message: string) {
 }
 
 function run() {
+  assert(PERMISSION_SET_CODES.length === 12, "Twelve default permission sets");
+  assert(PERMISSION_SET_CATALOG[0].code === "super_admin" && PERMISSION_SET_CATALOG[0].locked, "Super Admin set is locked");
+  assert(DIRECTORY_CATEGORIES.join(",") === "admins,teachers,students,players", "Four Directory categories");
+  assert(ADMIN_DESIGNATIONS.includes("OPERATIONS_ADMIN"), "Operations Admin is an Admin designation");
+  assert(ADMIN_DESIGNATIONS.includes("COACH"), "Coach is an Admin designation");
+  assert(ADMIN_DESIGNATIONS.includes("WARDEN"), "Warden is an Admin designation");
+  assert(ADMIN_DESIGNATIONS.includes("ACCOUNTS"), "Accounts is an Admin designation");
   assert(APPROVED_LOGIN_USER_TYPES.length === 7, "Seven approved login user types");
   assert(LOGIN_TIER_CATALOG.length === 3, "Three login-tier headings");
   assert(LOGIN_TIER_CATALOG.map((t) => t.displayName).join(",") === "Super Admin,Admin,Staff", "Hub headings");

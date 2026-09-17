@@ -5,12 +5,12 @@ import { FormSelect } from "./components/forms/FormSelect";
 import { colors, radii, spacing } from "./theme";
 import {
   DESIGNATION_LABELS,
-  designationsForEntity,
   type EntityScope,
   type StaffDesignation,
 } from "./userClassification";
+import { adminDesignationsForScope, ADMIN_DESIGNATION_LABELS, permissionSetForDesignation, PERMISSION_SET_BY_CODE } from "./directoryWorkflow";
 import type { ModuleAccessLevel } from "./designationAccess";
-import { ACCESS_LEVELS, MODULE_MATRIX } from "./designationAccess";
+import { MODULE_MATRIX } from "./designationAccess";
 
 type Props = {
   readOnly: boolean;
@@ -57,11 +57,13 @@ export function LoginTierUserFormFields({
   moduleAccess,
   onOpenPermissions,
 }: Props) {
-  const designationOptions = designationsForEntity(entity).map((code) => ({
+  const designationOptions = adminDesignationsForScope(entity).map((code) => ({
     value: code,
-    label: DESIGNATION_LABELS[code],
+    label: ADMIN_DESIGNATION_LABELS[code] || DESIGNATION_LABELS[code as StaffDesignation] || code,
   }));
   const enabledCount = MODULE_MATRIX.filter((m) => (moduleAccess[m.id] || "none") !== "none").length;
+  const setCode = permissionSetForDesignation(designation);
+  const setMeta = setCode ? PERMISSION_SET_BY_CODE[setCode] : null;
 
   return (
     <View>
@@ -114,12 +116,22 @@ export function LoginTierUserFormFields({
         testID="field-designation"
       />
 
+      {setMeta ? (
+        <View style={s.permCta} testID="assigned-permission-set">
+          <Feather name="key" size={16} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.permTitle}>{setMeta.name} permission set</Text>
+            <Text style={s.permHint}>{setMeta.description} · {setMeta.scope}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <TouchableOpacity style={s.permCta} onPress={onOpenPermissions} testID="open-perm-matrix" disabled={readOnly}>
         <Feather name="sliders" size={16} color={colors.primary} />
         <View style={{ flex: 1 }}>
-          <Text style={s.permTitle}>Module permissions</Text>
+          <Text style={s.permTitle}>Individual permission overrides</Text>
           <Text style={s.permHint}>
-            {enabledCount} module{enabledCount === 1 ? "" : "s"} enabled · {ACCESS_LEVELS.find((l) => l.code === (moduleAccess.fees || "none"))?.label} on Fees
+            Super Admin only · {enabledCount} module{enabledCount === 1 ? "" : "s"} currently granted
           </Text>
         </View>
         <Feather name="chevron-right" size={18} color={colors.muted} />

@@ -19,6 +19,8 @@ import {
 } from "../../../src/userClassification";
 import { getManageListMeta, resolveManageKind } from "../../../src/manageKinds";
 import { RosterManageList } from "../../../src/RosterManageList";
+import { AdminDirectoryList } from "../../../src/AdminDirectoryList";
+import { isAdminDirectoryKind } from "../../../src/directoryWorkflow";
 
 /** Approved login user types — Super Admin hub only. */
 function LoginUserManageList({ kind }: { kind: LoginUserType }) {
@@ -323,6 +325,28 @@ export default function ManageList() {
         <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
+  }
+
+  if (kindParam === "pws_teacher") {
+    router.replace("/manage/teacher");
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (isAdminDirectoryKind(kindParam) && kindParam !== "admin") {
+    router.replace("/manage/admin");
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
+  if (kindParam === "admin") {
+    return <AdminDirectoryList />;
   }
 
   if (isLoginTierKind(kindParam)) {

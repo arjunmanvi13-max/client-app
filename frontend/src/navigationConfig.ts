@@ -15,7 +15,15 @@ function matchManageLoginUsers(pathname: string): boolean {
     (APPROVED_LOGIN_USER_TYPES as string[]).includes(seg)
     || seg === "login_admin"
     || seg === "login_staff"
+    || seg === "admin"
   );
+}
+
+function matchDirectoryAdmins(pathname: string): boolean {
+  if (pathname.startsWith("/manage/admin")) return true;
+  if (pathname.startsWith("/manage/coach")) return true;
+  if (pathname.startsWith("/manage/staff")) return true;
+  return matchManageLoginUsers(pathname);
 }
 
 export type FeatherIcon = keyof typeof import("@expo/vector-icons").Feather.glyphMap;
@@ -104,21 +112,12 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         isVisible: (ctx) => !isCoachUser(ctx.user),
       },
       {
-        id: "staff",
-        label: "Staff",
+        id: "admins",
+        label: "Admins",
         icon: "briefcase",
-        href: "/manage/staff",
-        match: matchPrefix(["/manage/staff"]),
+        href: "/manage/admin",
+        match: matchDirectoryAdmins,
         excludeRoles: ["teacher", "coach"],
-      },
-      {
-        id: "coaches",
-        label: "Coaches",
-        icon: "award",
-        href: "/manage/coach",
-        match: matchPrefix(["/manage/coach"]),
-        permissions: [Permission.MANAGE_COACHES, Permission.CREATE_USERS],
-        excludeRoles: ["teacher"],
       },
       {
         id: "teachers",
@@ -357,12 +356,8 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
         id: "access-control",
         label: "Access Control",
         icon: "shield",
-        match: (p) => p.startsWith("/admin/permissions") || matchManageLoginUsers(p),
-        permissions: [Permission.MANAGE_USERS_ROSTERS, Permission.ADD_NEW_TEACHER],
-        isVisible: (ctx) =>
-          isSuperAdminUser(ctx.user)
-          || hasPermission(ctx.user, Permission.MANAGE_USERS_ROSTERS)
-          || hasPermission(ctx.user, Permission.ADD_NEW_TEACHER),
+        match: (p) => p.startsWith("/admin/permissions"),
+        isVisible: (ctx) => isSuperAdminUser(ctx.user),
         children: [
           {
             id: "permissions",
@@ -371,14 +366,6 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
             href: "/admin/permissions",
             match: matchPrefix(["/admin/permissions"]),
             isVisible: (ctx) => isSuperAdminUser(ctx.user),
-          },
-          {
-            id: "manage-users",
-            label: "Manage Users & Rosters",
-            icon: "users",
-            href: "/manage",
-            match: matchManageLoginUsers,
-            permissions: [Permission.MANAGE_USERS_ROSTERS, Permission.ADD_NEW_TEACHER],
           },
         ],
       },

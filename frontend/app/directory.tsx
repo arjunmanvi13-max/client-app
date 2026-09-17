@@ -29,6 +29,7 @@ import {
   type OrgFilter,
 } from "../src/directoryFilters";
 import { colors, radii, spacing } from "../src/theme";
+import { DIRECTORY_CATEGORIES, DIRECTORY_CATEGORY_META, type DirectoryCategory } from "../src/directoryWorkflow";
 
 const INITIAL_FILTERS = {
   org: "all" as OrgFilter,
@@ -145,6 +146,22 @@ export default function Directory() {
     }
     return next;
   }, [alphaSkill, alphaSport, alphaVenue, categoryFilter, orgFilter, pwsClass, pwsSection, search]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<DirectoryCategory, number> = { admins: 0, teachers: 0, students: 0, players: 0 };
+    for (const entry of entries) {
+      if (entry.source === "person") {
+        if (entry.role === "student") counts.students += 1;
+        else if (entry.role === "player") counts.players += 1;
+        else counts.admins += 1;
+        continue;
+      }
+      const role = (entry.role || "").toLowerCase();
+      if (role === "teacher" || role === "pws_teacher") counts.teachers += 1;
+      else counts.admins += 1;
+    }
+    return counts;
+  }, [entries]);
 
   const resultLabel = hasActiveFilters
     ? `Showing ${filtered.length} of ${entries.length} ${filtered.length === 1 ? "person" : "people"}`
@@ -280,6 +297,22 @@ export default function Directory() {
         ]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1E40AF" />}
       >
+        <View style={s.catGrid}>
+          {DIRECTORY_CATEGORIES.map((id) => {
+            const meta = DIRECTORY_CATEGORY_META[id];
+            return (
+              <TouchableOpacity key={id} testID={`directory-cat-${id}`} style={s.catCard} onPress={() => router.push(meta.href as any)}>
+                <View style={[s.catIcon, { backgroundColor: meta.tint + "22" }]}>
+                  <Feather name={meta.icon as any} size={18} color={meta.tint} />
+                </View>
+                <Text style={s.catCount}>{categoryCounts[id]}</Text>
+                <Text style={s.catLabel}>{meta.label}</Text>
+                <Text style={s.catSub} numberOfLines={2}>{meta.subtitle}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {loading ? (
           <DirectoryListSkeleton rows={8} />
         ) : error ? (
@@ -386,6 +419,21 @@ const s = StyleSheet.create({
     gap: spacing.sm,
   },
   scroll: { paddingBottom: 40, paddingTop: 4 },
+  catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 16 },
+  catCard: {
+    flexGrow: 1,
+    flexBasis: "22%",
+    minWidth: 140,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  catIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  catCount: { fontSize: 22, fontWeight: "800", color: colors.ink },
+  catLabel: { fontSize: 14, fontWeight: "800", color: colors.ink, marginTop: 2 },
+  catSub: { fontSize: 11, color: colors.muted2, marginTop: 4, lineHeight: 15 },
   grid: { gap: 10 },
   gridWide: { flexDirection: "row", flexWrap: "wrap" },
   card: {
