@@ -25,7 +25,7 @@ const storage = {
   },
 };
 
-export const api = axios.create({ baseURL: API_BASE, timeout: 20000 });
+export const api = axios.create({ baseURL: API_BASE, timeout: 35000 });
 
 if (!BACKEND_URL && typeof __DEV__ !== "undefined" && __DEV__) {
   console.warn("EXPO_PUBLIC_BACKEND_URL is not set — API calls will fail unless proxied.");

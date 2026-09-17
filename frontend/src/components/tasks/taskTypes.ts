@@ -27,13 +27,14 @@ export type TaskRecord = {
 };
 
 export const TASK_CATEGORIES = [
-  "Canteen",
-  "Hostel",
   "Academics",
-  "Sports",
-  "Operations",
+  "Canteen",
   "Finance",
   "General",
+  "Hostel",
+  "Leave",
+  "Operations",
+  "Sports",
 ] as const;
 
 export const ASSIGNED_TO_ME_STATUSES = ["open", "in_progress", "completed"] as const;

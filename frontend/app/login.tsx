@@ -52,10 +52,13 @@ export default function Login() {
     } catch (er: any) {
       const status = er?.response?.status;
       const detail = er?.response?.data?.detail;
-      if (!er?.response) {
+      const code = er?.code;
+      if (code === "ECONNABORTED") {
+        setErr("Login timed out. The server may be busy — wait a few seconds and try again.");
+      } else if (!er?.response) {
         setErr("Cannot reach the server. Check your connection or that the backend is running.");
-      } else if (status === 404 || status >= 500) {
-        setErr("Login service is unavailable. The backend may be down or misconfigured.");
+      } else if (status === 404 || status === 503 || status >= 500) {
+        setErr(typeof detail === "string" ? detail : "Login service is unavailable. Please try again shortly.");
       } else {
         setErr(typeof detail === "string" ? detail : "Invalid email or password");
       }
