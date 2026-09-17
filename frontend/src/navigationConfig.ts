@@ -444,14 +444,17 @@ export function isNavigationItemAllowed(item: NavigationItem, ctx: NavigationCon
     return false;
   }
   if (item.isVisible && !item.isVisible(ctx)) return false;
-  if (item.excludeRoles?.includes(user.role)) return false;
-  if (!isSuperAdminUser(user)) {
+  const grantedByPermission = Boolean(
+    item.permissions?.length && item.permissions.some((p) => hasPermission(user, p, item.permissionEntity)),
+  );
+  if (item.excludeRoles?.includes(user.role) && !grantedByPermission) return false;
+  if (!isSuperAdminUser(user) && !grantedByPermission) {
     const scope = String(user.entity_scope || user.organization || "").toUpperCase();
     if (item.pwsOnly && scope === "ALPHA") return false;
     if (item.alphaOnly && scope === "PWS") return false;
   }
   if (item.permissions?.length) {
-    return item.permissions.some((p) => hasPermission(user, p, item.permissionEntity));
+    return grantedByPermission;
   }
   if (item.roles?.length && !item.roles.includes(user.role)) return false;
   return true;

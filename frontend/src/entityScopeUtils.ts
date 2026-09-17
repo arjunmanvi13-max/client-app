@@ -1,4 +1,4 @@
-import { BusinessEntity, Permission, hasPermission, isSuperAdminUser, normalizeRole, UserRole, type RBACUser } from "./rbac";
+import { BusinessEntity, Permission, hasPermission, isPrincipalUser, isSuperAdminUser, normalizeRole, UserRole, type RBACUser } from "./rbac";
 
 export type EntityId = "pws" | "alpha";
 export type EntityScope = EntityId | "both";
@@ -29,7 +29,7 @@ export function entityIdFromOrg(org: string | undefined): EntityId | null {
 /** Authoritative assigned scope from session — ignores client overrides. */
 export function assignedEntityScope(user: RBACUser | null | undefined): EntityScope {
   if (!user) return "pws";
-  if (isSuperAdminUser(user)) return "both";
+  if (isSuperAdminUser(user) || isPrincipalUser(user)) return "both";
   const entityScope = (user as RBACUser & { entity_scope?: string }).entity_scope;
   const org = (entityScope || user.organization || "PWS").toString().toUpperCase();
   if (org === "BOTH") return "both";

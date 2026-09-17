@@ -166,6 +166,7 @@ export function canAccessEnquiry(user: RBACUser | null | undefined): boolean {
 /** PWS Principal — excludes Vice Principal and other PWS Admin designations. */
 export function isPrincipalUser(user: RBACUser | null | undefined): boolean {
   if (!user) return false;
+  if ((user as RBACUser & { permission_set?: string }).permission_set === "principal") return true;
   if (user.role === "principal") return true;
   if (user.designation === "PRINCIPAL") return true;
   return false;
@@ -334,6 +335,7 @@ export interface RBACUser {
   assigned_sports?: ("Cricket" | "Football")[];
   coach_type?: "head" | "assistant" | null;
   designation?: string | null;
+  entity_scope?: string | null;
 }
 
 export interface TeacherSubjectAssignment {
@@ -400,9 +402,23 @@ export interface PersonRecord {
 // ---------------------------------------------------------------------------
 
 export function resolveUserEntity(user: RBACUser): BusinessEntity {
-  const org = (user.organization || "PWS").toString().toUpperCase();
-  if (org === "BOTH") return BusinessEntity.BOTH;
-  if (org === "ALPHA") return BusinessEntity.ALPHA;
+  if (isPrincipalUser(user)) return BusinessEntity.BOTH;
+  const perms = user.permissions || {};
+  const rbac = user.permissions_rbac || {};
+  const hasPws = Boolean(perms.view_students || perms.add_students || perms.view_staff);
+  const hasAlpha = Boolean(
+    perms.view_players
+    || perms.add_players
+    || perms.edit_players
+    || rbac.MANAGE_PLAYERS
+    || rbac.ADD_ALPHA_PLAYERS,
+  );
+  if (hasPws && hasAlpha) return BusinessEntity.BOTH;
+  if (hasAlpha && !hasPws) return BusinessEntity.ALPHA;
+  if (hasPws && !hasAlpha) return BusinessEntity.PWS;
+  const scope = (user.entity_scope || user.organization || "PWS").toString().toUpperCase();
+  if (scope === "BOTH") return BusinessEntity.BOTH;
+  if (scope === "ALPHA") return BusinessEntity.ALPHA;
   return BusinessEntity.PWS;
 }
 
@@ -420,19 +436,28 @@ export function hasPermission(
   if (!user) return false;
   if (user.status === "deactivated" || user.is_active === false) return false;
 
-  if (user.effective_permissions?.includes(permission)) {
-    if (!entity) return true;
-    return entityAllows(resolveUserEntity(user), entity);
-  }
-
   const role = normalizeRole(user.role);
   if (role === UserRole.SUPER_ADMIN) {
     return entityAllows(resolveUserEntity(user), entity);
   }
-  if (entity && !entityAllows(resolveUserEntity(user), entity)) return false;
+
+  if (isPrincipalUser(user) && (
+    permission === Permission.MANAGE_PLAYERS
+    || permission === Permission.ADD_ALPHA_PLAYERS
+  )) {
+    return entityAllows(BusinessEntity.BOTH, entity);
+  }
 
   const override = user.permissions_rbac?.[permission];
-  if (override !== undefined) return override;
+  if (override !== undefined) return Boolean(override);
+
+  if (user.effective_permissions?.includes(permission) && !entity) return true;
+
+  if (entity && !entityAllows(resolveUserEntity(user), entity)) {
+    return Boolean(user.effective_permissions?.includes(permission));
+  }
+
+  if (user.effective_permissions?.includes(permission)) return true;
 
   if ((ROLE_PERMISSIONS[role] ?? []).includes(permission)) return true;
 

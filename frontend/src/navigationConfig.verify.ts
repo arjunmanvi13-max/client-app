@@ -182,7 +182,15 @@ function run() {
   assert(pwsAdminLeaves.includes("admins"), "PWS Admin sees Directory Admins");
   assert(pwsAdminLeaves.includes("enquiry"), "PWS Admin sees Enquiry");
   assert(!pwsAdminLeaves.includes("coaches"), "Coaches is not a Directory category");
-  assert(!pwsAdminLeaves.includes("players"), "PWS Admin should not see Players without ALPHA scope");
+  const pwsAdminWithPlayers = mockUser({
+    role: "principal",
+    organization: "PWS",
+    permissions_rbac: { MANAGE_PLAYERS: true } as any,
+  });
+  assert(
+    allLeafIds(filterNavigationGroups({ user: pwsAdminWithPlayers })).includes("players"),
+    "Principal with Players permission sees ALPHA Players",
+  );
   assert(!pwsAdminLeaves.includes("permissions"), "PWS Admin should not see Permissions nav item");
 
   const pwsAdminByType = mockUser({ role: "staff", organization: "PWS", user_type: "pws_admin" as any });
@@ -191,6 +199,7 @@ function run() {
   const principal = mockUser({ role: "principal", organization: "PWS", permissions_rbac: { MANAGE_USERS_ROSTERS: true } as any });
   const principalLeaves = allLeafIds(filterNavigationGroups({ user: principal }));
   assert(principalLeaves.includes("enquiry"), "Principal sees Enquiry");
+  assert(principalLeaves.includes("players"), "Principal BOTH scope sees ALPHA Players");
   assert(!principalLeaves.includes("permissions"), "Principal should not see Permissions nav item");
   assert(!principalLeaves.includes("manage-users"), "Manage Users & Rosters is removed from nav");
   assert(principalLeaves.includes("admins") || principalLeaves.includes("directory-master"), "Principal still reaches Directory");

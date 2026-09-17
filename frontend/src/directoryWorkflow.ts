@@ -64,7 +64,7 @@ export type PermissionSetMeta = {
 
 export const PERMISSION_SET_CATALOG: PermissionSetMeta[] = [
   { code: "super_admin", name: "Super Admin", description: "Full access across PWS and ALPHA", scope: "BOTH", categories: ["admins"], designations: [], locked: true, icon: "shield", tint: "#0F172A" },
-  { code: "principal", name: "Principal", description: "PWS school leadership", scope: "PWS", categories: ["admins"], designations: ["PRINCIPAL"], locked: false, icon: "briefcase", tint: "#1B3B6F" },
+  { code: "principal", name: "Principal", description: "School leadership across PWS and ALPHA", scope: "BOTH", categories: ["admins"], designations: ["PRINCIPAL"], locked: false, icon: "briefcase", tint: "#1B3B6F" },
   { code: "vice_principal", name: "Vice Principal", description: "PWS school leadership", scope: "PWS", categories: ["admins"], designations: ["VICE_PRINCIPAL"], locked: false, icon: "briefcase", tint: "#2563EB" },
   { code: "academic_head", name: "Academic Head", description: "PWS academics leadership", scope: "PWS", categories: ["admins"], designations: ["ACADEMIC_HEAD"], locked: false, icon: "book", tint: "#0F766E" },
   { code: "event_coordinator", name: "Event Co-ordinator", description: "PWS events and operations", scope: "PWS", categories: ["admins"], designations: ["EVENT_COORDINATOR"], locked: false, icon: "calendar", tint: "#7C3AED" },
