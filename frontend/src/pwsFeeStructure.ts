@@ -2,6 +2,8 @@
  * PWS fee structure — 2026-27 (mirrors backend pws_fee_structure.py)
  */
 
+import { CLASS_LIST, normalizeClassValue, type PwsClassCanonical } from "./pwsClassCatalog";
+
 export const PWS_ACADEMIC_YEAR = "2026-27";
 export const PWS_FY_START = "2026-04";
 export const PWS_FY_END = "2027-03";
@@ -9,12 +11,21 @@ export const PWS_FY_END = "2027-03";
 export const PWS_STUDENT_TYPES = ["Day School", "Boarding", "Day Boarding"] as const;
 export type PwsStudentType = typeof PWS_STUDENT_TYPES[number];
 
-export const PWS_CLASSES = [
+export const PWS_CLASSES = CLASS_LIST;
+export type PwsClass = PwsClassCanonical;
+
+const FEE_ORDER = [
   "Nursery", "UKG",
   "Class I", "Class II", "Class III", "Class IV", "Class V", "Class VI",
   "Class VII", "Class VIII", "Class IX", "Class X",
 ] as const;
-export type PwsClass = typeof PWS_CLASSES[number];
+
+function classIdx(pwsClass: string): number {
+  const canon = normalizeClassValue(pwsClass) || pwsClass;
+  const band = canon === "LKG" ? "Nursery" : canon;
+  const i = FEE_ORDER.indexOf(band as (typeof FEE_ORDER)[number]);
+  return i >= 0 ? i : 0;
+}
 
 export const TRANSPORT_DISTANCES = ["Up to 5 km", "Over 5 km"] as const;
 export type TransportDistance = typeof TRANSPORT_DISTANCES[number];
@@ -29,11 +40,6 @@ export const FEE_CATEGORIES = [
   "Exam Fee",
   "Transport",
 ] as const;
-
-function classIdx(pwsClass: string): number {
-  const i = PWS_CLASSES.indexOf(pwsClass as PwsClass);
-  return i >= 0 ? i : 0;
-}
 
 function nurseryToIv(pwsClass: string): boolean {
   return classIdx(pwsClass) <= 5;

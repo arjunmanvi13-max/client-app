@@ -20,6 +20,7 @@ import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect
 import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
 import { CLASS_PREFIX } from "./StudentRosterFormFields";
+import { CLASS_SELECT_OPTIONS } from "./pwsClassCatalog";
 import {
   DEFAULT_PWS_SUBJECT_OPTIONS,
   classNameForGradeName,
@@ -45,21 +46,7 @@ export type AcademicSection = { id: string; label: string; grade_id: string };
 export type AcademicSubject = { id: string; name: string; grade_ids?: string[]; section_ids?: string[] };
 
 /** Canonical class values with display labels per product spec. */
-export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = [
-  { value: "Nursery", label: "Nur" },
-  { value: "LKG", label: "LKG" },
-  { value: "UKG", label: "UKG" },
-  { value: "Class I", label: "Class I" },
-  { value: "Class II", label: "Class II" },
-  { value: "Class III", label: "Class III" },
-  { value: "Class IV", label: "Class IV" },
-  { value: "Class V", label: "Class V" },
-  { value: "Class VI", label: "Class VI" },
-  { value: "Class VII", label: "Class VII" },
-  { value: "Class VIII", label: "Class VIII" },
-  { value: "Class IX", label: "Class IX" },
-  { value: "Class X", label: "Class X" },
-];
+export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = CLASS_SELECT_OPTIONS;
 
 export const TEACHER_SECTION_OPTIONS: FormSelectOption[] = [
   "A", "B", "C", "D", "E", "F", "G",

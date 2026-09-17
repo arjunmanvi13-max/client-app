@@ -1,4 +1,5 @@
 import { PWS_CLASS_OPTIONS, SECTION_LETTERS } from "./academicStructure";
+import { formatClassDisplay, sameClass } from "./pwsClassCatalog";
 import type { FormSelectOption } from "./components/forms/FormSelect";
 
 export type OrgFilter = "all" | "PWS" | "ALPHA";
@@ -123,7 +124,7 @@ export function personToDirectoryEntry(p: Record<string, unknown>): DirectoryEnt
     role: kind,
     organization: String(p.organization || (kind === "player" ? "ALPHA" : "PWS")),
     department: subtitle || null,
-    pwsClass: (p.pws_class as string) || null,
+    pwsClass: formatClassDisplay((p.pws_class as string) || "") || null,
     sectionLetter: parseSectionLetter(group),
     sport: (p.sport as string) || null,
     centre: (p.centre as string) || null,
@@ -159,7 +160,7 @@ export function filterDirectoryEntries(
 
   if (filters.org === "PWS") {
     if (filters.pwsClass) {
-      list = list.filter((e) => e.pwsClass === filters.pwsClass);
+      list = list.filter((e) => sameClass(e.pwsClass, filters.pwsClass));
     }
     if (filters.pwsSection) {
       list = list.filter((e) => e.sectionLetter === filters.pwsSection);

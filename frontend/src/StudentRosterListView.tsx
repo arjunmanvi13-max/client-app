@@ -17,6 +17,7 @@ import { useBreakpoint } from "./useBreakpoint";
 import { FilterSelect, filterSelectSlotStyle } from "./components/FilterSelect";
 import type { FormSelectOption } from "./components/forms/FormSelect";
 import { PWS_CLASS_OPTIONS, PWS_CLASS_FILTER_LABELS, pwsClassFilterLabel } from "./StudentRosterFormFields";
+import { gradeKeyForClass } from "./pwsClassCatalog";
 import { sectionDisplayName } from "./academicStructure";
 
 const PAGE_SIZE = 10;
@@ -27,12 +28,11 @@ function studentInitials(name: string) {
 }
 
 function sectionBadgeStyle(pwsClass?: string) {
-  const label = pwsClassFilterLabel(pwsClass);
-  const normalized = (label || "").trim().toUpperCase();
-  if (normalized.includes("10")) {
+  const key = gradeKeyForClass(pwsClass);
+  if (key === "10") {
     return { bg: "#F3E8FF", text: "#7E22CE", border: "#E9D5FF" };
   }
-  if (normalized.includes("9")) {
+  if (key === "9") {
     return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
   }
   return { bg: "#F1F5F9", text: "#475569", border: "#E2E8F0" };
@@ -40,13 +40,13 @@ function sectionBadgeStyle(pwsClass?: string) {
 
 function classBadgeStyle(pwsClass?: string) {
   const label = pwsClassFilterLabel(pwsClass);
-  if (label === "Nur" || label === "LKG" || label === "UKG") {
+  if (label === "Nursery" || label === "Nur" || label === "LKG" || label === "UKG") {
     return { bg: "#FEF3C7", text: "#B45309", border: "#FDE68A" };
   }
-  if (label.startsWith("Std")) {
+  if (label.startsWith("Class") || label.startsWith("Std")) {
     return { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" };
   }
-  return { bg: "#F9FAFB", text: "#475569", border: "#E5E7EB" };
+  return { bg: "#F9FAFB", text: "#475569", border: "#E2E8F0" };
 }
 
 type StudentRosterListViewProps = {

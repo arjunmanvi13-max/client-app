@@ -1,21 +1,13 @@
 import type { FormSelectOption } from "./components/forms/FormSelect";
+import {
+  CLASS_LIST,
+  CLASS_TO_GRADE_KEY,
+  formatClassDisplay,
+  normalizeClassValue,
+} from "./pwsClassCatalog";
 
 /** Maps teacher/student class labels to stored academic grade names. */
-export const CLASS_PREFIX: Record<string, string> = {
-  Nursery: "Nursery",
-  LKG: "LKG",
-  UKG: "UKG",
-  "Class I": "1",
-  "Class II": "2",
-  "Class III": "3",
-  "Class IV": "4",
-  "Class V": "5",
-  "Class VI": "6",
-  "Class VII": "7",
-  "Class VIII": "8",
-  "Class IX": "9",
-  "Class X": "10",
-};
+export const CLASS_PREFIX: Record<string, string> = { ...CLASS_TO_GRADE_KEY };
 
 /** Canonical PWS subject catalogue for Academic Structure. */
 export const DEFAULT_PWS_SUBJECTS: { name: string; code: string }[] = [
@@ -57,8 +49,7 @@ export const DEFAULT_PWS_SUBJECT_OPTIONS: FormSelectOption[] = DEFAULT_PWS_SUBJE
 export function stdLabel(name: string | undefined | null): string {
   const n = (name || "").trim();
   if (!n) return "—";
-  if (/^std\b/i.test(n)) return n;
-  return `Std ${n}`;
+  return formatClassDisplay(n);
 }
 
 export type TeacherAssignRow = {
@@ -219,6 +210,8 @@ export function matchAcademicSubject(
 }
 
 export function classNameForGradeName(gradeName: string): string {
+  const canon = normalizeClassValue(gradeName);
+  if (canon) return canon;
   for (const [className] of Object.entries(CLASS_PREFIX)) {
     if (gradeAliasKeys(className).includes(normalizeGradeKey(gradeName))) return className;
   }
@@ -250,39 +243,12 @@ export function describeTeacherAllocationFailure(
 
 export const SECTION_LETTERS = ["A", "B", "C", "D", "E", "F"] as const;
 
-export const PWS_CLASS_OPTIONS = [
-  "Nursery",
-  "LKG",
-  "UKG",
-  "Class I",
-  "Class II",
-  "Class III",
-  "Class IV",
-  "Class V",
-  "Class VI",
-  "Class VII",
-  "Class VIII",
-  "Class IX",
-  "Class X",
-] as const;
+export const PWS_CLASS_OPTIONS = CLASS_LIST;
 
-export const PWS_CLASS_FILTER_LABELS: Record<string, string> = {
-  Nursery: "Nur",
-  LKG: "LKG",
-  UKG: "UKG",
-  "Class I": "Std 1",
-  "Class II": "Std 2",
-  "Class III": "Std 3",
-  "Class IV": "Std 4",
-  "Class V": "Std 5",
-  "Class VI": "Std 6",
-  "Class VII": "Std 7",
-  "Class VIII": "Std 8",
-  "Class IX": "Std 9",
-  "Class X": "Std 10",
-};
+export const PWS_CLASS_FILTER_LABELS: Record<string, string> = Object.fromEntries(
+  CLASS_LIST.map((c) => [c, c]),
+);
 
 export function pwsClassFilterLabel(pwsClass?: string | null) {
-  if (!pwsClass) return "";
-  return PWS_CLASS_FILTER_LABELS[pwsClass] || pwsClass;
+  return formatClassDisplay(pwsClass);
 }

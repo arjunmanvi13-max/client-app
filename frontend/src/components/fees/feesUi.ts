@@ -1,4 +1,5 @@
 import type { CollectionPlayer, Institution } from "../../feesCollectionTypes";
+import { formatClassDisplay } from "../../pwsClassCatalog";
 
 export function inr(n: number) {
   return `₹${(n || 0).toLocaleString("en-IN")}`;
@@ -140,7 +141,7 @@ export function feeBadgeStyle(status: CollectionPlayer["fee_status"]) {
 
 export function playerMeta(player: CollectionPlayer, institution: "PWS" | "ALPHA") {
   if (institution === "PWS") {
-    return [player.pws_class || player.group, player.is_resident ? "Hostel" : "Day Scholar"].filter(Boolean).join(" · ");
+    return [formatClassDisplay(player.pws_class) || player.pws_class || player.group, player.is_resident ? "Hostel" : "Day Scholar"].filter(Boolean).join(" · ");
   }
   return [player.centre, player.sport, player.player_type].filter(Boolean).join(" · ");
 }

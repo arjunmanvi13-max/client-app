@@ -41,6 +41,7 @@ import {
   toISODate,
 } from "../../../src/dateFormat";
 import { StudentRosterFormFields, resolveSectionMatch, parseSectionLetter } from "../../../src/StudentRosterFormFields";
+import { normalizeClassValue } from "../../../src/pwsClassCatalog";
 import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
 import { PwsAdminUserFormFields } from "../../../src/PwsAdminUserFormFields";
@@ -576,7 +577,7 @@ export default function ManageEdit() {
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
             setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
-            setPwsClass(p.pws_class || "Class I");
+            setPwsClass(normalizeClassValue(p.pws_class) || p.pws_class || "Class I");
             setTransportEnabled(!!p.transport_enabled || (p.transport_fee_monthly || 0) > 0);
             setTransportDistance((p.transport_distance as TransportDistance) || "Up to 5 km");
             const ov = p.pws_fee_overrides || {};
@@ -604,7 +605,7 @@ export default function ManageEdit() {
             setCentre(p.centre || "");
             setPlayerType(p.player_type === "Hostel" ? "Hostel Only" : (p.player_type || ""));
             if (p.player_type === "Boarding" || p.player_type === "Day Boarding") {
-              setBoardingClass(p.pws_class || "");
+              setBoardingClass(normalizeClassValue(p.pws_class) || p.pws_class || "");
               const fromSection = academicSections.find((s) => s.id === p.section_id);
               setBoardingSectionLetter(parseSectionLetter(fromSection?.label || p.group || "") || "");
             } else {
@@ -1183,7 +1184,7 @@ export default function ManageEdit() {
           body.registration_fee_override = registrationFeeOverride ? parseInt(registrationFeeOverride, 10) : null;
         }
         if (playerType === "Boarding" || playerType === "Day Boarding") {
-          body.pws_class = boardingClass;
+          body.pws_class = normalizeClassValue(boardingClass) || boardingClass;
           const { id: boardingSectionId } = resolveSectionMatch(
             boardingClass,
             boardingSectionLetter,
@@ -1251,7 +1252,7 @@ export default function ManageEdit() {
           body.section_id = sectionId || "";
           body.date_of_admission = parseToISO(dateOfAdmission) || dateOfAdmission || toISODate();
           body.pws_student_type = pwsStudentType;
-          body.pws_class = pwsClass;
+          body.pws_class = normalizeClassValue(pwsClass) || pwsClass;
           body.transport_enabled = transportEnabled;
           body.transport_distance = transportEnabled ? transportDistance : null;
           body.is_resident = pwsStudentType === "Boarding";

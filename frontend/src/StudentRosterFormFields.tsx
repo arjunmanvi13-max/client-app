@@ -17,7 +17,7 @@ import { FormTextField } from "./components/forms/FormTextField";
 import { FormDateField } from "./components/forms/FormDateField";
 import { parseSectionLetter, resolveSectionMatch } from "./academicStructure";
 
-export { CLASS_PREFIX, classGroupPrefix, resolveSectionMatch } from "./academicStructure";
+export { CLASS_PREFIX, classGroupPrefix, resolveSectionMatch, parseSectionLetter } from "./academicStructure";
 export {
   SECTION_LETTERS,
   PWS_CLASS_OPTIONS,
