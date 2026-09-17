@@ -171,10 +171,17 @@ export default function TeacherHome() {
     setError("");
     try {
       const [mvp, tasksRes] = await Promise.all([
-        fetchDashboardMvp(),
+        fetchDashboardMvp().catch(() => null),
         api.get("/tasks", { params: { mine: true } }).catch(() => ({ data: [] })),
       ]);
-      setData(mvp as TeacherDashboardData);
+      setData((mvp || {
+        today: toISODate(),
+        assigned_classes: [],
+        attendance_today: [],
+        pending_marks_entry: 0,
+        recent_notifications: [],
+        unread_notifications: 0,
+      }) as TeacherDashboardData);
       const tasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
       setOpenTasks(
         tasks

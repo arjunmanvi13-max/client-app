@@ -7,7 +7,7 @@ import { resolveDashboardView } from "../../src/dashboardRouting";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const view = resolveDashboardView(user?.role);
+  const view = resolveDashboardView(user);
 
   switch (view.kind) {
     case "super_admin":

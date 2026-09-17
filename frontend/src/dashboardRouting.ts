@@ -8,10 +8,20 @@ export type DashboardView =
   | { kind: "coach" }
   | { kind: "generic" };
 
+type DashboardUser = {
+  role?: string;
+  role_canonical?: string;
+  user_type?: string;
+};
+
 /** Map login role to the dashboard shell the user should see. */
-export function resolveDashboardView(role: string | undefined): DashboardView {
-  if (!role) return { kind: "generic" };
-  const canonical = normalizeRole(role);
+export function resolveDashboardView(roleOrUser: string | DashboardUser | null | undefined): DashboardView {
+  const user = typeof roleOrUser === "string" || roleOrUser == null
+    ? { role: typeof roleOrUser === "string" ? roleOrUser : undefined }
+    : roleOrUser;
+  const raw = user.user_type || user.role_canonical || user.role;
+  if (!raw) return { kind: "generic" };
+  const canonical = normalizeRole(raw);
 
   switch (canonical) {
     case UserRole.SUPER_ADMIN:
