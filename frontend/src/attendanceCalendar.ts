@@ -1,5 +1,5 @@
 /** Client-side academic calendar rules — mirrors backend `academic_calendar.py`. */
-export type AttendanceKind = "student" | "player" | "staff" | "teacher" | "coach";
+export type AttendanceKind = "student" | "player" | "staff" | "teacher" | "coach" | "hostel";
 
 export type CalendarDayInfo = {
   date: string;
@@ -21,6 +21,7 @@ export function calendarDayInfo(dateIso: string): CalendarDayInfo {
       player: false,
       staff: false,
       coach: false,
+      hostel: false,
     },
   };
 }

@@ -20,13 +20,16 @@ import {
   getAttendanceKindOptions,
   resolveDefaultStaffOrg,
   staffOrgSelectable,
+  entityFilterSelectable,
   resolvePlayerFilterScope,
   toggleFilterValue,
-  filterPlayersBySelection,
+  attendanceRoleView,
+  roleViewSubtitle,
   PLAYER_CATEGORIES,
   type PlayerVenue,
   type PlayerSport,
   type PlayerCategory,
+  type AttendanceEntityFilter,
 } from "./attendanceAccess";
 import { coachSportAssignmentMessage, resolveCoachDataScope, unwrapCoachPlayerList } from "./coachAccess";
 import { isPwsTeacherUser, resolveTeacherDataScope } from "./teacherAccess";
@@ -54,13 +57,31 @@ function isForbidden(e: unknown): boolean {
 type Person = {
   id: string;
   name: string;
+  kind?: string;
   group?: string;
   sport?: string;
   player_type?: string;
   organization?: string;
   centre?: string;
   coach_type?: string;
+  class_name?: string;
+  section_name?: string;
+  department?: string;
+  designation?: string;
+  meta_line?: string;
+  origin_tag?: string | null;
+  resident_type?: string;
 };
+
+function academicOriginTag(p: Person) {
+  if (p.origin_tag) return p.origin_tag;
+  if (p.kind !== "player") return null;
+  const type = p.player_type === "Hostel" ? "Hostel Only" : p.player_type;
+  if (type === "Boarding" || type === "Day Boarding") {
+    return `ALPHA · ${type}`;
+  }
+  return null;
+}
 
 const STATUSES: { key: AttendanceStatus; label: string; color: string }[] = [
   { key: "present", label: "P", color: colors.success },
@@ -98,8 +119,24 @@ function stringToColor(str: string) {
   return palette[h % palette.length];
 }
 
-function playerMetaLine(p: Person) {
-  return [p.centre, p.sport, p.player_type].filter(Boolean).join(" · ") || "—";
+function personMetaLine(kind: AttendanceKind, p: Person) {
+  if (p.meta_line) return p.meta_line;
+  if (kind === "player") {
+    return [p.centre, p.sport, p.group, p.player_type].filter(Boolean).join(" · ") || "—";
+  }
+  if (kind === "student") {
+    return [p.class_name, p.section_name, p.group].filter(Boolean).join(" · ") || "—";
+  }
+  if (kind === "staff" || kind === "teacher") {
+    return [p.designation, p.department, p.organization].filter(Boolean).join(" · ") || "—";
+  }
+  if (kind === "hostel") {
+    return [p.resident_type || p.player_type, p.centre, p.organization].filter(Boolean).join(" · ") || "—";
+  }
+  if (kind === "coach") {
+    return [p.coach_type, p.sport, p.centre].filter(Boolean).join(" · ") || "—";
+  }
+  return `${p.group || "—"}${p.sport ? ` · ${p.sport}` : ""}`;
 }
 
 function FilterChipRow({
@@ -143,11 +180,19 @@ function FilterChipRow({
 export default function Attendance() {
   const { user } = useAuth();
   const { isMobile } = useBreakpoint();
-  const kindOptions = useMemo(() => getAttendanceKindOptions(user), [user]);
+  const roleView = useMemo(() => attendanceRoleView(user), [user]);
+  const showEntityFilter = entityFilterSelectable(user);
+  const [entityFilter, setEntityFilter] = useState<AttendanceEntityFilter>("BOTH");
+  const kindOptions = useMemo(
+    () => getAttendanceKindOptions(user, showEntityFilter ? entityFilter : "BOTH"),
+    [user, showEntityFilter, entityFilter],
+  );
   const playerScope = useMemo(() => resolvePlayerFilterScope(user), [user]);
   const coachScope = useMemo(() => resolveCoachDataScope(user), [user]);
   const teacherScope = useMemo(() => resolveTeacherDataScope(user), [user]);
   const isTeacherLocked = teacherScope.isTeacher;
+  const isWardenLocked = roleView === "warden";
+  const isLeadershipView = roleView === "academic_leadership";
 
   const [kind, setKind] = useState<AttendanceKind>(
     () => defaultAttendanceKind(user, getAttendanceKindOptions(user)) ?? "student",
@@ -157,6 +202,9 @@ export default function Attendance() {
   const [playerVenues, setPlayerVenues] = useState<PlayerVenue[]>([]);
   const [playerSports, setPlayerSports] = useState<PlayerSport[]>([]);
   const [playerCategories, setPlayerCategories] = useState<PlayerCategory[]>([]);
+  const [playerBatches, setPlayerBatches] = useState<string[]>([]);
+  const [availableBatches, setAvailableBatches] = useState<string[]>([]);
+  const [rosterSubtitle, setRosterSubtitle] = useState<string | null>(null);
   const [sections, setSections] = useState<{ id: string; label: string }[]>([]);
   const [sectionId, setSectionId] = useState<string | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
@@ -182,13 +230,18 @@ export default function Attendance() {
       setKind("student");
       return;
     }
+    if (isWardenLocked) {
+      setKind("hostel");
+      return;
+    }
     const next = defaultAttendanceKind(user, kindOptions);
     if (!next) return;
     setKind((current) => (kindOptions.some((k) => k.key === current) ? current : next));
-  }, [user, kindOptions, isTeacherLocked]);
+  }, [user, kindOptions, isTeacherLocked, isWardenLocked]);
 
   useEffect(() => {
     if (kind === "student") setSession("morning");
+    if (kind === "hostel") setSession("evening");
   }, [kind]);
 
   useEffect(() => {
@@ -200,6 +253,7 @@ export default function Attendance() {
     setPlayerVenues(playerScope.defaultVenues);
     setPlayerSports(playerScope.defaultSports);
     setPlayerCategories([]);
+    setPlayerBatches([]);
   }, [kind, playerScope.defaultVenues, playerScope.defaultSports]);
 
   useEffect(() => {
@@ -237,7 +291,7 @@ export default function Attendance() {
         return;
       }
 
-      if (kind === "teacher" || kind === "coach" || kind === "staff" || kind === "player") {
+      if (kind === "teacher" || kind === "coach" || kind === "staff" || kind === "player" || kind === "hostel") {
         setGroups([]);
         setGroup(null);
         setSections([]);
@@ -275,10 +329,81 @@ export default function Attendance() {
     return absent;
   };
 
+  const applyRosterPayload = (data: {
+    people?: Person[];
+    marks?: Record<string, AttendanceStatus>;
+    subtitle?: string;
+    error?: string | null;
+    filters?: { batches?: string[] };
+  }) => {
+    const roster = Array.isArray(data.people) ? data.people : [];
+    const saved = data.marks || {};
+    setPeople(roster);
+    setRosterSubtitle(data.subtitle || null);
+    setAvailableBatches(data.filters?.batches || []);
+    if (data.error) setLoadError(data.error);
+    if (usesAbsentOnly) {
+      const absent = new Set<string>();
+      const nextMarks: Record<string, AttendanceStatus> = {};
+      roster.forEach((p) => {
+        const st = saved[p.id];
+        if (st === "absent") {
+          absent.add(p.id);
+          nextMarks[p.id] = "absent";
+        } else if (st === "present") {
+          nextMarks[p.id] = "present";
+        }
+      });
+      setAbsentIds(absent);
+      setMarks(nextMarks);
+      return;
+    }
+    setMarks(saved);
+    setAbsentIds(new Set());
+  };
+
   const loadPeople = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
+      if (kind === "player" && playerScope.requiresSportAssignment) {
+        setPeople([]);
+        setMarks({});
+        setAbsentIds(new Set());
+        return;
+      }
+      if (kind === "student" && !sectionId && !isTeacherLocked) {
+        setPeople([]);
+        setMarks({});
+        return;
+      }
+
+      const params: Record<string, string> = {
+        kind,
+        date: attendanceDateIso,
+        session: isStudentAttendance ? "morning" : session,
+        entity: entityFilter,
+      };
+      if (kind === "student" && sectionId) params.section_id = sectionId;
+      if (kind === "student" && group) params.group = group;
+      if (kind === "player") {
+        if (playerVenues.length) params.centre = playerVenues.join(",");
+        if (playerSports.length) params.sport = playerSports.join(",");
+        if (playerCategories.length) params.player_type = playerCategories.join(",");
+        if (playerBatches.length) params.group = playerBatches.join(",");
+      }
+      if (kind === "staff") params.organization = staffOrg;
+      if (kind === "hostel" && entityFilter !== "BOTH") params.organization = entityFilter;
+
+      try {
+        const { data } = await api.get("/attendance/roster", { params });
+        applyRosterPayload(data);
+        return;
+      } catch (e) {
+        if (!isNotFound(e)) throw e;
+      }
+
+      // Legacy fallback when roster route is not deployed yet.
       if (kind === "teacher") {
         let roster: Person[] = [];
         try {
@@ -312,9 +437,7 @@ export default function Attendance() {
       }
 
       if (kind === "staff") {
-        const params: { organization?: string } = {};
-        if (staffOrg) params.organization = staffOrg;
-        const { data } = await api.get("/attendance/staff-list", { params });
+        const { data } = await api.get("/attendance/staff-list", { params: { organization: staffOrg } });
         setPeople(data);
         try {
           const att = await api.get("/attendance/staff", {
@@ -333,41 +456,37 @@ export default function Attendance() {
       }
 
       if (kind === "player") {
-        if (playerScope.requiresSportAssignment) {
-          setPeople([]);
-          setMarks({});
-          return;
-        }
-
-        const params: Record<string, string> = { kind: "player", institution: "ALPHA" };
-        if (playerVenues.length === 1) params.centre = playerVenues[0];
-        if (playerSports.length === 1) params.sport = playerSports[0];
-        if (playerCategories.length === 1) params.player_type = playerCategories[0];
-
-        const { data } = await api.get("/people", { params });
-        const roster = filterPlayersBySelection(
-          unwrapCoachPlayerList(data as Person[] | { data?: Person[] }),
-          playerVenues,
-          playerSports,
-          playerCategories,
-        );
+        const peopleParams: Record<string, string> = { kind: "player", institution: "ALPHA" };
+        if (playerVenues.length === 1) peopleParams.centre = playerVenues[0];
+        if (playerSports.length === 1) peopleParams.sport = playerSports[0];
+        if (playerCategories.length === 1) peopleParams.player_type = playerCategories[0];
+        const { data } = await api.get("/people", { params: peopleParams });
+        const roster = unwrapCoachPlayerList(data as Person[] | { data?: Person[] });
         setPeople(roster);
-
-        const attParams: Record<string, string> = {
-          date: attendanceDateIso,
-          kind: "player",
-          session,
-        };
-        if (playerSports.length === 1) attParams.sport = playerSports[0];
-
-        const att = await api.get("/attendance", { params: attParams });
+        const att = await api.get("/attendance", {
+          params: { date: attendanceDateIso, kind: "player", session },
+        });
         const rosterIds = new Set(roster.map((p) => p.id));
         const m: Record<string, AttendanceStatus> = {};
-        roster.forEach((p) => {
-          m[p.id] = "present";
-        });
         att.data.forEach((r: { person_id: string; status: AttendanceStatus }) => {
           if (rosterIds.has(r.person_id)) m[r.person_id] = r.status;
+        });
+        setMarks(m);
+        setAbsentIds(new Set());
+        return;
+      }
+
+      if (kind === "hostel") {
+        const { data } = await api.get("/people", { params: { resident: true } });
+        const roster = Array.isArray(data) ? data : [];
+        setPeople(roster);
+        const att = await api.get("/attendance", {
+          params: { date: attendanceDateIso, kind: "hostel", session },
+        });
+        const m: Record<string, AttendanceStatus> = {};
+        const ids = new Set(roster.map((p: Person) => p.id));
+        att.data.forEach((r: { person_id: string; status: AttendanceStatus }) => {
+          if (ids.has(r.person_id)) m[r.person_id] = r.status;
         });
         setMarks(m);
         setAbsentIds(new Set());
@@ -380,32 +499,24 @@ export default function Attendance() {
         setMarks({});
         return;
       }
-
-      const params: Record<string, string> = { kind };
+      const peopleParams: Record<string, string> = { kind };
       if (kind === "student") {
-        params.institution = "PWS";
-        if (sectionId) params.section_id = sectionId;
+        peopleParams.institution = "PWS";
+        if (sectionId) peopleParams.section_id = sectionId;
       } else if (group) {
-        params.group = group;
+        peopleParams.group = group;
       }
-
-      const { data } = await api.get("/people", { params });
+      const { data } = await api.get("/people", { params: peopleParams });
       const roster = unwrapCoachPlayerList(data as Person[] | { data?: Person[] });
       setPeople(roster);
-
       const attParams: Record<string, string> = {
         date: attendanceDateIso,
         kind,
-        session,
+        session: isStudentAttendance ? "morning" : session,
       };
       if (kind === "student" && sectionId) attParams.section_id = sectionId;
-      else if (group) attParams.group = group;
-
       const att = await api.get("/attendance", { params: attParams });
       const m: Record<string, AttendanceStatus> = {};
-      roster.forEach((p: Person) => {
-        m[p.id] = "present";
-      });
       att.data.forEach((r: { person_id: string; status: AttendanceStatus }) => {
         m[r.person_id] = r.status;
       });
@@ -419,7 +530,7 @@ export default function Attendance() {
     } finally {
       setLoading(false);
     }
-  }, [kind, group, sectionId, session, attendanceDateIso, staffOrg, playerVenues, playerSports, playerCategories, playerScope.requiresSportAssignment]);
+  }, [kind, group, sectionId, session, attendanceDateIso, staffOrg, playerVenues, playerSports, playerCategories, playerBatches, playerScope.requiresSportAssignment, entityFilter, isStudentAttendance, usesAbsentOnly, isTeacherLocked]);
 
   useEffect(() => {
     loadPeople();
@@ -441,7 +552,8 @@ export default function Attendance() {
     if (readOnly) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     setMarks((prev) => {
-      const cur = prev[id] || "present";
+      const cur = prev[id];
+      if (!cur) return { ...prev, [id]: "present" };
       const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
       return { ...prev, [id]: next };
     });
@@ -450,32 +562,35 @@ export default function Attendance() {
   const toggleAbsent = (id: string) => {
     if (readOnly) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    setAbsentIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    setMarks((prev) => {
+      const next = prev[id] === "absent" ? "present" : "absent";
+      return { ...prev, [id]: next };
     });
   };
 
   const markAllPresent = () => {
     if (readOnly) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    if (usesAbsentOnly) {
-      setAbsentIds(new Set());
-      return;
-    }
     const m: Record<string, AttendanceStatus> = {};
     people.forEach((p) => {
       m[p.id] = "present";
     });
     setMarks(m);
+    setAbsentIds(new Set());
   };
 
   const submit = async () => {
     if (readOnly) return;
     if (people.length === 0) {
       Alert.alert("No roster", "There is nobody to mark in this group.");
+      return;
+    }
+    const unmarkedCount = people.filter((p) => !marks[p.id] && !(usesAbsentOnly && absentIds.has(p.id))).length;
+    if (unmarkedCount > 0) {
+      Alert.alert(
+        "Unmarked remaining",
+        `${unmarkedCount} ${unmarkedCount === 1 ? "person is" : "people are"} still unmarked. Use Mark All Present or mark each person before submitting.`,
+      );
       return;
     }
 
@@ -485,10 +600,10 @@ export default function Attendance() {
         const { data } = await api.post("/attendance/staff", {
           date: attendanceDateIso,
           organization: staffOrg,
-          absent_staff_ids: Array.from(absentIds),
+          absent_staff_ids: people.filter((p) => marks[p.id] === "absent" || absentIds.has(p.id)).map((p) => p.id),
           session,
         });
-        Alert.alert("Saved", `${data.present} present · ${data.absent} absent (${data.count} total)`);
+        Alert.alert("Submitted", `${data.present} present · ${data.absent} absent (${data.count} total)`);
         return;
       }
 
@@ -496,10 +611,10 @@ export default function Attendance() {
         try {
           const { data } = await api.post("/attendance/teachers", {
             date: attendanceDateIso,
-            absent_teacher_ids: Array.from(absentIds),
+            absent_teacher_ids: people.filter((p) => marks[p.id] === "absent" || absentIds.has(p.id)).map((p) => p.id),
             session,
           });
-          Alert.alert("Saved", `${data.present} present · ${data.absent} absent (${data.count} total)`);
+          Alert.alert("Submitted", `${data.present} present · ${data.absent} absent (${data.count} total)`);
         } catch (e) {
           if (!isNotFound(e)) throw e;
           await api.post("/attendance/batch", {
@@ -509,10 +624,10 @@ export default function Attendance() {
             group: null,
             marks: people.map((p) => ({
               person_id: p.id,
-              status: absentIds.has(p.id) ? "absent" : "present",
+              status: marks[p.id] === "absent" || absentIds.has(p.id) ? "absent" : "present",
             })),
           });
-          Alert.alert("Saved", `Teacher attendance saved for ${people.length} people.`);
+          Alert.alert("Submitted", `Teacher attendance saved for ${people.length} people.`);
         }
         return;
       }
@@ -520,17 +635,17 @@ export default function Attendance() {
       if (kind === "coach") {
         const { data } = await api.post("/attendance/coaches", {
           date: attendanceDateIso,
-          absent_coach_ids: Array.from(absentIds),
+          absent_coach_ids: people.filter((p) => marks[p.id] === "absent" || absentIds.has(p.id)).map((p) => p.id),
           session,
         });
-        Alert.alert("Saved", `${data.present} present · ${data.absent} absent (${data.count} total)`);
+        Alert.alert("Submitted", `${data.present} present · ${data.absent} absent (${data.count} total)`);
         return;
       }
 
       const payload: Record<string, unknown> = {
         date: attendanceDateIso,
         kind,
-        group: kind === "player" ? null : group,
+        group: kind === "player" || kind === "hostel" ? null : group,
         session: isStudentAttendance ? "morning" : session,
         sport:
           kind === "player"
@@ -540,12 +655,12 @@ export default function Attendance() {
           kind === "player"
             ? (playerVenues.length === 1 ? playerVenues[0] : people[0]?.centre || null)
             : null,
-        marks: Object.entries(marks).map(([person_id, status]) => ({ person_id, status })),
+        marks: people.map((p) => ({ person_id: p.id, status: marks[p.id] || "present" })),
       };
       if (kind === "student" && sectionId) payload.section_id = sectionId;
       await api.post("/attendance/batch", payload);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert("Saved", `Attendance saved for ${Object.keys(marks).length} people.`);
+      Alert.alert("Submitted", `Attendance saved for ${people.length} people.`);
     } catch (e: unknown) {
       const err = e as { response?: { data?: { detail?: string } } };
       Alert.alert("Error", err?.response?.data?.detail || "Failed to save");
@@ -554,28 +669,27 @@ export default function Attendance() {
     }
   };
 
-  const counts = useMemo(() => {
+  const personStatus = (id: string): AttendanceStatus | "unmarked" => {
     if (usesAbsentOnly) {
-      return STATUSES.reduce(
-        (acc, s) => {
-          if (s.key === "present") acc.present = people.length - absentIds.size;
-          else if (s.key === "absent") acc.absent = absentIds.size;
-          else acc[s.key] = 0;
-          return acc;
-        },
-        {} as Record<AttendanceStatus, number>,
-      );
+      if (absentIds.has(id) || marks[id] === "absent") return "absent";
+      if (marks[id] === "present") return "present";
+      return "unmarked";
     }
-    return STATUSES.reduce(
-      (acc, s) => {
-        acc[s.key] = Object.values(marks).filter((v) => v === s.key).length;
-        return acc;
-      },
-      {} as Record<AttendanceStatus, number>,
-    );
-  }, [usesAbsentOnly, people.length, absentIds, marks]);
+    return marks[id] || "unmarked";
+  };
 
-  const saveCount = usesAbsentOnly ? people.length : Object.keys(marks).length;
+  const counts = useMemo(() => {
+    const acc = { present: 0, absent: 0, late: 0, leave: 0, unmarked: 0 };
+    people.forEach((p) => {
+      const st = personStatus(p.id);
+      if (st === "unmarked") acc.unmarked += 1;
+      else acc[st] += 1;
+    });
+    return acc;
+  }, [people, marks, absentIds, usesAbsentOnly]);
+
+  const saveCount = people.length;
+  const unmarkedCount = counts.unmarked;
   const activeKind = kindOptions.find((k) => k.key === kind);
   const playerFiltersBlocked = kind === "player" && playerScope.requiresSportAssignment;
 
@@ -609,26 +723,31 @@ export default function Attendance() {
     }
     if (usesAbsentOnly) {
       return people.map((p) => {
-        const isAbs = absentIds.has(p.id);
+        const st = personStatus(p.id);
+        const isAbs = st === "absent";
+        const isUnmarked = st === "unmarked";
         return (
           <TouchableOpacity
             key={p.id}
             testID={`person-${p.id}`}
             onPress={() => toggleAbsent(p.id)}
             disabled={readOnly}
-            style={[s.row, isAbs && s.rowAbsent, readOnly && s.rowReadonly]}
+            style={[s.row, isAbs && s.rowAbsent, isUnmarked && s.rowUnmarked, readOnly && s.rowReadonly]}
           >
-            <View style={[s.avatar, { backgroundColor: isAbs ? colors.dangerSoft : colors.successSoft }]}>
-              <Feather name={isAbs ? "x" : "check"} size={16} color={isAbs ? colors.danger : colors.success} />
+            <View style={[s.avatar, { backgroundColor: isAbs ? colors.dangerSoft : isUnmarked ? colors.surface2 : colors.successSoft }]}>
+              <Feather name={isAbs ? "x" : isUnmarked ? "minus" : "check"} size={16} color={isAbs ? colors.danger : isUnmarked ? colors.muted2 : colors.success} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.rowName}>{p.name}</Text>
-              <Text style={s.rowMeta}>
-                {`${p.group || kind}${p.organization ? ` · ${p.organization}` : ""}${p.sport ? ` · ${p.sport}` : ""}${p.centre ? ` · ${p.centre}` : ""}`}
-              </Text>
+              <View style={s.nameRow}>
+                <Text style={s.rowName}>{p.name}</Text>
+                {academicOriginTag(p) ? (
+                  <View style={s.alphaTag}><Text style={s.alphaTagTxt}>{academicOriginTag(p)}</Text></View>
+                ) : null}
+              </View>
+              <Text style={s.rowMeta}>{personMetaLine(kind, p)}</Text>
             </View>
-            <Text style={[s.statusPill, { color: isAbs ? colors.danger : colors.success }]}>
-              {isAbs ? "Absent" : "Present"}
+            <Text style={[s.statusPill, { color: isAbs ? colors.danger : isUnmarked ? colors.muted2 : colors.success }]}>
+              {isAbs ? "Absent" : isUnmarked ? "Unmarked" : "Present"}
             </Text>
           </TouchableOpacity>
         );
@@ -638,8 +757,8 @@ export default function Attendance() {
       return (
         <View style={s.mobileGrid}>
           {people.map((p) => {
-            const st = marks[p.id] || "present";
-            const color = STATUS_COLOR[st];
+            const st = personStatus(p.id);
+            const color = st === "unmarked" ? colors.muted2 : STATUS_COLOR[st];
             return (
               <TouchableOpacity
                 key={p.id}
@@ -649,18 +768,21 @@ export default function Attendance() {
                 style={[s.cell, { borderColor: color, backgroundColor: color + "14" }, readOnly && s.rowReadonly]}
               >
                 <View style={[s.cellBadge, { backgroundColor: color }]}>
-                  <Text style={s.cellBadgeTxt}>{STATUS_SHORT[st]}</Text>
+                  <Text style={s.cellBadgeTxt}>{st === "unmarked" ? "—" : STATUS_SHORT[st]}</Text>
                 </View>
                 <Text style={s.cellName} numberOfLines={1}>
                   {shortName(p.name)}
                 </Text>
+                {academicOriginTag(p) ? <Text style={s.cellTag}>{academicOriginTag(p)}</Text> : null}
               </TouchableOpacity>
             );
           })}
         </View>
       );
     }
-    return people.map((p) => (
+    return people.map((p) => {
+      const st = personStatus(p.id);
+      return (
       <View key={p.id} style={[s.row, readOnly && s.rowReadonly]} testID={`person-${p.id}`}>
         <View style={[s.avatar, { backgroundColor: stringToColor(p.name) }]}>
           <Text style={s.avatarTxt}>
@@ -672,31 +794,37 @@ export default function Attendance() {
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.rowName}>{p.name}</Text>
-          <Text style={s.rowMeta}>{kind === "player" ? playerMetaLine(p) : `${p.group || "—"}${p.sport ? ` · ${p.sport}` : ""}`}</Text>
+          <View style={s.nameRow}>
+            <Text style={s.rowName}>{p.name}</Text>
+            {academicOriginTag(p) ? (
+              <View style={s.alphaTag}><Text style={s.alphaTagTxt}>{academicOriginTag(p)}</Text></View>
+            ) : null}
+          </View>
+          <Text style={s.rowMeta}>{personMetaLine(kind, p)}</Text>
         </View>
         <View style={s.statusBtns}>
-          {STATUSES.map((st) => (
+          {STATUSES.map((opt) => (
             <TouchableOpacity
-              key={st.key}
-              testID={`mark-${p.id}-${st.key}`}
-              onPress={() => setMark(p.id, st.key)}
+              key={opt.key}
+              testID={`mark-${p.id}-${opt.key}`}
+              onPress={() => setMark(p.id, opt.key)}
               disabled={readOnly}
-              style={[s.statBtn, marks[p.id] === st.key && { backgroundColor: st.color }]}
+              style={[s.statBtn, st === opt.key && { backgroundColor: opt.color }]}
             >
               <Text
                 style={[
                   s.statBtnTxt,
-                  { color: marks[p.id] === st.key ? "#fff" : st.color },
+                  { color: st === opt.key ? "#fff" : opt.color },
                 ]}
               >
-                {st.label}
+                {opt.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
-    ));
+    );
+    });
   };
 
   if (kindOptions.length === 0) {
@@ -721,16 +849,28 @@ export default function Attendance() {
             <Text style={s.breadcrumb}>OPERATIONS · ATTENDANCE</Text>
             <Text style={s.h1Compact}>Take Attendance</Text>
             <Text style={s.subCompact}>
-              {isTeacherLocked
-                ? "PWS students · assigned classes only"
-                : `${calendarInfo?.weekday || "—"} · ${kind === "player" ? "ALPHA players" : "linked to academic calendar"}`}
+              {rosterSubtitle
+                || roleViewSubtitle(roleView, kind)
+                || `${calendarInfo?.weekday || "—"}`}
             </Text>
           </View>
 
           {isTeacherLocked && (
             <View style={s.scopeBanner}>
               <Feather name="lock" size={14} color={colors.primary} />
-              <Text style={s.scopeBannerTxt}>Scoped to PWS · Students tab locked for your role</Text>
+              <Text style={s.scopeBannerTxt}>Scoped to your assigned class, section, and subject</Text>
+            </View>
+          )}
+          {isWardenLocked && (
+            <View style={s.scopeBanner}>
+              <Feather name="lock" size={14} color="#7C3AED" />
+              <Text style={s.scopeBannerTxt}>Hostel & Boarding residents only</Text>
+            </View>
+          )}
+          {isLeadershipView && (
+            <View style={s.scopeBanner}>
+              <Feather name="users" size={14} color={colors.primary} />
+              <Text style={s.scopeBannerTxt}>Staff attendance — teachers, office, and academic staff</Text>
             </View>
           )}
 
@@ -772,7 +912,7 @@ export default function Attendance() {
             </View>
           </View>
 
-          {(kindOptions.length > 1 && !isTeacherLocked) && (
+          {(kindOptions.length > 1 && !isTeacherLocked && !isWardenLocked) && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -791,6 +931,26 @@ export default function Attendance() {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          )}
+
+          {showEntityFilter && (
+            <View style={s.cardCompact}>
+              <Text style={s.cardTitleCompact}>Entity</Text>
+              <View style={s.sessionRow}>
+                {(["BOTH", "PWS", "ALPHA"] as const).map((org) => (
+                  <TouchableOpacity
+                    key={org}
+                    testID={`entity-${org}`}
+                    onPress={() => setEntityFilter(org)}
+                    style={[s.sessionChip, entityFilter === org && s.sessionChipActive]}
+                  >
+                    <Text style={[s.sessionText, entityFilter === org && s.sessionTextActive]}>
+                      {org === "BOTH" ? "Both" : org}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           )}
 
           {kind === "staff" && staffOrgSelectable(user) && (
@@ -866,6 +1026,16 @@ export default function Attendance() {
                 testPrefix="player-category"
                 onToggle={(v) => setPlayerCategories((prev) => toggleFilterValue(prev, v as PlayerCategory))}
               />
+              {availableBatches.length > 0 && (
+                <FilterChipRow
+                  label="Batch"
+                  options={availableBatches}
+                  selected={playerBatches}
+                  locked={false}
+                  testPrefix="player-batch"
+                  onToggle={(v) => setPlayerBatches((prev) => toggleFilterValue(prev, v))}
+                />
+              )}
             </View>
           )}
 
@@ -881,8 +1051,13 @@ export default function Attendance() {
             </View>
           )}
 
-          <View style={s.summaryCard}>
-            {STATUSES.map((st) => (
+          <View style={s.summaryCard} testID="attendance-summary">
+            {([
+              { key: "present" as const, label: "Present", color: colors.success },
+              { key: "absent" as const, label: "Absent", color: colors.danger },
+              { key: "leave" as const, label: "Leave", color: "#7C3AED" },
+              { key: "unmarked" as const, label: "Unmarked", color: colors.muted2 },
+            ]).map((st) => (
               <View key={st.key} style={[s.sumBox, { backgroundColor: st.color + "1A" }]}>
                 <Text style={[s.sumLabel, { color: st.color }]}>{st.label}</Text>
                 <Text style={[s.sumValue, { color: st.color }]}>{counts[st.key] ?? 0}</Text>
@@ -891,7 +1066,7 @@ export default function Attendance() {
             {!readOnly && (
               <TouchableOpacity style={s.allBtn} onPress={markAllPresent} testID="mark-all-present">
                 <Feather name="check-circle" size={14} color="#fff" />
-                <Text style={s.allText}>All P</Text>
+                <Text style={s.allText}>Mark All Present</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -933,7 +1108,7 @@ export default function Attendance() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={s.saveTxt}>
-                {readOnly ? "Holiday — read only" : `Save attendance (${saveCount})`}
+                {readOnly ? "Holiday — read only" : `Submit Attendance (${saveCount - unmarkedCount}/${saveCount})`}
               </Text>
             )}
           </TouchableOpacity>
@@ -1133,10 +1308,20 @@ const s = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   rowAbsent: { backgroundColor: colors.dangerSoft, borderColor: "#FECACA" },
+  rowUnmarked: { opacity: 0.92 },
   rowReadonly: { opacity: 0.72 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   avatarTxt: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  rowName: { fontSize: 14, fontWeight: "700", color: colors.ink },
+  rowName: { fontSize: 14, fontWeight: "700", color: colors.ink, flexShrink: 1 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  alphaTag: {
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  alphaTagTxt: { fontSize: 9, fontWeight: "800", color: "#0369A1", letterSpacing: 0.2 },
+  cellTag: { fontSize: 8, fontWeight: "800", color: "#0369A1", marginTop: 2, textAlign: "center" },
   rowMeta: { fontSize: 12, color: colors.muted2, marginTop: 2 },
   statusPill: { fontSize: 12, fontWeight: "800" },
   statusBtns: { flexDirection: "row", gap: 4 },

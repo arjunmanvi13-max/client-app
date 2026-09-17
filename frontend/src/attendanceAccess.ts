@@ -4,7 +4,9 @@ import {
   Permission,
   UserRole,
   hasPermission as userHasPermission,
+  isAcademicLeadershipUser,
   isSuperAdminUser,
+  isWardenUser,
   normalizeRole,
 } from "./rbac";
 import type { AttendanceKind } from "./attendanceCalendar";
@@ -18,6 +20,15 @@ export const PLAYER_CATEGORIES = ["Daily", "Day Boarding", "Boarding", "Hostel"]
 export type PlayerVenue = (typeof PLAYER_VENUES)[number];
 export type PlayerSport = (typeof PLAYER_SPORTS)[number];
 export type PlayerCategory = (typeof PLAYER_CATEGORIES)[number];
+export type AttendanceEntityFilter = "PWS" | "ALPHA" | "BOTH";
+
+export type AttendanceRoleView =
+  | "teacher"
+  | "coach"
+  | "warden"
+  | "academic_leadership"
+  | "admin"
+  | "none";
 
 export type PlayerFilterScope = {
   fullAccess: boolean;
@@ -29,6 +40,15 @@ export type PlayerFilterScope = {
   requiresSportAssignment: boolean;
   defaultVenues: PlayerVenue[];
   defaultSports: PlayerSport[];
+};
+
+const KIND_ENTITY: Record<AttendanceKind, AttendanceEntityFilter> = {
+  student: "PWS",
+  teacher: "PWS",
+  player: "ALPHA",
+  coach: "ALPHA",
+  staff: "BOTH",
+  hostel: "BOTH",
 };
 
 /** Venue/sport/category filter bounds for the Players tab (coaches scoped to assignments). */
@@ -97,17 +117,19 @@ export function toggleFilterValue<T extends string>(selected: T[], value: T): T[
 }
 
 export function filterPlayersBySelection<
-  T extends { centre?: string; sport?: string; player_type?: string },
+  T extends { centre?: string; sport?: string; player_type?: string; group?: string },
 >(
   roster: T[],
   venues: string[],
   sports: string[],
   categories: string[],
+  batches: string[] = [],
 ): T[] {
   return roster.filter((p) => {
     if (venues.length && !venues.includes(p.centre || "")) return false;
     if (sports.length && !sports.includes(p.sport || "")) return false;
     if (categories.length && !categories.includes(p.player_type || "")) return false;
+    if (batches.length && !batches.includes(p.group || "")) return false;
     return true;
   });
 }
@@ -115,73 +137,95 @@ export function filterPlayersBySelection<
 export type AttendanceKindOption = {
   key: AttendanceKind;
   label: string;
-  icon: "book" | "activity" | "users" | "user-check" | "award";
+  icon: "book" | "activity" | "users" | "user-check" | "award" | "home";
   color: string;
 };
 
-/** Tabs visible for the current user on Take Attendance (entity-scoped). */
-export function getAttendanceKindOptions(user: User | null | undefined): AttendanceKindOption[] {
-  if (!user) return [];
+const KIND_META: Record<AttendanceKind, Omit<AttendanceKindOption, "key">> = {
+  student: { label: "Students", icon: "book", color: "#1E40AF" },
+  player: { label: "Players", icon: "activity", color: "#16A34A" },
+  staff: { label: "Staff", icon: "users", color: "#EA580C" },
+  teacher: { label: "Teachers", icon: "user-check", color: "#6366F1" },
+  coach: { label: "Coaches", icon: "award", color: "#0EA5E9" },
+  hostel: { label: "Hostel", icon: "home", color: "#7C3AED" },
+};
 
-  // PWS teachers — students only; no Players/Staff/Teachers/Coaches tabs.
-  if (isPwsTeacherUser(user)) {
-    return [{ key: "student", label: "Students", icon: "book", color: "#1E40AF" }];
-  }
-
-  const superAdmin = isSuperAdminUser(user);
-  const role = normalizeRole(user?.role || "");
-
-  const canPwsAttendance =
-    superAdmin
-    || userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS);
-
-  const canAlphaAttendance =
-    superAdmin
-    || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA);
-
-  const options: AttendanceKindOption[] = [];
-
+export function attendanceRoleView(user: User | null | undefined): AttendanceRoleView {
+  if (!user) return "none";
+  if (isPwsTeacherUser(user)) return "teacher";
+  if (isCoachUser(user) || normalizeRole(user.role) === UserRole.ALPHA_COACH) return "coach";
+  if (isWardenUser(user)) return "warden";
+  if (isAcademicLeadershipUser(user)) return "academic_leadership";
+  const role = normalizeRole(user.role);
   if (
-    !isCoachUser(user)
-    && (
-      canPwsAttendance
-      || userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE)
-      || role === UserRole.PWS_TEACHER
-    )
-  ) {
-    options.push({ key: "student", label: "Students", icon: "book", color: "#1E40AF" });
-  }
-
-  if (
-    canAlphaAttendance
-    || userHasPermission(user, Permission.MARK_PLAYER_ATTENDANCE)
-    || role === UserRole.ALPHA_COACH
-    || isCoachUser(user)
-  ) {
-    options.push({ key: "player", label: "Players", icon: "activity", color: "#16A34A" });
-  }
-
-  if (
-    superAdmin
-    || canPwsAttendance
-    || canAlphaAttendance
+    isSuperAdminUser(user)
     || role === UserRole.PWS_ADMIN
     || role === UserRole.ALPHA_ADMIN
-    || (isCoachUser(user) && user?.coach_type === "head")
+    || user.role === "admin"
   ) {
-    options.push({ key: "staff", label: "Staff", icon: "users", color: "#EA580C" });
+    return "admin";
+  }
+  if (userHasPermission(user, Permission.MARK_HOSTEL_ATTENDANCE)) return "warden";
+  return "none";
+}
+
+function kindMatchesEntity(kind: AttendanceKind, entity: AttendanceEntityFilter): boolean {
+  const mapped = KIND_ENTITY[kind];
+  if (entity === "BOTH" || mapped === "BOTH") return true;
+  return mapped === entity;
+}
+
+/** Tabs visible for the current user on Take Attendance (entity-scoped). */
+export function getAttendanceKindOptions(
+  user: User | null | undefined,
+  entity: AttendanceEntityFilter = "BOTH",
+): AttendanceKindOption[] {
+  if (!user) return [];
+  const view = attendanceRoleView(user);
+  const keys: AttendanceKind[] = [];
+
+  if (view === "teacher") {
+    keys.push("student");
+  } else if (view === "coach") {
+    keys.push("player");
+    if (user.coach_type === "head") keys.push("staff", "coach");
+  } else if (view === "warden") {
+    keys.push("hostel");
+  } else if (view === "academic_leadership") {
+    keys.push("teacher", "staff");
+    if (
+      userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE)
+      || userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
+    ) {
+      keys.push("student");
+    }
+  } else if (view === "admin") {
+    keys.push("student", "player", "staff", "teacher", "coach", "hostel");
+  } else {
+    if (userHasPermission(user, Permission.MARK_STUDENT_ATTENDANCE) || isPwsTeacherUser(user)) {
+      keys.push("student");
+    }
+    if (userHasPermission(user, Permission.MARK_PLAYER_ATTENDANCE) || isCoachUser(user)) {
+      keys.push("player");
+    }
+    if (
+      userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
+      || userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
+    ) {
+      keys.push("staff");
+    }
+    if (userHasPermission(user, Permission.MARK_TEACHER_ATTENDANCE)) keys.push("teacher");
+    if (userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)) {
+      keys.push("coach");
+    }
+    if (userHasPermission(user, Permission.MARK_HOSTEL_ATTENDANCE) || isWardenUser(user)) {
+      keys.push("hostel");
+    }
   }
 
-  if (!isCoachUser(user) && (canPwsAttendance || userHasPermission(user, Permission.MARK_TEACHER_ATTENDANCE))) {
-    options.push({ key: "teacher", label: "Teachers", icon: "user-check", color: "#6366F1" });
-  }
-
-  const isHeadCoach = role === UserRole.ALPHA_COACH && user?.coach_type === "head";
-  if (canAlphaAttendance || isHeadCoach) {
-    options.push({ key: "coach", label: "Coaches", icon: "award", color: "#0EA5E9" });
-  }
-
-  return options;
+  return keys
+    .filter((k) => kindMatchesEntity(k, entity))
+    .map((key) => ({ key, ...KIND_META[key] }));
 }
 
 export function defaultAttendanceKind(
@@ -189,11 +233,17 @@ export function defaultAttendanceKind(
   options: AttendanceKindOption[],
 ): AttendanceKind | null {
   if (!options.length) return null;
-  if (isPwsTeacherUser(user)) return "student";
-  const role = normalizeRole(user?.role || "");
-  if ((role === UserRole.ALPHA_COACH || isCoachUser(user)) && options.some((o) => o.key === "player")) {
-    return "player";
-  }
+  const view = attendanceRoleView(user);
+  const preferred: Record<AttendanceRoleView, AttendanceKind | null> = {
+    teacher: "student",
+    coach: "player",
+    warden: "hostel",
+    academic_leadership: "teacher",
+    admin: "student",
+    none: options[0].key,
+  };
+  const want = preferred[view];
+  if (want && options.some((o) => o.key === want)) return want;
   return options[0].key;
 }
 
@@ -204,11 +254,17 @@ export function canAccessTakeAttendance(user: User | null | undefined): boolean 
 }
 
 export function staffOrgSelectable(user: User | null | undefined) {
-  return isSuperAdminUser(user)
+  return attendanceRoleView(user) === "admin" && (
+    isSuperAdminUser(user)
     || (
       userHasPermission(user, Permission.MARK_PWS_ATTENDANCE, BusinessEntity.PWS)
       && userHasPermission(user, Permission.MARK_ALPHA_ATTENDANCE, BusinessEntity.ALPHA)
-    );
+    )
+  );
+}
+
+export function entityFilterSelectable(user: User | null | undefined) {
+  return attendanceRoleView(user) === "admin";
 }
 
 export function resolveDefaultStaffOrg(user: User | null | undefined): "PWS" | "ALPHA" {
@@ -221,4 +277,22 @@ export function resolveDefaultStaffOrg(user: User | null | undefined): "PWS" | "
   }
   if (normalizeRole(user?.role || "") === UserRole.ALPHA_ADMIN) return "ALPHA";
   return "PWS";
+}
+
+export function roleViewSubtitle(view: AttendanceRoleView, kind: AttendanceKind): string {
+  if (view === "teacher") {
+    return "PWS class roster · includes ALPHA Boarding / Day Boarding players in your class";
+  }
+  if (view === "coach") {
+    return "Players mapped to your sport, campus, and training batch";
+  }
+  if (view === "warden") {
+    return "Hostel and Boarding residents across ALPHA / PWS";
+  }
+  if (view === "academic_leadership") {
+    return "Teachers, office staff, and academic staff";
+  }
+  if (kind === "player") return "ALPHA players";
+  if (kind === "hostel") return "Hostel & Boarding roll";
+  return "Linked to academic calendar";
 }
