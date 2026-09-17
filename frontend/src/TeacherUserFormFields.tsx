@@ -19,8 +19,7 @@ import { FormTextField } from "./components/forms/FormTextField";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
-import { CLASS_PREFIX } from "./StudentRosterFormFields";
-import { CLASS_SELECT_OPTIONS } from "./pwsClassCatalog";
+import { CLASS_SELECT_OPTIONS, formatClassDisplay, normalizeClassValue, sameClass } from "./pwsClassCatalog";
 import {
   DEFAULT_PWS_SUBJECT_OPTIONS,
   classNameForGradeName,
@@ -48,18 +47,21 @@ export type AcademicSubject = { id: string; name: string; grade_ids?: string[]; 
 /** Canonical class values with display labels per product spec. */
 export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = CLASS_SELECT_OPTIONS;
 
+function catalogClassValue(raw?: string | null): string {
+  return normalizeClassValue(raw) || formatClassDisplay(raw) || (raw || "");
+}
+
+function selectValueInOptions(raw: string, options: FormSelectOption[]): string {
+  if (options.some((o) => o.value === raw)) return raw;
+  const matched = options.find((o) => sameClass(o.value, raw));
+  return matched?.value || catalogClassValue(raw);
+}
+
 export const TEACHER_SECTION_OPTIONS: FormSelectOption[] = [
   "A", "B", "C", "D", "E", "F", "G",
 ].map((letter) => ({ value: letter, label: letter }));
 
 export const TEACHER_SUBJECT_OPTIONS: FormSelectOption[] = DEFAULT_PWS_SUBJECT_OPTIONS;
-
-const CLASS_NAME_BY_GRADE: Record<string, string> = Object.fromEntries(
-  Object.entries(CLASS_PREFIX).flatMap(([className, gradeName]) => [
-    [gradeName, className],
-    [className, className],
-  ]),
-);
 
 function parseSectionLetter(label: string): string {
   const m = label.trim().match(/-([A-G])$/i);
@@ -215,7 +217,7 @@ export function assignmentsToClassRows(
     const subject = subjects.find((s) => s.id === a.subject_id);
     if (!grade || !section || !subject) continue;
 
-    const className = CLASS_NAME_BY_GRADE[grade.name] || classNameForGradeName(grade.name);
+    const className = catalogClassValue(grade.name) || classNameForGradeName(grade.name);
     const sectionLetter = parseSectionLetter(section.label);
     const groupKey = `${className}:${sectionLetter}`;
     if (!map.has(groupKey)) {
@@ -578,12 +580,12 @@ export function TeacherUserFormFields({
                     label="Class / Standard"
                     required
                     testID={`class-grade-${index}`}
-                    value={row.className}
+                    value={selectValueInOptions(row.className, TEACHER_CLASS_OPTIONS)}
                     options={TEACHER_CLASS_OPTIONS}
                     placeholder="Select class"
                     disabled={readOnly}
                     onChange={(className) =>
-                      updateRow(row.key, { className, sectionLetter: "", subjects: [] })
+                      updateRow(row.key, { className: catalogClassValue(className), sectionLetter: "", subjects: [] })
                     }
                   />
                 </View>
