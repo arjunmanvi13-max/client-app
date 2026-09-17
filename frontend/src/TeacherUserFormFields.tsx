@@ -19,7 +19,7 @@ import { FormTextField } from "./components/forms/FormTextField";
 import { FormSelect, type FormSelectOption } from "./components/forms/FormSelect";
 import { FormMultiSelect } from "./components/forms/FormMultiSelect";
 import { DATE_PLACEHOLDER, dateHelpText, formatDate } from "./dateFormat";
-import { CLASS_SELECT_OPTIONS, formatClassDisplay, normalizeClassValue, sameClass } from "./pwsClassCatalog";
+import { CLASS_LIST, formatClassDisplay, normalizeClassValue, sameClass } from "./pwsClassCatalog";
 import {
   DEFAULT_PWS_SUBJECT_OPTIONS,
   classNameForGradeName,
@@ -44,12 +44,17 @@ export type AcademicGrade = { id: string; name: string };
 export type AcademicSection = { id: string; label: string; grade_id: string };
 export type AcademicSubject = { id: string; name: string; grade_ids?: string[]; section_ids?: string[] };
 
-/** Canonical class values with display labels per product spec. */
-export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = CLASS_SELECT_OPTIONS;
-
 function catalogClassValue(raw?: string | null): string {
   return normalizeClassValue(raw) || formatClassDisplay(raw) || (raw || "");
 }
+
+function classSelectOption(raw: string): FormSelectOption {
+  const value = catalogClassValue(raw);
+  return { value, label: formatClassDisplay(value) || value };
+}
+
+/** Always Nursery / LKG / UKG / Std 1–12 — never Class I, Class X, or Nur. */
+export const TEACHER_CLASS_OPTIONS: FormSelectOption[] = CLASS_LIST.map(classSelectOption);
 
 function selectValueInOptions(raw: string, options: FormSelectOption[]): string {
   if (options.some((o) => o.value === raw)) return raw;
@@ -337,6 +342,24 @@ export function TeacherUserFormFields({
     return TEACHER_SUBJECT_OPTIONS;
   }, [subjects]);
 
+  const classOptions = useMemo(() => {
+    if (!grades.length) return TEACHER_CLASS_OPTIONS;
+    const seen = new Set<string>();
+    const ordered = [...grades].sort((a, b) => {
+      const ai = CLASS_LIST.indexOf(catalogClassValue(a.name) as (typeof CLASS_LIST)[number]);
+      const bi = CLASS_LIST.indexOf(catalogClassValue(b.name) as (typeof CLASS_LIST)[number]);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    });
+    const out: FormSelectOption[] = [];
+    for (const grade of ordered) {
+      const opt = classSelectOption(grade.name);
+      if (!opt.value || seen.has(opt.value)) continue;
+      seen.add(opt.value);
+      out.push(opt);
+    }
+    return out.length ? out : TEACHER_CLASS_OPTIONS;
+  }, [grades]);
+
   const updateRow = (key: string, patch: Partial<TeacherClassAllocationRow>) => {
     setClassRows((prev) =>
       prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
@@ -580,8 +603,8 @@ export function TeacherUserFormFields({
                     label="Class / Standard"
                     required
                     testID={`class-grade-${index}`}
-                    value={selectValueInOptions(row.className, TEACHER_CLASS_OPTIONS)}
-                    options={TEACHER_CLASS_OPTIONS}
+                    value={selectValueInOptions(row.className, classOptions)}
+                    options={classOptions}
                     placeholder="Select class"
                     disabled={readOnly}
                     onChange={(className) =>
