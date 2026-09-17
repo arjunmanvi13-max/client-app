@@ -117,8 +117,6 @@ type TeacherUserFormFieldsProps = {
   isNew: boolean;
   isSuper: boolean;
   canToggleStatus?: boolean;
-  canDeleteTeacher?: boolean;
-  onDeleteTeacher?: () => void;
   displayTitle: string;
   userTypeKind: LoginUserType | null;
   entityScope: string;
@@ -283,8 +281,6 @@ export function TeacherUserFormFields({
   isNew,
   isSuper,
   canToggleStatus = false,
-  canDeleteTeacher = false,
-  onDeleteTeacher,
   displayTitle,
   userTypeKind,
   entityScope,
@@ -681,22 +677,6 @@ export function TeacherUserFormFields({
         </FormSectionCard>
       )}
 
-      {!isNew && canDeleteTeacher && onDeleteTeacher && (
-        <FormSectionCard title="Danger Zone" testID="teacher-delete-card">
-          <Text style={s.fieldHelp}>
-            Permanently remove this teacher account. This action cannot be undone.
-          </Text>
-          <TouchableOpacity
-            testID="btn-teacher-delete"
-            style={s.deleteBtn}
-            onPress={onDeleteTeacher}
-          >
-            <Feather name="trash-2" size={16} color="#EF4444" />
-            <Text style={s.deleteBtnTxt}>Delete teacher</Text>
-          </TouchableOpacity>
-        </FormSectionCard>
-      )}
-
       {!isNew && isSuper && setResetPwdVal && onResetPassword && (
         <FormSectionCard title="Reset Password" testID="teacher-reset-card">
           <Text style={s.fieldHelp}>
@@ -835,18 +815,4 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   resetBtnTxt: { color: "#B45309", fontWeight: "800", fontSize: 13 },
-  deleteBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    alignSelf: "flex-start",
-    marginTop: spacing.md,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: radii.md,
-    backgroundColor: "#FEE2E2",
-    borderWidth: 1,
-    borderColor: "#FECACA",
-  },
-  deleteBtnTxt: { fontSize: 13, fontWeight: "800", color: "#EF4444" },
 });

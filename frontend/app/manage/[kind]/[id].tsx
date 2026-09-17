@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter, usePathname, useNavigation } from "expo-router";
 import { api, useAuth, userHasPermission } from "../../../src/auth";
-import { BusinessEntity, Permission } from "../../../src/rbac";
+import { BusinessEntity, Permission, isSuperAdminUser } from "../../../src/rbac";
 import {
   canOverridePwsFees, type PwsStudentType, type TransportDistance,
 } from "../../../src/pwsFeeStructure";
@@ -44,6 +44,7 @@ import { StudentRosterFormFields, resolveSectionMatch, parseSectionLetter } from
 import { PlayerRosterFormFields, BOARDING_FLAT_MONTHLY_FEE, type PlayerType } from "../../../src/PlayerRosterFormFields";
 import { CoachUserFormFields } from "../../../src/CoachUserFormFields";
 import { PwsAdminUserFormFields } from "../../../src/PwsAdminUserFormFields";
+import { DeleteLoginUserCard } from "../../../src/DeleteLoginUserCard";
 import {
   TeacherUserFormFields,
   assignmentsToClassRows,
@@ -222,7 +223,7 @@ export default function ManageEdit() {
   const canManageTeachers = userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SUBJECTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_TEACHERS_MAP_SECTIONS, BusinessEntity.PWS);
   const canToggleTeacherStatus = isSuper || canManageTeachers;
-  const canDeleteTeacher = isTeacherUserForm && isSuper && !isNew;
+  const canDeleteLoginUser = isSuperAdminUser(user) && isUserKind && !isNew && user?.id !== id;
   const isAdmin = userHasPermission(user, Permission.MANAGE_PLAYERS, BusinessEntity.ALPHA)
     || userHasPermission(user, Permission.ADD_PWS_STUDENTS, BusinessEntity.PWS)
     || userHasPermission(user, Permission.MANAGE_ACCESS);
@@ -1330,19 +1331,21 @@ export default function ManageEdit() {
     });
   };
 
-  const onDeleteTeacher = () => {
-    if (!canDeleteTeacher || isNew || !isSuper) return;
+  const onDeleteLoginUser = () => {
+    if (!canDeleteLoginUser || isNew) return;
+    const label = displayTitle.trim() || "user";
     confirmAction(
-      "Delete teacher?",
-      "This teacher account will be permanently removed.",
+      `Delete ${label}?`,
+      `This ${label.toLowerCase()} account will be permanently removed. They will no longer be able to sign in. This cannot be undone.`,
       async () => {
         try {
           await api.delete(`/users/${id}`);
-          setManageDirectoryToast("Teacher deleted successfully.");
+          setManageDirectoryToast(`${label} deleted successfully.`);
           skipDirtyGuard.current = true;
-          navigateToTeachersList(router);
+          if (isTeacherUserForm) navigateToTeachersList(router);
+          else navigateToManageUserList(router, kindParam);
         } catch (e: any) {
-          showError("Error", e?.response?.data?.detail || "Failed to delete teacher");
+          showError("Error", e?.response?.data?.detail || `Failed to delete ${label.toLowerCase()}`);
         }
       },
     );
@@ -1620,8 +1623,6 @@ export default function ManageEdit() {
               isNew={isNew}
               isSuper={isSuper}
               canToggleStatus={canToggleTeacherStatus}
-              canDeleteTeacher={canDeleteTeacher}
-              onDeleteTeacher={canDeleteTeacher ? onDeleteTeacher : undefined}
               displayTitle={displayTitle}
               userTypeKind={null}
               entityScope="PWS"
@@ -2161,6 +2162,10 @@ export default function ManageEdit() {
                 ))}
               </View>
             </>
+          )}
+
+          {canDeleteLoginUser && (
+            <DeleteLoginUserCard displayTitle={displayTitle} onDelete={onDeleteLoginUser} />
           )}
 
           {canLinkParents && (
