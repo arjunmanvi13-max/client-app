@@ -25,7 +25,6 @@ export {
   pwsClassFilterLabel,
 } from "./academicStructure";
 import { SECTION_LETTERS, PWS_CLASS_OPTIONS, PWS_CLASS_FILTER_LABELS, pwsClassFilterLabel } from "./academicStructure";
-const SECTION_FILTER = ["All", ...SECTION_LETTERS] as const;
 const GENDERS = ["Male", "Female", "Other"] as const;
 
 const ORGS = ["PWS", "ALPHA", "BOTH"] as const;
@@ -210,7 +209,13 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
     label: o === "BOTH" ? "Both" : o,
   }));
   const classOptions: FormSelectOption[] = PWS_CLASS_OPTIONS.map((c) => ({ value: c, label: c }));
-  const sectionOptions: FormSelectOption[] = SECTION_FILTER.map((sec) => ({ value: sec, label: sec }));
+  const configuredLetters = SECTION_LETTERS.filter((letter) =>
+    Boolean(resolveSectionMatch(pwsClass, letter, academicSections).id),
+  );
+  const sectionOptions: FormSelectOption[] = [
+    { value: "All", label: "All" },
+    ...configuredLetters.map((sec) => ({ value: sec, label: sec })),
+  ];
 
   const ovNum: Record<string, number> = {};
   for (const [k, v] of Object.entries(pwsOverrides)) {
@@ -249,7 +254,7 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
         <FieldRow>
           <FormSelect
             compact={compact}
-            label="Class"
+            label="Class / Standard"
             testID="field-pws-class"
             value={pwsClass}
             disabled={readOnly}
@@ -264,10 +269,20 @@ export function StudentRosterFormFields(props: StudentRosterFormFieldsProps) {
             value={sectionValue}
             disabled={readOnly}
             options={sectionOptions}
-            placeholder="Select section"
+            placeholder={pwsClass ? (configuredLetters.length ? "Select section" : "No sections configured") : "Select class first"}
             onChange={applySection}
           />
         </FieldRow>
+        {!!pwsClass && academicSections.length === 0 && (
+          <Text style={{ color: "#B45309", fontSize: 12, marginTop: 4 }}>
+            Configure Class / Standard and sections in Academic Structure before assigning a section.
+          </Text>
+        )}
+        {!!pwsClass && academicSections.length > 0 && configuredLetters.length === 0 && (
+          <Text style={{ color: "#B45309", fontSize: 12, marginTop: 4 }}>
+            No sections are configured for this class in Academic Structure.
+          </Text>
+        )}
 
         <FieldRow>
           <FormSelect

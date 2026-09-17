@@ -1,5 +1,7 @@
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { formatDate } from "../dateFormat";
+import { formatClassDisplay } from "../pwsClassCatalog";
+import { formatClassDisplay } from "../pwsClassCatalog";
 
 export type ReportCardData = {
   person_name?: string;
@@ -58,15 +60,9 @@ function formatDobDisplay(dob?: string) {
 }
 
 function displayClass(grade?: string, section?: string) {
-  if (section && section.includes("-")) {
-    const prefix = section.split("-")[0];
-    const map: Record<string, string> = {
-      "1": "I", "2": "II", "3": "III", "4": "IV", "5": "V", "6": "VI",
-      "7": "VII", "8": "VIII", "9": "IX", "10": "X",
-    };
-    if (map[prefix]) return map[prefix];
-  }
-  return grade || section || "—";
+  const letter = (section || "").includes("-") ? (section || "").split("-").pop() : "";
+  const cls = formatClassDisplay(grade) || formatClassDisplay((section || "").split("-")[0] || "") || "—";
+  return letter ? `${cls} ${letter}` : cls;
 }
 
 function attendanceText(card: ReportCardData) {
@@ -111,7 +107,7 @@ export function ReportCardSheet({ card }: Props) {
 
         <View style={s.detailsGrid}>
           <Detail label="Student's Name" value={card.person_name || "—"} />
-          <Detail label="Class" value={displayClass(card.grade_name, card.section_label)} />
+          <Detail label="Class / Standard" value={displayClass(card.grade_name, card.section_label)} />
           <Detail label="Father's Name" value={card.father_name || "—"} />
           <Detail label="Date of Birth" value={formatDobDisplay(card.dob)} />
           <Detail label="Mother's Name" value={card.mother_name || "—"} wide />

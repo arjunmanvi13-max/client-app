@@ -39,6 +39,8 @@ export const DEFAULT_PWS_STANDARDS: { name: string; sort: number }[] = [
   { name: "8", sort: 11 },
   { name: "9", sort: 12 },
   { name: "10", sort: 13 },
+  { name: "11", sort: 14 },
+  { name: "12", sort: 15 },
 ];
 
 export const DEFAULT_PWS_SUBJECT_OPTIONS: FormSelectOption[] = DEFAULT_PWS_SUBJECTS.map(

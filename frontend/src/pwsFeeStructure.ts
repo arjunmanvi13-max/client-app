@@ -16,13 +16,13 @@ export type PwsClass = PwsClassCanonical;
 
 const FEE_ORDER = [
   "Nursery", "UKG",
-  "Class I", "Class II", "Class III", "Class IV", "Class V", "Class VI",
-  "Class VII", "Class VIII", "Class IX", "Class X",
+  "Std 1", "Std 2", "Std 3", "Std 4", "Std 5", "Std 6",
+  "Std 7", "Std 8", "Std 9", "Std 10",
 ] as const;
 
 function classIdx(pwsClass: string): number {
   const canon = normalizeClassValue(pwsClass) || pwsClass;
-  const band = canon === "LKG" ? "Nursery" : canon;
+  const band = canon === "LKG" ? "Nursery" : canon === "Std 11" || canon === "Std 12" ? "Std 10" : canon;
   const i = FEE_ORDER.indexOf(band as (typeof FEE_ORDER)[number]);
   return i >= 0 ? i : 0;
 }

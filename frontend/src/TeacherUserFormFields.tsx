@@ -575,7 +575,7 @@ export function TeacherUserFormFields({
               <View style={[s.classRowFields, isWide && s.classRowFieldsWide]}>
                 <View style={s.classField}>
                   <FormSelect
-                    label="Class"
+                    label="Class / Standard"
                     required
                     testID={`class-grade-${index}`}
                     value={row.className}
@@ -593,8 +593,31 @@ export function TeacherUserFormFields({
                     required
                     testID={`class-section-${index}`}
                     value={row.sectionLetter}
-                    options={TEACHER_SECTION_OPTIONS}
-                    placeholder={row.className ? "Select section" : "Select class first"}
+                    options={
+                      row.className
+                        ? [...new Set(
+                            sections
+                              .filter((sec) => {
+                                const grade = matchAcademicGrade(row.className, grades);
+                                return grade ? sec.grade_id === grade.id : false;
+                              })
+                              .map((sec) => parseSectionLetter(sec.label))
+                              .filter(Boolean),
+                          )].sort().map((letter) => ({ value: letter, label: letter }))
+                        : []
+                    }
+                    placeholder={
+                      academicLoading
+                        ? "Loading sections…"
+                        : !row.className
+                        ? "Select class first"
+                        : sections.some((sec) => {
+                            const grade = matchAcademicGrade(row.className, grades);
+                            return grade && sec.grade_id === grade.id;
+                          })
+                          ? "Select section"
+                          : "No sections configured"
+                    }
                     disabled={readOnly || !row.className}
                     onChange={(sectionLetter) =>
                       updateRow(row.key, { sectionLetter, subjects: [] })

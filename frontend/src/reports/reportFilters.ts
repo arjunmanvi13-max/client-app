@@ -225,7 +225,7 @@ const FILTER_FIELDS: Record<ReportFilterKey, Omit<ReportFilterField, "key">> = {
     testID: "pws-student-type",
   },
   pwsClass: {
-    label: "Class",
+    label: "Class / Standard",
     stateKey: "pwsClass",
     options: CLASS_OPTIONS,
     testID: "class",

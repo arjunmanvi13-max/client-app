@@ -220,7 +220,7 @@ export default function Directory() {
             <>
               <FormSelect
                 compact
-                label={pwsClass ? "Class (1)" : "Class"}
+                label={pwsClass ? "Class / Standard (1)" : "Class / Standard"}
                 testID="directory-filter-class"
                 value={pwsClass}
                 options={PWS_CLASS_FILTER_OPTIONS}

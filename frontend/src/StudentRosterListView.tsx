@@ -121,7 +121,7 @@ export function StudentRosterListView({
   ];
 
   const classOptions: FormSelectOption[] = [
-    { value: "", label: "All Classes" },
+    { value: "", label: "All classes" },
     ...PWS_CLASS_OPTIONS.map((c) => ({
       value: c,
       label: PWS_CLASS_FILTER_LABELS[c] || c,

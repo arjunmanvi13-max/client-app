@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import { formatClassDisplay } from "../../../src/pwsClassCatalog";
 import { useAuth } from "../../../src/auth";
 import { canAccessTimetable, canViewTimetableAll, isPwsTeacherUser } from "../../../src/rbac";
 import { LoadingState, ErrorState } from "../../../src/ScreenStates";
@@ -478,7 +479,7 @@ export default function TimetableScreen() {
               </View>
             </SetupField>
             {viewMode === "class" && (
-              <SetupField label="Class">
+              <SetupField label="Class / Standard">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={s.chipRow}>
                     {grades.map((g) => (
@@ -487,7 +488,7 @@ export default function TimetableScreen() {
                         style={[s.chip, classId === g.id && s.chipActive]}
                         onPress={() => setClassId(g.id)}
                       >
-                        <Text style={[s.chipTxt, classId === g.id && s.chipTxtActive]}>{g.label || g.name}</Text>
+                        <Text style={[s.chipTxt, classId === g.id && s.chipTxtActive]}>{formatClassDisplay(g.label || g.name) || g.label || g.name}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>

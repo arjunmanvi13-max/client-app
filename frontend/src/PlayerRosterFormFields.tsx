@@ -226,7 +226,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
     setBoardingSectionLetter,
   } = props;
 
-  const isBoardingType = playerType === "Boarding";
+  const isBoardingType = playerType === "Boarding" || playerType === "Day Boarding";
   const boardingClassOptions: FormSelectOption[] = PWS_CLASS_OPTIONS.map((c) => ({ value: c, label: c }));
   const boardingSectionOptions: FormSelectOption[] = SECTION_LETTERS.map((l) => ({ value: l, label: l }));
 
@@ -481,7 +481,7 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
             <Text style={s.typeHintText}>
               {playerType === "Daily" && "Attends training only — no hostel or boarding."}
               {playerType === "Hostel Only" && "Resides in hostel · attends training · uses hostel facilities."}
-              {playerType === "Day Boarding" && "Stays during the day with meals · returns home evening."}
+              {playerType === "Day Boarding" && "Stays during the day with meals · PWS class & section required for school attendance."}
               {playerType === "Boarding" && "Full residential · PWS class & section required · ALPHA + PWS fees apply."}
             </Text>
           </View>
@@ -495,10 +495,10 @@ export function PlayerRosterFormFields(props: PlayerRosterFormFieldsProps) {
 
         {isBoardingType && (
           <View style={s.boardingFieldsBox} testID="boarding-class-section">
-            <Text style={s.boardingFieldsLabel}>PWS class & section (required for Boarding)</Text>
+            <Text style={s.boardingFieldsLabel}>PWS class & section (required for school attendance)</Text>
             <FormFieldGrid columns={2} isWide={isWide}>
               <FormSelect
-                label="Class"
+                label="Class / Standard"
                 required
                 testID="field-boarding-class"
                 value={boardingClass}

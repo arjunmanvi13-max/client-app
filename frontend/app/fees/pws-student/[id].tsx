@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "../../../src/auth";
 import { colors, radii, spacing } from "../../../src/theme";
 import { LoadingState, ErrorState, getApiError } from "../../../src/ScreenStates";
+import { formatClassDisplay } from "../../../src/pwsClassCatalog";
 import { PWS_ACADEMIC_YEAR } from "../../../src/pwsFeeStructure";
 import { downloadPdf as downloadPdfFile } from "../../../src/pdfDownload";
 
@@ -171,7 +172,7 @@ export default function PwsStudentFees() {
       <ScrollView contentContainerStyle={s.scroll}>
         <View style={s.summaryCard}>
           <View style={s.summaryRow}>
-            <SummaryPill icon="book" label="Class" value={st.pws_class} />
+            <SummaryPill icon="book" label="Class / Standard" value={formatClassDisplay(st.pws_class) || st.pws_class} />
             <SummaryPill icon="home" label="Type" value={st.pws_student_type} />
             <SummaryPill
               icon="truck"

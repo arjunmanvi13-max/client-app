@@ -313,7 +313,7 @@ export default function ManageEdit() {
   const [sport, setSport] = useState("");
   const [isResident, setIsResident] = useState(false);
   const [pwsStudentType, setPwsStudentType] = useState<PwsStudentType>("Day School");
-  const [pwsClass, setPwsClass] = useState<string>("Class I");
+  const [pwsClass, setPwsClass] = useState<string>("Std 1");
   const [transportEnabled, setTransportEnabled] = useState(false);
   const [transportDistance, setTransportDistance] = useState<TransportDistance>("Up to 5 km");
   const [pwsOverrides, setPwsOverrides] = useState<Record<string, string>>({});
@@ -577,7 +577,7 @@ export default function ManageEdit() {
             setName(p.name); setOrganization(p.organization);
             setGroup(p.group || ""); setSport(p.sport || ""); setIsResident(!!p.is_resident);
             setPwsStudentType((p.pws_student_type as PwsStudentType) || (p.is_resident ? "Boarding" : "Day School"));
-            setPwsClass(normalizeClassValue(p.pws_class) || p.pws_class || "Class I");
+            setPwsClass(normalizeClassValue(p.pws_class) || p.pws_class || "Std 1");
             setTransportEnabled(!!p.transport_enabled || (p.transport_fee_monthly || 0) > 0);
             setTransportDistance((p.transport_distance as TransportDistance) || "Up to 5 km");
             const ov = p.pws_fee_overrides || {};
