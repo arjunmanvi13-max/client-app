@@ -3,7 +3,6 @@ import { Feather } from "@expo/vector-icons";
 import { UserRole } from "./rbac";
 import { CategoryPermissionsPreview } from "./CategoryPermissionsPreview";
 import {
-  entityScopeLabel,
   PWS_ADMIN_DESIGNATIONS,
   pwsAdminDesignationLabel,
   type PwsAdminDesignation,
@@ -11,6 +10,13 @@ import {
 import { useBreakpoint } from "./useBreakpoint";
 import { colors, formColors, radii, spacing } from "./theme";
 import { FormTextField } from "./components/forms/FormTextField";
+import { FormSelect } from "./components/forms/FormSelect";
+
+const BUSINESS_SCOPE_OPTIONS = [
+  { value: "PWS", label: "PWS" },
+  { value: "ALPHA", label: "ALPHA" },
+  { value: "BOTH", label: "Both PWS & ALPHA" },
+] as const;
 
 const PERM_GROUPS: { group: string; items: { key: string; label: string }[] }[] = [
   { group: "Data Access", items: [
@@ -56,7 +62,7 @@ type PwsAdminUserFormFieldsProps = {
   setDepartment: (v: string) => void;
   designation: PwsAdminDesignation;
   setDesignation: (v: PwsAdminDesignation) => void;
-  setEntityScope?: (v: "PWS" | "ALPHA" | "BOTH") => void;
+  setEntityScope: (v: "PWS" | "ALPHA" | "BOTH") => void;
   customizePerms: boolean;
   setCustomizePerms: (v: boolean) => void;
   toggleModulePerm: (key: string) => void;
@@ -189,44 +195,42 @@ export function PwsAdminUserFormFields({
             <MetaChip label="User Type" value={displayTitle} testID="field-user-type" />
           </View>
           <View style={s.col}>
-            {setEntityScope && !readOnly ? (
-              <View testID="field-entity-scope">
-                <Text style={s.fieldLabel}>Business Scope</Text>
-                <View style={s.scopeRow}>
-                  {(["PWS", "ALPHA", "BOTH"] as const).map((opt) => {
-                    const active = entityScope === opt;
-                    return (
-                      <TouchableOpacity
-                        key={opt}
-                        testID={`org-${opt}`}
-                        onPress={() => setEntityScope(opt)}
-                        style={[s.scopeChip, active && s.scopeChipActive]}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text style={[s.scopeChipTxt, active && s.scopeChipTxtActive]}>
-                          {entityScopeLabel(opt)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : (
-              <MetaChip
-                label="Business Scope"
-                value={entityScopeLabel(entityScope)}
-                tone="scope"
-                testID="field-entity-scope"
-              />
-            )}
+            <MetaChip label="User Category" value="PWS Admin" tone="scope" testID="field-user-category" />
           </View>
         </View>
 
+        <View>
+          <FormSelect
+            label="Business Scope"
+            required
+            value={entityScope === "PWS" || entityScope === "ALPHA" || entityScope === "BOTH" ? entityScope : "PWS"}
+            options={BUSINESS_SCOPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            onChange={(v) => setEntityScope(v as "PWS" | "ALPHA" | "BOTH")}
+            disabled={readOnly}
+            testID="field-entity-scope"
+          />
+          {!readOnly && (
+            <View style={s.scopeRow}>
+              {BUSINESS_SCOPE_OPTIONS.map((opt) => {
+                const active = entityScope === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    testID={`org-${opt.value}`}
+                    onPress={() => setEntityScope(opt.value)}
+                    style={[s.scopeChip, active && s.scopeChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[s.scopeChipTxt, active && s.scopeChipTxtActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+
         <View style={[s.gridRow, isWide && s.gridRowWide, s.gridRowGap]}>
-          <View style={s.col}>
-            <MetaChip label="User Category" value="PWS Admin" tone="scope" testID="field-user-category" />
-          </View>
           <View style={s.col}>
             <FormTextField
               label="Phone"

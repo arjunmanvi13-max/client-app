@@ -14,7 +14,6 @@ import {
   CATALOG_BY_CODE,
   LOGIN_TIER_CATALOG,
   designationsForEntity,
-  entityScopeLabel,
   filterUsersByType,
   isApprovedLoginUserType,
   isLoginTierKind,
@@ -1896,8 +1895,20 @@ export default function ManageEdit() {
                 <Text style={[s.chipText, { color: "#0F172A" }]}>{displayTitle}</Text>
               </View>
               <Text style={s.label}>Business Scope</Text>
-              <View style={[s.chip, { alignSelf: "flex-start", backgroundColor: "#DBEAFE", borderColor: "#93C5FD" }]} testID="field-entity-scope">
-                <Text style={[s.chipText, { color: "#1E40AF" }]}>{entityScopeLabel(typeCatalog?.entityScope || organization)}</Text>
+              <View style={s.chipRow}>
+                {(["PWS", "ALPHA", "BOTH"] as const).map((o) => (
+                  <TouchableOpacity
+                    key={o}
+                    testID={`org-${o}`}
+                    style={[s.chip, { flex: 1 }, organization === o && s.chipActive, readOnly && { opacity: 0.85 }]}
+                    disabled={readOnly}
+                    onPress={() => setOrganization(o)}
+                  >
+                    <Text style={[s.chipText, organization === o && { color: "#fff" }]}>
+                      {o === "BOTH" ? "Both PWS & ALPHA" : o}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
               {isPwsAdminKind && (
                 <>
