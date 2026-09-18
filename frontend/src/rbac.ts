@@ -153,14 +153,74 @@ const ENQUIRY_ROLES = new Set([
   "vice_principal",
 ]);
 
-/** Super Admin, PWS/ALPHA Admin, and PWS/ALPHA Accounts — including user_type logins. */
-export function canAccessEnquiry(user: RBACUser | null | undefined): boolean {
+function isOperationsAdminUser(user: RBACUser | null | undefined): boolean {
   if (!user) return false;
-  if (isSuperAdminUser(user)) return true;
+  const designation = String(user.designation || "").toUpperCase();
+  if (designation === "OPERATIONS_ADMIN" || designation === "PWS_OFFICE_STAFF" || designation === "ALPHA_OFFICE_STAFF") {
+    return true;
+  }
+  return String(user.permission_set || "").toLowerCase() === "operations_admin";
+}
+
+function hasLegacyPerm(user: RBACUser | null | undefined, ...keys: string[]): boolean {
+  const perms = user?.permissions || {};
+  return keys.some((k) => Boolean(perms[k]));
+}
+
+function moduleLevel(user: RBACUser | null | undefined, moduleId: string): string {
+  return String(user?.module_access?.[moduleId] || "none").toLowerCase();
+}
+
+function roleBasedEnquiry(user: RBACUser): boolean {
+  if (isOperationsAdminUser(user)) return false;
   const userType = String((user as RBACUser & { user_type?: string }).user_type || "").toLowerCase();
   if (ENQUIRY_USER_TYPES.has(userType as UserRole)) return true;
   const role = String(user.role || user.role_canonical || "").toLowerCase();
   return ENQUIRY_ROLES.has(role);
+}
+
+/** Super Admin, PWS/ALPHA Admin/Accounts, or a user granted Enquiry in individual overrides. */
+export function canAccessEnquiry(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  if (hasLegacyPerm(user, "view_enquiries", "manage_enquiries")) return true;
+  if (["view", "edit", "admin"].includes(moduleLevel(user, "enquiry"))) return true;
+  return roleBasedEnquiry(user);
+}
+
+export function canManageEnquiry(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  if (hasLegacyPerm(user, "manage_enquiries")) return true;
+  if (["edit", "admin"].includes(moduleLevel(user, "enquiry"))) return true;
+  if (hasLegacyPerm(user, "view_enquiries") && !roleBasedEnquiry(user)) return false;
+  return roleBasedEnquiry(user);
+}
+
+function roleBasedGroundBooking(user: RBACUser): boolean {
+  if (isOperationsAdminUser(user)) return false;
+  const role = String(user.role || "").toLowerCase();
+  const userType = String((user as RBACUser & { user_type?: string }).user_type || "").toLowerCase();
+  return ["admin", "alpha_admin", "alpha_accounts"].includes(role)
+    || ["alpha_admin", "alpha_accounts"].includes(userType);
+}
+
+/** ALPHA Admin/Accounts, Super Admin, or a user granted Ground Booking in individual overrides. */
+export function canAccessGroundBooking(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  if (hasLegacyPerm(user, "view_ground_bookings", "manage_ground_bookings")) return true;
+  if (["view", "edit", "admin"].includes(moduleLevel(user, "ground_booking"))) return true;
+  return roleBasedGroundBooking(user);
+}
+
+export function canManageGroundBooking(user: RBACUser | null | undefined): boolean {
+  if (!user) return false;
+  if (isSuperAdminUser(user)) return true;
+  if (hasLegacyPerm(user, "manage_ground_bookings")) return true;
+  if (["edit", "admin"].includes(moduleLevel(user, "ground_booking"))) return true;
+  if (hasLegacyPerm(user, "view_ground_bookings") && !roleBasedGroundBooking(user)) return false;
+  return roleBasedGroundBooking(user);
 }
 
 /** PWS Principal — excludes Vice Principal and other PWS Admin designations. */
@@ -336,6 +396,9 @@ export interface RBACUser {
   coach_type?: "head" | "assistant" | null;
   designation?: string | null;
   entity_scope?: string | null;
+  user_type?: string | null;
+  permission_set?: string | null;
+  module_access?: Record<string, "none" | "view" | "edit" | "admin">;
 }
 
 export interface TeacherSubjectAssignment {

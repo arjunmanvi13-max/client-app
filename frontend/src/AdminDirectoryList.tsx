@@ -2,12 +2,14 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { api, useAuth, userHasPermission } from "./auth";
 import { Permission, UserRole, isSuperAdminUser } from "./rbac";
 import {
   ADMIN_DESIGNATION_LABELS,
   canonicalizeDesignation,
+  isCoachDirectoryRecord,
+  matchesAdminDesignationFilter,
   permissionSetForDesignation,
   type AdminDesignation,
 } from "./directoryWorkflow";
@@ -30,12 +32,16 @@ function editHref(row: any): string {
 
 export function AdminDirectoryList() {
   const router = useRouter();
+  const { designation: designationParam } = useLocalSearchParams<{ designation?: string | string[] }>();
   const { user, loading: authLoading } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [designation, setDesignation] = useState("");
+  const initialChip = canonicalizeDesignation(Array.isArray(designationParam) ? designationParam[0] : designationParam);
+  const [designation, setDesignation] = useState(
+    initialChip && initialChip in ADMIN_DESIGNATION_LABELS ? initialChip : "",
+  );
   const canManage = isSuperAdminUser(user) || userHasPermission(user, Permission.MANAGE_USERS_ROSTERS) || userHasPermission(user, Permission.CREATE_USERS);
 
   const load = useCallback(async () => {
@@ -55,7 +61,7 @@ export function AdminDirectoryList() {
       const staff = staffRows.map((p: any) => ({ ...p, _source: "staff", user_type: p.user_type || "staff" }));
       let rows = [...users, ...staff];
       if (designation) {
-        rows = rows.filter((u: any) => canonicalizeDesignation(u.designation) === designation);
+        rows = rows.filter((u: any) => matchesAdminDesignationFilter(u, designation));
       }
       if (search.trim()) {
         const q = search.trim().toLowerCase();
@@ -162,7 +168,7 @@ export function AdminDirectoryList() {
              <Text style={s.emptyText}>{search.trim() ? `No matches for "${search.trim()}".` : "No admins yet."}</Text>
            </View>
          ) : items.map((it) => {
-           const des = canonicalizeDesignation(it.designation);
+           const des = isCoachDirectoryRecord(it) ? "COACH" : canonicalizeDesignation(it.designation);
            const setCode = it.permission_set || permissionSetForDesignation(des);
            const setMeta = setCode ? PERMISSION_SET_BY_CODE[setCode as keyof typeof PERMISSION_SET_BY_CODE] : null;
            const inactive = it.status === "deactivated" || it.is_active === false;

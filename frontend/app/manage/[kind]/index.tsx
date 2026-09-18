@@ -336,6 +336,15 @@ export default function ManageList() {
     );
   }
 
+  if (kindParam === "coach" || kindParam === "alpha_coach") {
+    router.replace("/manage/admin?designation=COACH");
+    return (
+      <SafeAreaView style={s.safe} edges={["top"]}>
+        <ActivityIndicator color="#1E40AF" style={{ marginTop: 60 }} />
+      </SafeAreaView>
+    );
+  }
+
   if (isAdminDirectoryKind(kindParam) && kindParam !== "admin") {
     router.replace("/manage/admin");
     return (

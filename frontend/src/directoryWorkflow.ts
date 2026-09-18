@@ -86,6 +86,33 @@ export function canonicalizeDesignation(raw?: string | null): string {
   return DESIGNATION_ALIASES[key] || key;
 }
 
+export function isCoachDirectoryRecord(row: {
+  designation?: string | null;
+  role?: string | null;
+  user_type?: string | null;
+  permission_set?: string | null;
+}): boolean {
+  if (canonicalizeDesignation(row.designation) === "COACH") return true;
+  const ut = String(row.user_type || "").toLowerCase();
+  const role = String(row.role || "").toLowerCase();
+  const set = String(row.permission_set || "").toLowerCase();
+  return ut === UserRole.ALPHA_COACH || role === "coach" || role === "alpha_coach" || set === "coach";
+}
+
+export function matchesAdminDesignationFilter(
+  row: {
+    designation?: string | null;
+    role?: string | null;
+    user_type?: string | null;
+    permission_set?: string | null;
+  },
+  designation: string,
+): boolean {
+  if (!designation) return true;
+  if (designation === "COACH") return isCoachDirectoryRecord(row);
+  return canonicalizeDesignation(row.designation) === designation;
+}
+
 export function permissionSetForDesignation(designation?: string | null): PermissionSetCode | "" {
   const canon = canonicalizeDesignation(designation);
   const match = PERMISSION_SET_CATALOG.find((s) => s.designations.includes(canon));

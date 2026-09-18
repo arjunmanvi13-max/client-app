@@ -96,6 +96,8 @@ export type User = {
   permissions?: Record<string, boolean>;
   permissions_rbac?: Partial<Record<Permission, boolean>>;
   effective_permissions?: (Permission | string)[];
+  module_access?: Record<string, "none" | "view" | "edit" | "admin">;
+  permission_set?: string | null;
 };
 
 /** Check RBAC permission for the logged-in user */

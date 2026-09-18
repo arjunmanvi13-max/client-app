@@ -219,6 +219,28 @@ function run() {
   staffGroups.forEach((g) => assert(g.children.length > 0, `Group ${g.id} must not be empty when visible`));
   assert(!allLeafIds(staffGroups).includes("enquiry"), "Generic staff should not see Enquiry");
 
+  const opsAdmin = mockUser({
+    role: "staff",
+    organization: "BOTH",
+    user_type: "pws_admin" as any,
+    designation: "OPERATIONS_ADMIN" as any,
+    permission_set: "operations_admin",
+  });
+  assert(!allLeafIds(filterNavigationGroups({ user: opsAdmin })).includes("enquiry"), "Operations Admin does not see Enquiry until granted");
+  assert(!allLeafIds(filterNavigationGroups({ user: opsAdmin })).includes("ground-booking"), "Operations Admin does not see Ground Booking until granted");
+
+  const opsGranted = mockUser({
+    role: "staff",
+    organization: "BOTH",
+    user_type: "pws_admin" as any,
+    designation: "OPERATIONS_ADMIN" as any,
+    permission_set: "operations_admin",
+    permissions: { manage_enquiries: true, manage_ground_bookings: true, view_enquiries: true, view_ground_bookings: true },
+  });
+  const opsLeaves = allLeafIds(filterNavigationGroups({ user: opsGranted }));
+  assert(opsLeaves.includes("enquiry"), "Operations Admin sees Enquiry after individual override");
+  assert(opsLeaves.includes("ground-booking"), "Operations Admin sees Ground Booking after individual override");
+
   console.log("navigationConfig.verify.ts: all checks passed");
 }
 

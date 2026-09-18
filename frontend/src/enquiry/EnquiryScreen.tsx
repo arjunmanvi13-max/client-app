@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../auth";
-import { canAccessEnquiry } from "../rbac";
+import { canAccessEnquiry, canManageEnquiry } from "../rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
 import { colors, radii, spacing } from "../theme";
@@ -29,6 +29,7 @@ export function EnquiryScreen() {
   const router = useRouter();
   const { isDesktop, horizontalPadding } = useBreakpoint();
   const allowed = canAccessEnquiry(user);
+  const canWrite = canManageEnquiry(user);
   const [rows, setRows] = useState<Enquiry[]>([]);
   const [staff, setStaff] = useState<EnquiryStaff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -154,8 +155,8 @@ export function EnquiryScreen() {
       <SafeAreaView style={s.safe} edges={["top"]}>
         <View style={s.denied}>
           <Feather name="lock" size={28} color={colors.muted2} />
-          <Text style={s.deniedTitle}>Enquiry is for Admin and Accounts</Text>
-          <Text style={s.deniedTxt}>Super Admin, PWS Admin, ALPHA Admin, PWS Accounts, and ALPHA Accounts can record and track enquiries.</Text>
+          <Text style={s.deniedTitle}>Enquiry access is not granted</Text>
+          <Text style={s.deniedTxt}>Ask Super Admin to enable Enquiry in Individual permission overrides, or sign in as Admin or Accounts.</Text>
         </View>
       </SafeAreaView>
     );
@@ -173,10 +174,12 @@ export function EnquiryScreen() {
             <Text style={s.h1}>Enquiry</Text>
             <Text style={s.sub}>Track PWS and ALPHA admission leads from first call through follow-up.</Text>
           </View>
-          <TouchableOpacity testID="add-enquiry" style={s.addBtn} onPress={() => { setEditing(null); setModal(true); }}>
-            <Feather name="plus" size={16} color="#fff" />
-            <Text style={s.addTxt}>Add Enquiry</Text>
-          </TouchableOpacity>
+          {canWrite ? (
+            <TouchableOpacity testID="add-enquiry" style={s.addBtn} onPress={() => { setEditing(null); setModal(true); }}>
+              <Feather name="plus" size={16} color="#fff" />
+              <Text style={s.addTxt}>Add Enquiry</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={s.filters}>
@@ -224,20 +227,24 @@ export function EnquiryScreen() {
                   <View style={s.actions}>
                     <IconBtn icon="phone" onPress={() => Linking.openURL(`tel:${row.mobile}`)} />
                     <IconBtn icon="message-circle" onPress={() => Linking.openURL(waLink(row.mobile))} />
-                    <IconBtn icon="edit-2" onPress={() => { setEditing(row); setModal(true); }} />
-                    <IconBtn icon="check" onPress={async () => {
-                      try { await markEnquiryFollowUp(row.id, {}); await load(); }
-                      catch (e) { Alert.alert("Could not update", getApiError(e)); }
-                    }} />
-                    <IconBtn icon="user-plus" onPress={() => { setActionFor(row); setAssigneeId(row.assigned_to_id || ""); setActionNote(""); setMode("assign"); }} />
-                    {user?.id === row.assigned_to_id ? (
-                      <IconBtn icon="corner-up-left" onPress={() => { setActionFor(row); setActionNote(""); setMode("complete"); }} />
-                    ) : null}
-                    {row.status !== "Admitted" && row.status !== "Lost" ? (
-                      <IconBtn icon="user-check" onPress={() => runConvert(row)} />
-                    ) : null}
-                    {row.status !== "Admitted" && row.status !== "Lost" && row.status !== "Pending Close" ? (
-                      <IconBtn icon="x-circle" onPress={() => { setActionFor(row); setCloseReason(""); setMode("close"); }} />
+                    {canWrite ? (
+                      <>
+                        <IconBtn icon="edit-2" onPress={() => { setEditing(row); setModal(true); }} />
+                        <IconBtn icon="check" onPress={async () => {
+                          try { await markEnquiryFollowUp(row.id, {}); await load(); }
+                          catch (e) { Alert.alert("Could not update", getApiError(e)); }
+                        }} />
+                        <IconBtn icon="user-plus" onPress={() => { setActionFor(row); setAssigneeId(row.assigned_to_id || ""); setActionNote(""); setMode("assign"); }} />
+                        {user?.id === row.assigned_to_id ? (
+                          <IconBtn icon="corner-up-left" onPress={() => { setActionFor(row); setActionNote(""); setMode("complete"); }} />
+                        ) : null}
+                        {row.status !== "Admitted" && row.status !== "Lost" ? (
+                          <IconBtn icon="user-check" onPress={() => runConvert(row)} />
+                        ) : null}
+                        {row.status !== "Admitted" && row.status !== "Lost" && row.status !== "Pending Close" ? (
+                          <IconBtn icon="x-circle" onPress={() => { setActionFor(row); setCloseReason(""); setMode("close"); }} />
+                        ) : null}
+                      </>
                     ) : null}
                   </View>
                 </View>

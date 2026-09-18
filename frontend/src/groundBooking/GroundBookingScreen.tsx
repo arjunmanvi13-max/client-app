@@ -6,7 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useAuth } from "../auth";
-import { isSuperAdminUser } from "../rbac";
+import { canAccessGroundBooking, canManageGroundBooking } from "../rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
 import { colors, radii, spacing } from "../theme";
@@ -18,12 +18,6 @@ import { bookingOverlapsDay, daysInMonthGrid, monthKey, shiftMonth } from "./pri
 import { GROUND_SPORTS, SLOT_LABELS, type BookingPayload, type GroundBooking, type GroundSport } from "./types";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-function canAccess(user: { role?: string } | null | undefined) {
-  if (!user) return false;
-  if (isSuperAdminUser(user)) return true;
-  return ["admin", "alpha_admin", "alpha_accounts"].includes((user.role || "").toLowerCase());
-}
 
 function toneColor(tone?: string) {
   if (tone === "confirmed") return { bg: "#DCFCE7", fg: "#15803D", bar: "#22C55E" };
@@ -45,7 +39,8 @@ function monthLabel(month: string) {
 export function GroundBookingScreen() {
   const { user } = useAuth();
   const { isDesktop, horizontalPadding } = useBreakpoint();
-  const allowed = canAccess(user);
+  const allowed = canAccessGroundBooking(user);
+  const canWrite = canManageGroundBooking(user);
   const [sport, setSport] = useState<GroundSport | "">("");
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [month, setMonth] = useState(monthKey());
@@ -105,7 +100,7 @@ export function GroundBookingScreen() {
 
   const openBooking = (b: GroundBooking) => {
     setSelected(b);
-    if (b.status === "Tentative") {
+    if (canWrite && b.status === "Tentative") {
       setEditing(b);
       setPickDate(b.dates.startDate);
       setModal(true);
@@ -156,8 +151,8 @@ export function GroundBookingScreen() {
       <SafeAreaView style={s.safe} edges={["top"]}>
         <View style={s.denied}>
           <Feather name="lock" size={28} color={colors.muted2} />
-          <Text style={s.deniedTitle}>Ground Booking is ALPHA-only</Text>
-          <Text style={s.deniedTxt}>ALPHA Admin and ALPHA Accounts can view and manage ground bookings.</Text>
+          <Text style={s.deniedTitle}>Ground Booking access is not granted</Text>
+          <Text style={s.deniedTxt}>Ask Super Admin to enable Ground Booking in Individual permission overrides, or sign in as ALPHA Admin or ALPHA Accounts.</Text>
         </View>
       </SafeAreaView>
     );
@@ -175,10 +170,12 @@ export function GroundBookingScreen() {
             <Text style={s.h1}>Ground Booking</Text>
             <Text style={s.sub}>Half day ₹6,000 · Full day ₹10,000 · Cricket and football grounds.</Text>
           </View>
-          <TouchableOpacity testID="new-booking" style={s.primaryBtn} onPress={() => openNew()}>
-            <Feather name="plus" size={16} color="#fff" />
-            <Text style={s.primaryTxt}>New Booking</Text>
-          </TouchableOpacity>
+          {canWrite ? (
+            <TouchableOpacity testID="new-booking" style={s.primaryBtn} onPress={() => openNew()}>
+              <Feather name="plus" size={16} color="#fff" />
+              <Text style={s.primaryTxt}>New Booking</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={s.kpiRow}>
@@ -288,10 +285,12 @@ export function GroundBookingScreen() {
             <View style={s.dayPanel}>
               <Text style={s.dayPanelKicker}>SELECTED DAY</Text>
               <Text style={s.dayPanelTitle}>{selectedDay ? formatDate(selectedDay) : "Pick a date"}</Text>
-              <TouchableOpacity style={s.dayBookBtn} onPress={() => openNew(selectedDay || today)} testID="book-selected-day">
-                <Feather name="plus" size={14} color="#fff" />
-                <Text style={s.dayBookTxt}>Book this day</Text>
-              </TouchableOpacity>
+              {canWrite ? (
+                <TouchableOpacity style={s.dayBookBtn} onPress={() => openNew(selectedDay || today)} testID="book-selected-day">
+                  <Feather name="plus" size={14} color="#fff" />
+                  <Text style={s.dayBookTxt}>Book this day</Text>
+                </TouchableOpacity>
+              ) : null}
               {dayBookings.length === 0 ? (
                 <Text style={s.dayEmpty}>No bookings yet. Create one with the default half-day or full-day rate.</Text>
               ) : dayBookings.map((b) => {
@@ -367,17 +366,17 @@ export function GroundBookingScreen() {
               <Text style={s.pending}>Discount pending Super Admin approval</Text>
             ) : null}
             <View style={s.detailActions}>
-              {selected.status === "Tentative" ? (
+              {canWrite && selected.status === "Tentative" ? (
                 <TouchableOpacity style={s.editBtn} onPress={() => openBooking(selected)} testID="edit-booking">
                   <Text style={s.editTxt}>Edit</Text>
                 </TouchableOpacity>
               ) : null}
-              {selected.status === "Tentative" && !selected.pricing.discountPending ? (
+              {canWrite && selected.status === "Tentative" && !selected.pricing.discountPending ? (
                 <TouchableOpacity style={s.confirmBtn} onPress={() => setStatus(selected, "Confirmed")}>
                   <Text style={s.confirmTxt}>Confirm</Text>
                 </TouchableOpacity>
               ) : null}
-              {selected.status !== "Cancelled" ? (
+              {canWrite && selected.status !== "Cancelled" ? (
                 <TouchableOpacity style={s.cancelBtn} onPress={() => setStatus(selected, "Cancelled")}>
                   <Text style={s.cancelTxt}>Cancel booking</Text>
                 </TouchableOpacity>

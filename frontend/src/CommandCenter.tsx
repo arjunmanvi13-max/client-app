@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api, useAuth, userHasPermission } from "./auth";
-import { BusinessEntity, Permission, UserRole, canAccessEnquiry, isSuperAdminUser, normalizeRole } from "./rbac";
+import { BusinessEntity, Permission, UserRole, canAccessEnquiry, canAccessGroundBooking, isSuperAdminUser, normalizeRole } from "./rbac";
 import { LoadingState, ErrorState, getApiError } from "./ScreenStates";
 import { formatDate } from "./dateFormat";
 import { useBreakpoint } from "./useBreakpoint";
@@ -141,7 +141,7 @@ export default function CommandCenter() {
         {!isSportsAdmin && (
           <DeptCard testID="dept-hostel" icon="home" tint="#7C3AED" title="Hostel" subtitle={`${data.departments.hostel.residents} residents · ${data.departments.hostel.pending_pass} pending passes`} onPress={() => router.push("/(tabs)/hostel")} />
         )}
-        {(isSuper || isSportsAdmin) && (
+        {canAccessGroundBooking(user) && (
           <DeptCard testID="dept-ground-booking" icon="map" tint="#0284C7" title="Ground Booking" subtitle="ALPHA cricket and football venue reservations" onPress={() => router.push("/operations/ground-booking")} />
         )}
         {canAccessEnquiry(user) && (

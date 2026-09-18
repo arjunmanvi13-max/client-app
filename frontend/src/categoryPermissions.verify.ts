@@ -3,7 +3,7 @@
  * Run: npm run test:category-perms
  */
 import { APPROVED_LOGIN_USER_TYPES, CATALOG_BY_CODE, LOGIN_TIER_CATALOG } from "./userClassification";
-import { PERMISSION_SET_CATALOG, PERMISSION_SET_CODES, DIRECTORY_CATEGORIES, ADMIN_DESIGNATIONS } from "./directoryWorkflow";
+import { PERMISSION_SET_CATALOG, PERMISSION_SET_CODES, DIRECTORY_CATEGORIES, ADMIN_DESIGNATIONS, isCoachDirectoryRecord, matchesAdminDesignationFilter } from "./directoryWorkflow";
 import { UserRole } from "./rbac";
 import {
   allLeafIds,
@@ -26,6 +26,10 @@ function run() {
   assert(ADMIN_DESIGNATIONS.includes("COACH"), "Coach is an Admin designation");
   assert(ADMIN_DESIGNATIONS.includes("WARDEN"), "Warden is an Admin designation");
   assert(ADMIN_DESIGNATIONS.includes("ACCOUNTS"), "Accounts is an Admin designation");
+  assert(isCoachDirectoryRecord({ role: "coach" }), "Legacy coach role belongs under Admins → Coach");
+  assert(isCoachDirectoryRecord({ user_type: "alpha_coach" }), "ALPHA Coach user type belongs under Admins → Coach");
+  assert(matchesAdminDesignationFilter({ role: "coach", designation: "" }, "COACH"), "Coach chip includes coaches without stored designation");
+  assert(!matchesAdminDesignationFilter({ designation: "WARDEN" }, "COACH"), "Coach chip excludes other designations");
   assert(APPROVED_LOGIN_USER_TYPES.length === 7, "Seven approved login user types");
   assert(LOGIN_TIER_CATALOG.length === 3, "Three login-tier headings");
   assert(LOGIN_TIER_CATALOG.map((t) => t.displayName).join(",") === "Super Admin,Admin,Staff", "Hub headings");

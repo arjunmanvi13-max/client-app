@@ -27,23 +27,25 @@ export const MODULE_MATRIX: ModuleDef[] = [
   { id: "approvals", label: "Approvals", view: ["dashboard_access"], edit: ["approve_requests"], admin: ["approve_requests", "approve_deactivation"] },
   { id: "expenses", label: "Expenses", view: ["capture_pws_expenses", "capture_alpha_expenses"], edit: ["capture_pws_expenses", "capture_alpha_expenses"], admin: ["manage_expense_structure"] },
   { id: "academics", label: "Academics", view: ["view_academic_marks"], edit: ["enter_academic_marks"], admin: ["manage_academic_structure"] },
+  { id: "enquiry", label: "Enquiry", view: ["view_enquiries"], edit: ["manage_enquiries"], admin: ["manage_enquiries"] },
+  { id: "ground_booking", label: "Ground Booking", view: ["view_ground_bookings"], edit: ["manage_ground_bookings"], admin: ["manage_ground_bookings"] },
 ];
 
 export const DESIGNATION_PRESETS: Record<string, Record<string, ModuleAccessLevel>> = {
-  PRINCIPAL: { directory: "admin", fees: "edit", attendance: "admin", schedules: "admin", tasks: "admin", reports: "admin", approvals: "admin", expenses: "edit", academics: "admin" },
-  VICE_PRINCIPAL: { directory: "edit", fees: "view", attendance: "admin", schedules: "admin", tasks: "admin", reports: "admin", approvals: "edit", expenses: "view", academics: "admin" },
-  ACADEMIC_HEAD: { directory: "edit", fees: "none", attendance: "edit", schedules: "admin", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "admin" },
-  EVENT_COORDINATOR: { directory: "view", fees: "none", attendance: "view", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "edit", academics: "view" },
-  OPERATIONS_ADMIN: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view" },
-  ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none" },
-  PWS_OFFICE_STAFF: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view" },
-  PWS_ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none" },
-  HOD: { directory: "view", fees: "none", attendance: "edit", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "edit" },
-  TEACHER: { directory: "view", fees: "none", attendance: "edit", schedules: "view", tasks: "view", reports: "none", approvals: "none", expenses: "none", academics: "edit" },
-  WARDEN: { directory: "view", fees: "none", attendance: "admin", schedules: "view", tasks: "edit", reports: "view", approvals: "edit", expenses: "view", academics: "none" },
-  COACH: { directory: "view", fees: "none", attendance: "edit", schedules: "view", tasks: "view", reports: "none", approvals: "none", expenses: "none", academics: "none" },
-  ALPHA_ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none" },
-  ALPHA_OFFICE_STAFF: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "none" },
+  PRINCIPAL: { directory: "admin", fees: "edit", attendance: "admin", schedules: "admin", tasks: "admin", reports: "admin", approvals: "admin", expenses: "edit", academics: "admin", enquiry: "admin", ground_booking: "none" },
+  VICE_PRINCIPAL: { directory: "edit", fees: "view", attendance: "admin", schedules: "admin", tasks: "admin", reports: "admin", approvals: "edit", expenses: "view", academics: "admin", enquiry: "edit", ground_booking: "none" },
+  ACADEMIC_HEAD: { directory: "edit", fees: "none", attendance: "edit", schedules: "admin", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "admin", enquiry: "view", ground_booking: "none" },
+  EVENT_COORDINATOR: { directory: "view", fees: "none", attendance: "view", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "edit", academics: "view", enquiry: "edit", ground_booking: "none" },
+  OPERATIONS_ADMIN: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view", enquiry: "none", ground_booking: "none" },
+  ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none", enquiry: "edit", ground_booking: "none" },
+  PWS_OFFICE_STAFF: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "view", enquiry: "none", ground_booking: "none" },
+  PWS_ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none", enquiry: "edit", ground_booking: "none" },
+  HOD: { directory: "view", fees: "none", attendance: "edit", schedules: "edit", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "edit", enquiry: "none", ground_booking: "none" },
+  TEACHER: { directory: "view", fees: "none", attendance: "edit", schedules: "view", tasks: "view", reports: "none", approvals: "none", expenses: "none", academics: "edit", enquiry: "none", ground_booking: "none" },
+  WARDEN: { directory: "view", fees: "none", attendance: "admin", schedules: "view", tasks: "edit", reports: "view", approvals: "edit", expenses: "view", academics: "none", enquiry: "none", ground_booking: "none" },
+  COACH: { directory: "view", fees: "none", attendance: "edit", schedules: "view", tasks: "view", reports: "none", approvals: "none", expenses: "none", academics: "none", enquiry: "none", ground_booking: "none" },
+  ALPHA_ACCOUNTS: { directory: "view", fees: "admin", attendance: "none", schedules: "none", tasks: "edit", reports: "admin", approvals: "edit", expenses: "admin", academics: "none", enquiry: "edit", ground_booking: "edit" },
+  ALPHA_OFFICE_STAFF: { directory: "view", fees: "view", attendance: "view", schedules: "view", tasks: "edit", reports: "view", approvals: "none", expenses: "none", academics: "none", enquiry: "none", ground_booking: "none" },
 };
 
 export function emptyModuleAccess(): Record<string, ModuleAccessLevel> {
@@ -55,7 +57,6 @@ export function presetForDesignation(designation?: string | null): Record<string
     PWS_OFFICE_STAFF: "OPERATIONS_ADMIN",
     ALPHA_OFFICE_STAFF: "OPERATIONS_ADMIN",
     PWS_ACCOUNTS: "ACCOUNTS",
-    ALPHA_ACCOUNTS: "ACCOUNTS",
   };
   const key = aliases[(designation || "").toUpperCase()] || (designation || "").toUpperCase();
   return { ...emptyModuleAccess(), ...(DESIGNATION_PRESETS[key] || {}) };
