@@ -56,6 +56,7 @@ type PwsAdminUserFormFieldsProps = {
   setDepartment: (v: string) => void;
   designation: PwsAdminDesignation;
   setDesignation: (v: PwsAdminDesignation) => void;
+  setEntityScope?: (v: "PWS" | "ALPHA" | "BOTH") => void;
   customizePerms: boolean;
   setCustomizePerms: (v: boolean) => void;
   toggleModulePerm: (key: string) => void;
@@ -138,6 +139,7 @@ export function PwsAdminUserFormFields({
   setDepartment,
   designation,
   setDesignation,
+  setEntityScope,
   customizePerms,
   setCustomizePerms,
   toggleModulePerm,
@@ -187,12 +189,37 @@ export function PwsAdminUserFormFields({
             <MetaChip label="User Type" value={displayTitle} testID="field-user-type" />
           </View>
           <View style={s.col}>
-            <MetaChip
-              label="Business Scope"
-              value={entityScopeLabel(entityScope)}
-              tone="scope"
-              testID="field-entity-scope"
-            />
+            {setEntityScope && !readOnly ? (
+              <View testID="field-entity-scope">
+                <Text style={s.fieldLabel}>Business Scope</Text>
+                <View style={s.scopeRow}>
+                  {(["PWS", "ALPHA", "BOTH"] as const).map((opt) => {
+                    const active = entityScope === opt;
+                    return (
+                      <TouchableOpacity
+                        key={opt}
+                        testID={`org-${opt}`}
+                        onPress={() => setEntityScope(opt)}
+                        style={[s.scopeChip, active && s.scopeChipActive]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <Text style={[s.scopeChipTxt, active && s.scopeChipTxtActive]}>
+                          {entityScopeLabel(opt)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <MetaChip
+                label="Business Scope"
+                value={entityScopeLabel(entityScope)}
+                tone="scope"
+                testID="field-entity-scope"
+              />
+            )}
           </View>
         </View>
 
@@ -390,6 +417,23 @@ const s = StyleSheet.create({
   designationWrap: { gap: 0 },
   designationGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   designationGridWide: { flexWrap: "nowrap" },
+  scopeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  scopeChip: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({ web: { cursor: "pointer" } as object, default: {} }),
+  },
+  scopeChipActive: { backgroundColor: formColors.primary, borderColor: formColors.primary },
+  scopeChipTxt: { fontSize: 13, fontWeight: "700", color: colors.muted },
+  scopeChipTxtActive: { color: "#fff" },
   designationBtn: {
     flexGrow: 1,
     flexBasis: "47%",

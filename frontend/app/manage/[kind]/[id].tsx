@@ -288,7 +288,9 @@ export default function ManageEdit() {
   // Shared
   const [name, setName] = useState("");
   const [organization, setOrganization] = useState<"PWS" | "ALPHA" | "BOTH">(
-    (typeCatalog?.entityScope as "PWS" | "ALPHA" | "BOTH") || (isCoachKind ? "ALPHA" : "PWS"),
+    isPwsAdminKind && isNew
+      ? "BOTH"
+      : (typeCatalog?.entityScope as "PWS" | "ALPHA" | "BOTH") || (isCoachKind ? "ALPHA" : "PWS"),
   );
 
   // User-only
@@ -549,6 +551,10 @@ export default function ManageEdit() {
             } else {
               setLoginEntity("PWS");
             }
+            const storedScope = String(u.entity_scope || u.organization || "").toUpperCase();
+            if (storedScope === "PWS" || storedScope === "ALPHA" || storedScope === "BOTH") {
+              setOrganization(storedScope);
+            }
             if (u.module_access) setModuleAccess({ ...emptyModuleAccess(), ...u.module_access });
             else if (u.designation) setModuleAccess(presetForDesignation(u.designation));
             setPermPresetLocked(true);
@@ -564,6 +570,7 @@ export default function ManageEdit() {
               setStudentAssessment(!!perms.view_academic_marks);
             }
             if (isCoachKind) setOrganization("ALPHA");
+            else if (storedScope === "PWS" || storedScope === "ALPHA" || storedScope === "BOTH") setOrganization(storedScope as "PWS" | "ALPHA" | "BOTH");
             else if (u.organization) setOrganization(u.organization);
             else if (typeCatalog) setOrganization(typeCatalog.entityScope);
           } else {
@@ -1038,7 +1045,7 @@ export default function ManageEdit() {
       }
 
       if (isLoginUserKind && userTypeKind) {
-        const scopeOrg = isCoachKind ? "ALPHA" : (typeCatalog?.entityScope || organization);
+        const scopeOrg = isCoachKind ? "ALPHA" : organization;
         if (isNew) {
           const body: any = {
             email: email.trim().toLowerCase(),
@@ -1047,6 +1054,7 @@ export default function ManageEdit() {
             user_type: userTypeKind,
             role: legacyRoleForUserType(userTypeKind, isPwsAdminKind ? designation : null),
             organization: scopeOrg,
+            entity_scope: scopeOrg,
             department: department || null,
             phone: phone || null,
           };
@@ -1069,6 +1077,8 @@ export default function ManageEdit() {
           if (isPwsAdminKind) {
             body.user_type = UserRole.PWS_ADMIN;
             body.designation = designation;
+            body.organization = organization;
+            body.entity_scope = organization;
           }
           if (isCoachKind) {
             body.coach_permissions = coachPermissions;
@@ -1722,7 +1732,8 @@ export default function ManageEdit() {
               isSuper={isSuper}
               canManageUsersRosters={canManageUsersRosters}
               displayTitle={displayTitle}
-              entityScope={typeCatalog?.entityScope || organization}
+              entityScope={organization}
+              setEntityScope={setOrganization}
               name={name}
               setName={setName}
               email={email}
@@ -1734,7 +1745,10 @@ export default function ManageEdit() {
               department={department}
               setDepartment={setDepartment}
               designation={designation}
-              setDesignation={setDesignation}
+              setDesignation={(v) => {
+                setDesignation(v);
+                if (v === "PRINCIPAL" && organization === "PWS") setOrganization("BOTH");
+              }}
               customizePerms={customizePerms}
               setCustomizePerms={setCustomizePerms}
               toggleModulePerm={toggleModulePerm}
