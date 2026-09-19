@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, RefreshControl, Linking, TextInput,
 } from "react-native";
@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../auth";
 import { canAccessEnquiry, canManageEnquiry } from "../rbac";
+import { useSubmitGuard } from "../useSubmitGuard";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
 import { colors, radii, spacing } from "../theme";
@@ -48,13 +49,19 @@ export function EnquiryScreen() {
   const [assigneeId, setAssigneeId] = useState("");
   const [closeReason, setCloseReason] = useState("");
   const [mode, setMode] = useState<"assign" | "complete" | "close" | null>(null);
+  const guard = useSubmitGuard();
+
+  const qRef = useRef("");
+  const seq = useRef(0);
+  qRef.current = q;
 
   const load = useCallback(async () => {
+    const mine = ++seq.current;
     setError("");
     try {
       const [list, opts] = await Promise.all([
         fetchEnquiries({
-          q: q.trim() || undefined,
+          q: qRef.current.trim() || undefined,
           institution: institution || undefined,
           status: status || undefined,
           source: source || undefined,
@@ -62,16 +69,19 @@ export function EnquiryScreen() {
         }),
         fetchEnquiryOptions().catch(() => ({ staff: [] })),
       ]);
+      if (mine !== seq.current) return;
       setRows(list);
       setStaff(opts.staff || []);
     } catch (e) {
+      if (mine !== seq.current) return;
       setError(getApiError(e, "Could not load enquiries."));
-      setRows([]);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mine === seq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [q, institution, status, source, assigned]);
+  }, [institution, status, source, assigned]);
 
   useFocusEffect(useCallback(() => {
     if (!allowed) return;
@@ -99,7 +109,7 @@ export function EnquiryScreen() {
     if (!assigneeId) return Alert.alert("Select a person", "Choose who should take the next step.");
     if (actionNote.trim().length < 3) return Alert.alert("Action note required", "Add what they should do, e.g. call the parent.");
     try {
-      await assignEnquiry(actionFor.id, assigneeId, actionNote.trim());
+      await guard.run(() => assignEnquiry(actionFor.id, assigneeId, actionNote.trim()));
       setMode(null); setActionFor(null); setActionNote("");
       await load();
     } catch (e) {
@@ -111,7 +121,7 @@ export function EnquiryScreen() {
     if (!actionFor) return;
     if (actionNote.trim().length < 3) return Alert.alert("Remarks required", "Describe what was done before returning this to the office.");
     try {
-      await completeEnquiryAssignment(actionFor.id, actionNote.trim());
+      await guard.run(() => completeEnquiryAssignment(actionFor.id, actionNote.trim()));
       setMode(null); setActionFor(null); setActionNote("");
       await load();
     } catch (e) {
@@ -123,7 +133,7 @@ export function EnquiryScreen() {
     if (!actionFor) return;
     if (closeReason.trim().length < 3) return Alert.alert("Reason required", "Closing a lead needs Principal or Super Admin approval.");
     try {
-      await requestEnquiryClose(actionFor.id, closeReason.trim());
+      await guard.run(() => requestEnquiryClose(actionFor.id, closeReason.trim()));
       setMode(null); setActionFor(null); setCloseReason("");
       Alert.alert("Sent for approval", "Principal or Super Admin must approve closing this lead.");
       await load();
@@ -139,7 +149,8 @@ export function EnquiryScreen() {
         text: "Convert",
         onPress: async () => {
           try {
-            const res = await convertEnquiry(row.id);
+            const res = await guard.run(() => convertEnquiry(row.id));
+            if (!res) return;
             await load();
             router.push(`/manage/${res.directory_kind}/${res.person.id}`);
           } catch (e) {

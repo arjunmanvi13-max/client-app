@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useAuth } from "../auth";
+import { useSubmitGuard } from "../useSubmitGuard";
 import { canAccessGroundBooking, canManageGroundBooking } from "../rbac";
 import { LoadingState, EmptyState, ErrorState, getApiError } from "../ScreenStates";
 import { useBreakpoint } from "../useBreakpoint";
@@ -52,6 +53,7 @@ export function GroundBookingScreen() {
   const [pickDate, setPickDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<GroundBooking | null>(null);
   const [saving, setSaving] = useState(false);
+  const guard = useSubmitGuard();
   const [selected, setSelected] = useState<GroundBooking | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(toISODate());
 
@@ -111,7 +113,8 @@ export function GroundBookingScreen() {
     setSaving(true);
     try {
       if (editing) {
-        const updated = await updateGroundBooking(editing.id, payload);
+        const updated = await guard.run(() => updateGroundBooking(editing.id, payload));
+        if (!updated) return;
         setModal(false);
         setEditing(null);
         setSelected(updated);
@@ -122,7 +125,8 @@ export function GroundBookingScreen() {
         Alert.alert("Booking updated", `Changes saved.${extra}`);
         return;
       }
-      const created = await createGroundBooking(payload);
+      const created = await guard.run(() => createGroundBooking(payload));
+      if (!created) return;
       setModal(false);
       await load();
       const extra = created.discount_submitted
@@ -138,7 +142,7 @@ export function GroundBookingScreen() {
 
   const setStatus = async (booking: GroundBooking, status: "Confirmed" | "Cancelled") => {
     try {
-      await updateGroundBookingStatus(booking.id, status);
+      await guard.run(() => updateGroundBookingStatus(booking.id, status));
       setSelected(null);
       await load();
     } catch (e) {

@@ -417,7 +417,7 @@ export function activeFilterChips(
     const value = filters[field.stateKey];
     if (field.key === "feeCollectionType") {
       if (value === "monthly_collection") continue;
-      const label = FEE_COLLECTION_TYPE_OPTIONS.find((o) => o.value === value)?.label || value;
+      const label = FEE_COLLECTION_TYPE_OPTIONS.find((o) => o.value === value)?.label || String(value);
       chips.push({ key: field.key, label, resetKey: "feeCollectionType", resetValue: "monthly_collection" });
       continue;
     }

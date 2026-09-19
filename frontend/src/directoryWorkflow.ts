@@ -152,14 +152,3 @@ export function isAdminDirectoryKind(kind: string): boolean {
   return kind === "admin" || (ADMIN_LIST_REDIRECT_KINDS as readonly string[]).includes(kind);
 }
 
-export function userTypeForAdmin(designation: string | null | undefined, organization: string | null | undefined): string {
-  const canon = canonicalizeDesignation(designation);
-  const org = (organization || "PWS").toUpperCase();
-  if (["PRINCIPAL", "VICE_PRINCIPAL", "ACADEMIC_HEAD", "EVENT_COORDINATOR"].includes(canon)) return UserRole.PWS_ADMIN;
-  if (canon === "OPERATIONS_ADMIN") return org === "ALPHA" ? UserRole.ALPHA_ADMIN : UserRole.PWS_ADMIN;
-  if (canon === "ACCOUNTS") return org === "ALPHA" ? UserRole.ALPHA_ACCOUNTS : UserRole.PWS_ACCOUNTS;
-  if (canon === "COACH") return UserRole.ALPHA_COACH;
-  if (canon === "WARDEN") return UserRole.ALPHA_ADMIN;
-  if (canon === "TEACHER" || canon === "HOD") return UserRole.PWS_TEACHER;
-  return UserRole.PWS_ADMIN;
-}

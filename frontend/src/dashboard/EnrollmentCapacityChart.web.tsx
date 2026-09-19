@@ -49,7 +49,7 @@ export function EnrollmentCapacityChart({ rows }: Props) {
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748B" }} interval={0} angle={-28} textAnchor="end" height={60} />
           <YAxis tick={{ fontSize: 11, fill: "#64748B" }} allowDecimals={false} />
           <Tooltip
-            formatter={(value: number, name: string) => [value, name === "enrolled" ? "Current enrollments" : "Maximum capacity"]}
+            formatter={(value, name) => [value ?? 0, name === "enrolled" ? "Current enrollments" : "Maximum capacity"]}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <Bar dataKey="enrolled" name="Current enrollments" fill="#059669" radius={[6, 6, 0, 0]} />

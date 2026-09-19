@@ -14,9 +14,9 @@ import { formatInr } from "../expenses/expenseFormat";
 import { searchGroundCustomers } from "./api";
 import { computeLocalPricing, inclusiveDays, listGroundRate } from "./pricing";
 import {
-  BALL_COLORS, BALL_TYPES, EVENT_TYPES, GROUND_SPORTS, SLOT_LABELS, SLOT_RATES,
-  type BookingPayload, type EventType, type GroundBooking, type GroundCustomer, type GroundSport,
-  type LastBookingSummary, type TimeSlot,
+  ALPHA_CAMPUSES, BALL_COLORS, BALL_TYPES, EVENT_TYPES, GROUND_SPORTS, SLOT_LABELS, SLOT_RATES,
+  type AlphaCampus, type BookingPayload, type EventType, type GroundBooking, type GroundCustomer,
+  type GroundSport, type LastBookingSummary, type TimeSlot,
 } from "./types";
 
 type Props = {
@@ -90,6 +90,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
   const [personId, setPersonId] = useState<string | null>(null);
   const [lastBooking, setLastBooking] = useState<LastBookingSummary | null>(null);
   const [sport, setSport] = useState<GroundSport>("Cricket");
+  const [campus, setCampus] = useState<AlphaCampus>("Balua");
   const [startDisplay, setStartDisplay] = useState(formatDate(defaultDate || today));
   const [endDisplay, setEndDisplay] = useState(formatDate(defaultDate || today));
   const [slot, setSlot] = useState<TimeSlot>("half_day");
@@ -112,7 +113,6 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
   const [ballQty, setBallQty] = useState("1");
   const [ballRate, setBallRate] = useState("");
   const [error, setError] = useState("");
-  const skipRateSync = useRef(false);
   const slotDaysKey = useRef("");
   const editing = Boolean(booking);
   const { width: winW, height: winH } = useBreakpoint();
@@ -133,7 +133,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
     setLastBooking(null);
     setError("");
     if (booking) {
-      skipRateSync.current = true;
+      slotDaysKey.current = `${booking.dates.timeSlot}|${inclusiveDays(booking.dates.startDate, booking.dates.endDate)}`;
       const add = booking.addOns || {};
       setName(booking.customer?.name || "");
       setOrg(booking.customer?.organization || "");
@@ -141,6 +141,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
       setAddress(booking.customer?.address || "");
       setPersonId(booking.customer?.sourcePersonId || null);
       setSport(booking.sport);
+      setCampus(booking.campus || "Balua");
       setStartDisplay(formatDate(booking.dates.startDate));
       setEndDisplay(formatDate(booking.dates.endDate));
       setSlot(booking.dates.timeSlot);
@@ -164,7 +165,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
       setBallRate(add.balls?.ratePerBall ? String(add.balls.ratePerBall) : "");
       return;
     }
-    skipRateSync.current = false;
+    slotDaysKey.current = "half_day|1";
     const iso = defaultDate || today;
     setStartDisplay(formatDate(iso));
     setEndDisplay(formatDate(iso));
@@ -174,6 +175,7 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
     setAddress("");
     setPersonId(null);
     setSport("Cricket");
+    setCampus("Balua");
     setSlot("half_day");
     setCustomHours("");
     setPeople("10");
@@ -189,15 +191,14 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
     setUmpireRate("");
     setUmpirePeople("1");
     setBallsOn(false);
+    setBallType("");
+    setBallColor("");
+    setBallQty("1");
+    setBallRate("");
   }, [visible, defaultDate, today, booking]);
 
   useEffect(() => {
     const key = `${slot}|${days}`;
-    if (skipRateSync.current) {
-      skipRateSync.current = false;
-      slotDaysKey.current = key;
-      return;
-    }
     if (slotDaysKey.current === key) return;
     slotDaysKey.current = key;
     if (slot === "custom") return;
@@ -266,13 +267,14 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
     if (endIso < startIso) return setError("End date cannot be before start date.");
     const headcount = Number(people);
     if (!headcount || headcount < 1) return setError("Number of people must be at least 1.");
-    if (slot === "custom" && !(Number(groundRate) > 0)) return setError("Enter a custom ground/venue rate.");
+    if (!(Number(groundRate) > 0)) return setError("Enter the ground/venue rate.");
     if (foodOn && !(Number(foodPeople) > 0)) return setError("Enter number of persons for food.");
     if (transportOn && !(Number(transportPeople) > 0)) return setError("Enter number of persons for transport.");
     if (umpireOn && !(Number(umpirePeople) > 0)) return setError("Enter number of umpires / referees.");
     if (ballsOn && (!ballType || !ballColor)) return setError("Select ball type and colour.");
     const payload: BookingPayload = {
       sport,
+      campus,
       customer: {
         name: name.trim(),
         organization: org.trim() || undefined,
@@ -390,6 +392,19 @@ export function GroundBookingFormModal({ visible, saving, defaultDate, booking, 
                   );
                 })}
               </View>
+              <Fields stack={stack}>
+                <Field stack={stack}>
+                  <FormSelect
+                    label="Campus / Ground"
+                    required
+                    compact
+                    value={campus}
+                    onChange={(v) => setCampus(v as AlphaCampus)}
+                    options={ALPHA_CAMPUSES.map((c) => ({ label: c, value: c }))}
+                    testID="booking-campus"
+                  />
+                </Field>
+              </Fields>
               <Fields stack={stack}>
                 <Field stack={stack}>
                   <FormDateField label="Start date" required compact value={startDisplay} onChangeText={setStartDisplay} />

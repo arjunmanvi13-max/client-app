@@ -1,7 +1,6 @@
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 import { formatDate } from "../dateFormat";
 import { formatClassDisplay } from "../pwsClassCatalog";
-import { formatClassDisplay } from "../pwsClassCatalog";
 
 export type ReportCardData = {
   person_name?: string;

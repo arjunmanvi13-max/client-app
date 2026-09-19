@@ -116,23 +116,6 @@ export function toggleFilterValue<T extends string>(selected: T[], value: T): T[
   return selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value];
 }
 
-export function filterPlayersBySelection<
-  T extends { centre?: string; sport?: string; player_type?: string; group?: string },
->(
-  roster: T[],
-  venues: string[],
-  sports: string[],
-  categories: string[],
-  batches: string[] = [],
-): T[] {
-  return roster.filter((p) => {
-    if (venues.length && !venues.includes(p.centre || "")) return false;
-    if (sports.length && !sports.includes(p.sport || "")) return false;
-    if (categories.length && !categories.includes(p.player_type || "")) return false;
-    if (batches.length && !batches.includes(p.group || "")) return false;
-    return true;
-  });
-}
 
 export type AttendanceKindOption = {
   key: AttendanceKind;

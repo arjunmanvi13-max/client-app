@@ -9,11 +9,6 @@ export const ENQUIRY_STATUSES = [
   "Pending Close",
 ] as const;
 
-export const ACTIVE_ENQUIRY_STATUSES = [
-  "New", "Contacted", "Interested", "Visit Scheduled",
-  "Application Started", "Application Submitted", "On Hold", "Pending Close",
-] as const;
-
 export const FEE_DISCUSSION = ["Not Discussed", "Discussed", "Details Shared"] as const;
 export const CONTACT_METHODS = ["Call", "WhatsApp", "Email"] as const;
 export const PRIORITIES = ["Low", "Medium", "High"] as const;

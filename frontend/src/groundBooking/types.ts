@@ -1,4 +1,5 @@
 export const GROUND_SPORTS = ["Cricket", "Football"] as const;
+export const ALPHA_CAMPUSES = ["Balua", "Harding Park", "Defense Colony"] as const;
 export const TIME_SLOTS = ["half_day", "full_day", "custom"] as const;
 export const EVENT_TYPES = ["Friendly Match", "Tournament", "Scouting", "Social Event"] as const;
 export const BALL_TYPES = ["Tennis Ball", "Leather Ball"] as const;
@@ -17,6 +18,7 @@ export const SLOT_RATES: Record<"half_day" | "full_day", number> = {
 };
 
 export type GroundSport = (typeof GROUND_SPORTS)[number];
+export type AlphaCampus = (typeof ALPHA_CAMPUSES)[number];
 export type TimeSlot = (typeof TIME_SLOTS)[number];
 export type EventType = (typeof EVENT_TYPES)[number];
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
@@ -50,6 +52,7 @@ export type GroundBooking = {
   id: string;
   entity: "ALPHA";
   sport: GroundSport;
+  campus: AlphaCampus;
   customer: {
     name: string;
     organization?: string | null;
@@ -113,6 +116,7 @@ export type GroundBooking = {
 
 export type BookingPayload = {
   sport: GroundSport;
+  campus: AlphaCampus;
   customer: {
     name: string;
     organization?: string;

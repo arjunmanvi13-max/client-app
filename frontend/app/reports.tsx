@@ -204,7 +204,8 @@ function ReportsFilterPanel({
           <View style={[s.filterGrid, gridWide && s.filterGridWide]}>
             {fields.map((field) => {
               const disabled = field.key === "sectionLetter" && filters.pwsClass === "All";
-              const value = filters[field.stateKey];
+              const raw = filters[field.stateKey];
+              const value = Array.isArray(raw) ? (raw[0] ?? "") : raw;
               return (
                 <View key={field.key} style={[s.filterCell, gridWide && s.filterCellHalf]}>
                   <FormSelect

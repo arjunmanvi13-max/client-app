@@ -62,16 +62,3 @@ export function presetForDesignation(designation?: string | null): Record<string
   return { ...emptyModuleAccess(), ...(DESIGNATION_PRESETS[key] || {}) };
 }
 
-export function permissionsFromModuleAccess(access: Record<string, ModuleAccessLevel>): Record<string, boolean> {
-  const perms: Record<string, boolean> = { dashboard_access: true };
-  for (const mod of MODULE_MATRIX) {
-    const level = access[mod.id] || "none";
-    const keys = [
-      ...(level === "none" ? [] : mod.view),
-      ...((level === "edit" || level === "admin") ? mod.edit : []),
-      ...(level === "admin" ? mod.admin : []),
-    ];
-    for (const key of keys) perms[key] = true;
-  }
-  return perms;
-}

@@ -465,10 +465,14 @@ export interface PersonRecord {
 // ---------------------------------------------------------------------------
 
 export function resolveUserEntity(user: RBACUser): BusinessEntity {
+  const stored = (user.entity_scope || "").trim().toUpperCase();
+  if (stored === "PWS" || stored === "ALPHA" || stored === "BOTH") {
+    return stored as BusinessEntity;
+  }
   if (isPrincipalUser(user)) return BusinessEntity.BOTH;
   const perms = user.permissions || {};
   const rbac = user.permissions_rbac || {};
-  const hasPws = Boolean(perms.view_students || perms.add_students || perms.view_staff);
+  const hasPws = Boolean(perms.view_students || perms.add_students);
   const hasAlpha = Boolean(
     perms.view_players
     || perms.add_players
@@ -511,14 +515,10 @@ export function hasPermission(
     return entityAllows(BusinessEntity.BOTH, entity);
   }
 
+  if (entity && !entityAllows(resolveUserEntity(user), entity)) return false;
+
   const override = user.permissions_rbac?.[permission];
   if (override !== undefined) return Boolean(override);
-
-  if (user.effective_permissions?.includes(permission) && !entity) return true;
-
-  if (entity && !entityAllows(resolveUserEntity(user), entity)) {
-    return Boolean(user.effective_permissions?.includes(permission));
-  }
 
   if (user.effective_permissions?.includes(permission)) return true;
 

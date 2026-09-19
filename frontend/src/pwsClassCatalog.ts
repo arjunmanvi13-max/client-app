@@ -104,6 +104,7 @@ function buildAliasMap(): Record<string, PwsClassCanonical> {
       add(`class${key}`, canonical);
       add(`c${key}`, canonical);
       add(`${key}th`, canonical);
+      if (key === "1") add("1st", canonical);
     }
   }
   add("nur", "Nursery");
@@ -132,19 +133,10 @@ export function formatClassDisplay(classVal?: string | null): string {
   return normalizeClassValue(classVal) || (classVal || "").trim();
 }
 
-export function classCodeForClass(classVal?: string | null): string {
-  const canon = normalizeClassValue(classVal);
-  return canon ? CLASS_TO_CODE[canon] : "";
-}
-
 export function gradeKeyForClass(classVal?: string | null): string {
   const canon = normalizeClassValue(classVal);
   if (!canon) return (classVal || "").trim();
   return CLASS_TO_GRADE_KEY[canon];
-}
-
-export function classForGradeKey(gradeName?: string | null): PwsClassCanonical | null {
-  return normalizeClassValue(gradeName);
 }
 
 export function sameClass(a?: string | null, b?: string | null): boolean {
@@ -166,9 +158,11 @@ export function classAliases(classVal?: string | null): string[] {
     CLASS_TO_CODE[canon],
     key,
     `Std ${key}`,
+    `STD ${key}`,
     `Grade ${key}`,
     `Class ${key}`,
     `Class-${key}`,
+    `class ${key}`,
   ]);
   if (/^\d+$/.test(key)) {
     const roman = ARABIC_TO_ROMAN[key];
@@ -178,13 +172,15 @@ export function classAliases(classVal?: string | null): string[] {
   }
   if (canon === "Nursery") {
     out.add("Nur");
+    out.add("NUR");
     out.add("nursery");
     out.add("Std Nur");
   }
+  for (const [alias, target] of Object.entries(ALIAS_TO_CANONICAL)) {
+    if (target === canon) out.add(alias);
+  }
   return [...out];
 }
-
-export const CLASS_SELECT_OPTIONS = CLASS_LIST.map((c) => ({ value: c, label: c }));
 
 /** @deprecated Use CLASS_LIST — kept so existing imports keep working. */
 export const PWS_CLASS_OPTIONS = CLASS_LIST;
